@@ -1,0 +1,79 @@
+name: Release
+
+# Publishes a GitHub release when a version tag is pushed:
+#   git tag v0.3.8 && git push origin v0.3.8
+# See docs/RELEASING.md.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install -e ".[dev]"
+
+      - name: Check the tag, the version and the changelog
+        run: python scripts/release_notes.py --tag "${{ github.ref_name }}" --check
+
+      - name: Lint, types, tests
+        run: |
+          ruff check .
+          ruff format --check .
+          mypy
+          pytest -q
+
+      - name: Build the executable
+        run: python scripts/build_exe.py
+
+      - name: Read the version
+        id: version
+        run: |
+          $v = python -c "from brake_trainer import __version__; print(__version__)"
+          "value=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build the installer
+        id: installer
+        continue-on-error: true
+        run: |
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.value }}" packaging\installer.iss
+
+      - name: Checksums
+        run: |
+          Get-ChildItem dist\BrakeTrainerEvo-*-windows.zip, dist\BrakeTrainerEvo-*-setup.exe -ErrorAction SilentlyContinue |
+            ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
+            Set-Content dist\SHA256SUMS.txt -Encoding ascii
+          Get-Content dist\SHA256SUMS.txt
+
+      - name: Write the release notes
+        run: |
+          $flag = if (Test-Path dist\BrakeTrainerEvo-*-setup.exe) { @() } else { @("--no-installer") }
+          python scripts/release_notes.py --tag "${{ github.ref_name }}" --repo "${{ github.repository }}" --out release_notes.md @flag
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Brake Trainer EVO ${{ github.ref_name }}
+          body_path: release_notes.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/BrakeTrainerEvo-*-windows.zip
+            dist/BrakeTrainerEvo-*-setup.exe
+            dist/SHA256SUMS.txt

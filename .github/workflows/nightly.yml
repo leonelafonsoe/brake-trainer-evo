@@ -1,0 +1,60 @@
+name: Nightly
+
+# After every change to main (for example a merged pull request), refresh a rolling
+# "nightly" pre-release with a fresh Windows build, so the newest changes can be tried
+# without waiting for a versioned release.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  nightly:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install -e ".[dev]"
+
+      - name: Tests
+        run: |
+          ruff check .
+          pytest -q
+
+      - name: Build the executable
+        run: python scripts/build_exe.py
+
+      - name: Name the asset
+        run: Copy-Item (Get-ChildItem dist\BrakeTrainerEvo-*-windows.zip).FullName dist\BrakeTrainerEvo-nightly-windows.zip
+
+      - name: Write the notes
+        run: python scripts/release_notes.py --unreleased --sha "${{ github.sha }}" --repo "${{ github.repository }}" --out nightly_notes.md
+
+      - name: Move the nightly tag to this commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f nightly
+          git push -f origin nightly
+
+      - name: Publish the nightly pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly (latest main)
+          body_path: nightly_notes.md
+          prerelease: true
+          files: dist/BrakeTrainerEvo-nightly-windows.zip
