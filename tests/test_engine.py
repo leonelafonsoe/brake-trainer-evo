@@ -351,3 +351,47 @@ def test_snapshot_flags_old_equal_split_data(store):
     engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=1), store)
     Driver(engine).feed(0.3, 100.0, 0.0)
     assert engine.snapshot().equal_lines is True
+
+
+def _two_excursion_results(store, **settings):
+    """A faster lap with the game invalidating it in sector 2 and a cut in sector 4."""
+    results = []
+    config = Settings(n_sectors=5, warmup_laps=0, **settings)
+    engine = BrakeEngine(config, store, on_sector=results.append)
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    results.clear()
+    driver.lap(
+        CORNERS,
+        speed_fn=lambda p: 215,
+        stop=1.003,
+        invalid_from=0.3,
+        off_track=(0.65, 0.66),
+        off_tyres=settings.pop("cut_tyres", 3),
+    )
+    return {r.sector: r for r in results}
+
+
+def test_every_sector_with_a_mistake_is_dropped_not_just_the_first(store):
+    by_sector = _two_excursion_results(store)  # S2: lap invalidated, S4: three tyres off
+    assert "invalidated" in by_sector[1].note
+    assert by_sector[3].duration is None and "off track" in by_sector[3].note
+    for clean in (0, 2, 4):  # the sectors without a mistake are kept
+        assert by_sector[clean].accepted
+
+
+def test_a_cut_on_a_still_valid_lap_needs_the_strict_tyre_limit(store):
+    results = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    results.clear()
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, off_track=(0.65, 0.66), off_tyres=3)
+    assert {r.sector: r for r in results}[3].accepted  # lap valid: only 4 tyres out would drop it
+
+
+def test_the_after_invalid_limit_can_be_switched_off(store):
+    by_sector = _two_excursion_results(store, max_tyres_out_after_invalid=0)
+    assert by_sector[3].accepted  # the old behaviour: only the first is caught

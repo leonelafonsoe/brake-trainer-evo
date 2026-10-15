@@ -4,6 +4,13 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.3.10 - 2026-10-14
+
+- Fix: after the game invalidated a lap, a second off-track moment in a later sector of the same lap
+  was not caught (the game's flag only drops once) unless all four tyres were off. Now two tyres off is
+  enough to drop a sector for the rest of an invalid lap (new setting "...once the lap is invalid",
+  0 turns it off). Sectors without a mistake are still kept.
+
 ## 0.3.9 - 2026-10-13
 
 - The `.ico` stores the small sizes as plain bitmaps (PNG only at 256 px), the form Windows Explorer

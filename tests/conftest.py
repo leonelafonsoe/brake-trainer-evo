@@ -45,6 +45,7 @@ class Driver:
         jitter: float = 0.0,
         invalid_from: float | None = None,
         off_track: tuple[float, float] | None = None,
+        off_tyres: int = 4,
     ) -> float:
         p = start
         while p < stop:
@@ -54,7 +55,7 @@ class Driver:
                 if 0 <= d < 120:
                     brake, speed = 0.8, min(speed, 200 - d * 0.9)
             valid = invalid_from is None or p < invalid_from
-            out = 4 if off_track and off_track[0] <= p < off_track[1] else 0
+            out = off_tyres if off_track and off_track[0] <= p < off_track[1] else 0
             self.feed(p, speed, brake, valid=valid, tyres_out=out)
             p += speed / 3.6 * DT / LENGTH
         return p
