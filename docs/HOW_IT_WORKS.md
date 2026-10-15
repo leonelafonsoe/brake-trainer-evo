@@ -79,12 +79,15 @@ A sector pass is not saved when:
 - **Invalid lap**: the game invalidated your lap *while you were in that sector* (track limits,
   cuts). Earlier sectors on the same lap are kept. A sector you *enter* after the lap was
   already invalid is kept too, as long as you stay on the track in it (see the next point).
+- **Off limits (the game's log)**: the game's own log reported a track-limit violation by your car:
+  all four tyres out and 2 m or more beyond the line, which is what makes the game invalidate a lap.
+  This is checked for every violation, so going off in several sectors of the same lap drops each
+  of them. Turn it off with "Use the game's log for track limits" in Settings.
 - **Off track**: all four tyres were off the track at some moment (Settings: "Skip sector if
-  tyres off track"). **Once the game has invalidated the lap**, its flag stays down and cannot
-  report a second mistake, so for the rest of that lap a lower limit applies: two tyres off is
-  enough to drop a sector ("...once the lap is invalid", default 2). So if you go off in several
-  sectors of one lap, each of them is dropped (the first one through the game's flag, the later
-  ones through the tyres), and the clean sectors in between are kept.
+  tyres off track"). The game's lap flag only drops once per lap and cannot report a
+  second mistake, which is why the game's log is used for the "off limits" check above. An optional
+  setting ("...once the lap is invalid", off by default) can also drop later sectors of an invalid
+  lap when that many tyres go off, as a backup when the log cannot be read.
 - **Paused**: learning was paused at any point during it.
 
 The reason is shown on the overlay ("S3 won't count · lap invalidated") and in the log.

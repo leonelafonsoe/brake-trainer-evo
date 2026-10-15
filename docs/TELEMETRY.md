@@ -16,14 +16,38 @@ it never writes to the game or its files.
 | Track / car name | `static.track`, `graphics.car_model` | Keys for the stored data |
 | Track length | `static.track_length_m`, or `graphics.lap_length_km` | Metres from positions |
 | In the pit lane | `graphics.is_in_pit_lane` | Not learning in the pits; warm-up reset |
-| Lap still valid | `graphics.is_valid_lap` | Skipping invalidated sectors |
-| Tyres off track | `physics.number_of_tyres_out` | Skipping off-track sectors |
+| Lap still valid | `graphics.is_valid_lap` | Skipping the sector where the lap was invalidated |
+| Tyres off track | `physics.number_of_tyres_out` | Skipping sectors with all four tyres out (backup for the log) |
+| Track-limit violations | the game's log (see below) | Skipping every sector with a violation |
 | Timestamp | frame timestamp | Sector times |
 
 **Position source.** The SDK also returns a position estimated from the physics data
 (`normalized_position_source: physics_tyre_z`). That one is dead-reckoned and can jump, so the app
 uses the game's own value from the graphics block. Frames without a track or car name (menus,
 loading) are ignored.
+
+## The game's log (track limits)
+
+Shared memory only gives the *number* of tyres off the track. The game itself decides on track limits
+from a distance as well, and it writes each change to its log. Following the analysis behind
+`acevo-sdk` (which parsed real logs), a violation that invalidates a lap is: **all four tyres out, at
+least 2 m beyond the line**; shorter excursions are tolerated, and a very large distance (over about
+10 m) is an artefact of being teleported to the pits. The app follows the newest `*.txt` in
+`Saved Games\ACE\Logs` (a different folder can be set in Settings) and reads lines like:
+
+```
+[physics] [info] Limits: car <uuid> tyres out changed: 3 -> 4 with 2.62m inside
+```
+
+The player's car is recognised from the `... connected on car ..., with new carId <uuid>` line (the one
+with a Steam id). Everything already in the log when the app starts, or when the game starts a new
+log, is read only to learn the player's car, so old violations are never replayed. A violation makes
+the sector in progress not count, and a sector that closed in the last second is taken back (the log
+can arrive a moment late). This is the game's own "off limits" and is independent of the lap flag,
+so a second violation in a later sector of the same lap is caught too.
+
+The log format and folder come from the SDK's research on the alpha game; if they change this
+signal stops working silently, and the other checks (below and the game's lap flag) still apply.
 
 ## Behaviours worth knowing
 

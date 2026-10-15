@@ -4,6 +4,16 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.3.11 - 2026-10-15
+
+- Track limits now use the game's own events: the app follows the game's log (`Saved Games\ACE\Logs`),
+  where every violation (all four tyres out, 2 m or more beyond the line, the rule that invalidates a
+  lap) is reported. Every sector with a violation is dropped, also a second one in the same lap, which
+  the lap-invalid flag cannot show. A sector that closed within a second of a violation is taken back.
+  New settings: use the game's log (on) and its folder.
+- The "...once the lap is invalid" tyre limit added in 0.3.10 is off by default now: it went beyond the
+  game's own rule. (If you ran 0.3.10, your saved settings keep the old value 2; set it to Off.)
+
 ## 0.3.10 - 2026-10-14
 
 - Fix: after the game invalidated a lap, a second off-track moment in a later sector of the same lap

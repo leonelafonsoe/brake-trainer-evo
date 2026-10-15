@@ -86,9 +86,18 @@ because they can be driven cleanly.
 
 The catch is that the flag only *drops once* per lap: after that it says nothing about a second
 mistake. Counting only that drop would save a later sector with a cut in it, and a cut is usually
-faster, so it would become the "best" run and drag the braking points with it. So once the lap is
-invalid a lower tyres-off-track limit (2) stands in for the flag in the remaining sectors. Its cost is
-limited to laps that are already invalid, where losing a sector costs little.
+faster, so it would become the "best" run and drag the braking points with it.
+
+The proper answer is the game's own per-violation event. The game writes each change in the number of
+tyres off the track, with the distance beyond the line, to its log, and (per the SDK's analysis) it
+invalidates a lap when all four tyres are out by 2 m or more. The app follows that log
+(`gamelog.py`), so every violation is seen as an event, whatever the lap flag already says. The
+tyre count in shared memory is kept as a backup. A first attempt used a lower tyre limit after the lap
+was invalid; that goes beyond the game's own rule, so it is now off by default.
+
+The log can arrive a moment after the event, so a violation also takes back a sector that closed in
+the last second. The cost of relying on a log is that its location and format are those of an alpha
+game; if they change the signal is lost, which is why the other checks stay.
 
 ### Pausing learning
 In a race you want the marks to stay as they are. Paused mode keeps cues and sector colours

@@ -69,6 +69,7 @@ def merge_zones(zones: Sequence[float], cluster_m: float, length_m: float) -> li
     return merged
 
 
+_LATE_VIOLATION_S = 1.0  # a violation reported this soon after a sector closed still counts for it
 _CORNER_SPAN_M = 250.0  # braking point -> past the corner
 _LEAD_SPAN_M = 150.0  # the cue warns this far before a braking point
 
@@ -170,6 +171,7 @@ class BrakeEngine:
         self._survey: list[float] = []
         self._survey_cov = 0.0
         self._lap_valid = True
+        self._closed_at = 0.0
         self._laps_done = 0  # laps completed since leaving the pits / session start
         self._status: list[SectorStatus] = []
         self._prev_pos: float | None = None
@@ -195,6 +197,32 @@ class BrakeEngine:
     def reset_tracking(self) -> None:
         """Forget the in-progress sector, e.g. after telemetry was interrupted."""
         self._clear_tracking()
+
+    def report_violation(self) -> None:
+        """The game's log just reported a track-limit violation by the player's car.
+
+        The sector in progress will not count. The log can arrive a moment after the event, so a
+        sector that closed within the last second is taken back too (it is removed again if it
+        had just been saved).
+        """
+        if not self._settings.skip_invalid_sectors:
+            return
+        if self._pass is not None:
+            self._pass.flagged = self._pass.flagged or "off limits"
+        now = self._last.t if self._last else None
+        if self._last_closed is None or self._data is None or now is None:
+            return
+        if now - self._closed_at > _LATE_VIOLATION_S:
+            return
+        idx, run = self._last_closed
+        runs = self._data.sectors[idx]
+        if any(r is run for r in runs):
+            self._data.sectors[idx] = [r for r in runs if r is not run]
+            self._status[idx] = SectorStatus.PENDING
+            self._last_closed = None
+            self._rebuild_zones()
+            self._store.save(self._data)
+            self._on_message(f"S{idx + 1} taken back: the game reported a track-limit violation")
 
     def queue_edit(self, edit: DataEdit) -> None:
         """Ask for a change to the stored data. Safe from any thread; applied on the next
@@ -317,7 +345,8 @@ class BrakeEngine:
             last_result_age=(s.t - self._last_result_t) if self._last_result else None,
             pass_flag=(
                 self._pass.flagged
-                if self._pass and self._pass.flagged in ("lap invalidated", "off track")
+                if self._pass
+                and self._pass.flagged in ("lap invalidated", "off track", "off limits")
                 else ""
             ),
             last_result=self._last_result,
@@ -500,6 +529,7 @@ class BrakeEngine:
             data.sectors[idx] = kept
             if accepted:
                 self._last_closed = (idx, stored)
+                self._closed_at = t
                 self._rebuild_zones()
                 self._store.save(data)
         # with learning off the colours still show how the sector compared, but nothing is stored

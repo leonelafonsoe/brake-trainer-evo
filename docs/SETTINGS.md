@@ -45,7 +45,9 @@ or the tray icon. **Apply** saves and takes effect immediately. Settings are sto
 | Ignore laps after leaving the pits | `warmup_laps` | 1 | off (0), or 1 - 5 | Cold tyres and brakes make you brake earlier, so these laps are not learned. |
 | Skip sector if lap invalidated | `skip_invalid_sectors` | on | on / off | A sector where the game invalidates your lap (track limits, cuts) is not saved. |
 | Skip sector if tyres off track | `max_tyres_out` | 4 | off (0), or 1 - 4 | Sector not saved if this many tyres were off the track at any moment. |
-| ...once the lap is invalid | `max_tyres_out_after_invalid` | 2 | off (0), or 1 - 4 | After the game invalidates a lap it cannot flag a second mistake, so later sectors of that lap are skipped if this many tyres go off the track. |
+| Use the game's log for track limits | `use_game_log` | on | on / off | Follows the game's own log, which reports each track-limit violation (all four tyres out, 2 m or more beyond the line). A sector with one is not saved. |
+| Game log folder | `game_log_dir` | empty | text | Leave empty for the default: Saved Games\ACE\Logs in your user folder. Applies after restarting the app. |
+| ...once the lap is invalid | `max_tyres_out_after_invalid` | 0 | off (0), or 1 - 4 | After the game invalidates a lap it cannot flag a second mistake, so later sectors of that lap are skipped if this many tyres go off the track. |
 | Fastest runs kept per sector | `top_runs` | 3 | 1 - 10 | Cue points are the median of these runs. 1 = copy your single best run. |
 | Own runs before leaving reference | `own_runs_to_replace_ref` | 2 | 1 - 10 | With a new car, borrowed points are used until you have this many runs. |
 | Preferred reference car | `reference_car` | empty | text | Part of a car name. Empty = the car with the most data on that track. |

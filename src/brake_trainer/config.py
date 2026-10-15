@@ -65,7 +65,9 @@ class Settings:
     max_tyres_out: int = 4  # ...or this many tyres were off track (0 = ignore)
     # Once the game has invalidated the lap its flag cannot show a second mistake, so a lower
     # tyre count is used to catch further excursions in the later sectors of that lap.
-    max_tyres_out_after_invalid: int = 2
+    max_tyres_out_after_invalid: int = 0  # 0 = off; the game log below is the better signal
+    use_game_log: bool = True  # follow the game's log for track-limit violations
+    game_log_dir: str = ""  # "" = the default folder (Saved Games\ACE\Logs)
     own_runs_to_replace_ref: int = 2
     reference_car: str = ""  # "" = automatic
     # --- cues ---

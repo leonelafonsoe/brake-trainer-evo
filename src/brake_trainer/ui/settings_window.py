@@ -303,6 +303,24 @@ TABS: dict[str, list[Spec]] = {
             tip="Sector not saved if this many tyres were off the track at any moment.",
         ),
         Spec(
+            "use_game_log",
+            "Use the game's log for track limits",
+            "bool",
+            tip=(
+                "Follows the game's own log, which reports each track-limit violation (all four "
+                "tyres out, 2 m or more beyond the line). A sector with one is not saved."
+            ),
+        ),
+        Spec(
+            "game_log_dir",
+            "Game log folder",
+            "text",
+            tip=(
+                "Leave empty for the default: Saved Games\\ACE\\Logs in your user folder. "
+                "Applies after restarting the app."
+            ),
+        ),
+        Spec(
             "max_tyres_out_after_invalid",
             "...once the lap is invalid",
             "int",

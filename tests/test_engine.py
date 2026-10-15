@@ -374,7 +374,8 @@ def _two_excursion_results(store, **settings):
 
 
 def test_every_sector_with_a_mistake_is_dropped_not_just_the_first(store):
-    by_sector = _two_excursion_results(store)  # S2: lap invalidated, S4: three tyres off
+    # S2: the game invalidates the lap; S4: three tyres off (the optional heuristic switched on)
+    by_sector = _two_excursion_results(store, max_tyres_out_after_invalid=2)
     assert "invalidated" in by_sector[1].note
     assert by_sector[3].duration is None and "off track" in by_sector[3].note
     for clean in (0, 2, 4):  # the sectors without a mistake are kept
