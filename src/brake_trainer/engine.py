@@ -267,7 +267,8 @@ class BrakeEngine:
                 self._pass.flagged = self._pass.flagged or "surveying track"
             if st.skip_invalid_sectors and self._lap_valid and not s.lap_valid:
                 self._pass.flagged = self._pass.flagged or "lap invalidated"
-            if st.max_tyres_out and s.tyres_out >= st.max_tyres_out:
+            limit = self._tyres_out_limit(s.lap_valid)
+            if limit and s.tyres_out >= limit:
                 self._pass.flagged = self._pass.flagged or "off track"
             if not self._settings.learning_enabled:
                 self._pass.paused = True
@@ -391,6 +392,19 @@ class BrakeEngine:
         self._zones = merge_zones(zones, cluster, length)
 
     # ------------------------------------------------------------------ sectors
+
+    def _tyres_out_limit(self, lap_valid: bool) -> int:
+        """Tyres off the track that make a sector not count (0 = never).
+
+        While the lap is valid, only the strict limit applies (the game itself judges track limits).
+        After the game has invalidated the lap its flag stays down and cannot report a second
+        mistake, so the lower limit stands in for it in the remaining sectors of that lap.
+        """
+        st = self._settings
+        limits = [st.max_tyres_out]
+        if st.skip_invalid_sectors and not lap_valid:
+            limits.append(st.max_tyres_out_after_invalid)
+        return min((n for n in limits if n), default=0)
 
     def _sector_of(self, pos: float) -> int:
         return min(max(bisect_right(self._bounds, pos) - 1, 0), self._n - 1)

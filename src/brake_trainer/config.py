@@ -25,6 +25,7 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "max_sectors": (1, 24),
     "top_runs": (1, 10),
     "max_tyres_out": (0, 4),
+    "max_tyres_out_after_invalid": (0, 4),
     "warmup_laps": (0, 5),
     "own_runs_to_replace_ref": (1, 10),
     "lead_s": (0.3, 5.0),
@@ -62,6 +63,9 @@ class Settings:
     warmup_laps: int = 1  # laps ignored after leaving the pits (cold tyres and brakes)
     skip_invalid_sectors: bool = True  # sector not counted if the lap was invalidated in it
     max_tyres_out: int = 4  # ...or this many tyres were off track (0 = ignore)
+    # Once the game has invalidated the lap its flag cannot show a second mistake, so a lower
+    # tyre count is used to catch further excursions in the later sectors of that lap.
+    max_tyres_out_after_invalid: int = 2
     own_runs_to_replace_ref: int = 2
     reference_car: str = ""  # "" = automatic
     # --- cues ---

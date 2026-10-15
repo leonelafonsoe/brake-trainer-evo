@@ -303,6 +303,19 @@ TABS: dict[str, list[Spec]] = {
             tip="Sector not saved if this many tyres were off the track at any moment.",
         ),
         Spec(
+            "max_tyres_out_after_invalid",
+            "...once the lap is invalid",
+            "int",
+            0,
+            4,
+            1,
+            special="Off",
+            tip=(
+                "After the game invalidates a lap it cannot flag a second mistake, so later "
+                "sectors of that lap are skipped if this many tyres go off the track."
+            ),
+        ),
+        Spec(
             "top_runs",
             "Fastest runs kept per sector",
             "int",

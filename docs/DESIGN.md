@@ -81,8 +81,14 @@ sector and are never saved into its file.
 
 ### Validity checks use the game's own flags
 `is_valid_lap` and the number of tyres off track come from the game, so track-limit rules match
-what the sim enforces. Only the sector where the lap *became* invalid is dropped; later sectors
-were driven cleanly.
+what the sim enforces. The sector where the lap *became* invalid is dropped; later sectors are kept
+because they can be driven cleanly.
+
+The catch is that the flag only *drops once* per lap: after that it says nothing about a second
+mistake. Counting only that drop would save a later sector with a cut in it, and a cut is usually
+faster, so it would become the "best" run and drag the braking points with it. So once the lap is
+invalid a lower tyres-off-track limit (2) stands in for the flag in the remaining sectors. Its cost is
+limited to laps that are already invalid, where losing a sector costs little.
 
 ### Pausing learning
 In a race you want the marks to stay as they are. Paused mode keeps cues and sector colours
