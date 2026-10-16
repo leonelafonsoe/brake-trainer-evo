@@ -22,6 +22,16 @@ _PROBE_FALLBACK_S = 1.0  # watching a running game we could not open a handle to
 _GAME_MISSING_CHECKS = 2  # consecutive misses (fallback mode) before the game counts as closed
 _RESTART_DELAY_S = 2.0
 
+# Said once at start-up, so the app's limits with track limits are never a silent surprise. The
+# game's shared memory has no distance beyond the line and no per-violation event.
+TRACK_LIMITS_NOTE = (
+    "Track limits come from the game's shared memory only (the game's log is not read). "
+    "'is_valid_lap' is a one-shot flag, so it marks the first invalidation of a lap; "
+    "'number_of_tyres_out' is a live count, so every sector with all four tyres off is dropped, "
+    "including a second one in a lap the game already invalidated. A cut the game invalidates "
+    "with fewer than four tyres out is not exposed by the memory and cannot be pinned to a sector."
+)
+
 
 class GameStatus(Enum):
     RUNNING = "running"

@@ -77,18 +77,20 @@ A sector pass is not saved when:
 - **Pit lane**: you were in the pit lane, or reset to the pits, during it.
 - **Partial**: you reset or teleported mid-sector, or drove less than 90% of it.
 - **Invalid lap**: the game invalidated your lap *while you were in that sector* (track limits,
-  cuts). Earlier sectors on the same lap are kept. A sector you *enter* after the lap was
-  already invalid is kept too, as long as you stay on the track in it (see the next point).
-- **Off limits (the game's log)**: the game's own log reported a track-limit violation by your car:
-  all four tyres out and 2 m or more beyond the line, which is what makes the game invalidate a lap.
-  This is checked for every violation, so going off in several sectors of the same lap drops each
-  of them. Turn it off with "Use the game's log for track limits" in Settings.
+  cuts). The game's "lap valid" flag drops once and stays down, so it can only mark the sector
+  where the invalidation happened. Earlier sectors on the same lap are kept. A sector you *enter*
+  after the lap was already invalid is kept too, as long as you stay on the track in it (see the
+  next point).
 - **Off track**: all four tyres were off the track at some moment (Settings: "Skip sector if
-  tyres off track"). The game's lap flag only drops once per lap and cannot report a
-  second mistake, which is why the game's log is used for the "off limits" check above. An optional
-  setting ("...once the lap is invalid", off by default) can also drop later sectors of an invalid
-  lap when that many tyres go off, as a backup when the log cannot be read.
+  tyres off track"). This is the game's live count of tyres off the track, so it catches **every**
+  excursion, including a second one in a later sector of a lap the game already invalidated
+  — which the one-shot lap flag cannot show.
 - **Paused**: learning was paused at any point during it.
+
+The two signals above are the game's own, read from shared memory. The game also invalidates a lap
+for a *cut*, which it judges from the car's position and does not expose per violation; if the lap
+flag drops without four tyres having been off, the app says so in its log and can only drop the
+sector where the flag dropped. See [TELEMETRY.md](TELEMETRY.md).
 
 The reason is shown on the overlay ("S3 won't count · lap invalidated") and in the log.
 

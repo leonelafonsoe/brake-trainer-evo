@@ -86,13 +86,14 @@ The line under the sector bar usually tells you why nothing is being learned:
 | S3 won't count · off track | All four tyres were off the track | If it triggers too often set "Skip sector if tyres off track" to Off |
 | No braking points yet | Nothing learned for this track and car | Drive 2-3 clean laps after the warm-up lap |
 
-**Off-limits sectors are still saved (the game log is not read)**
-The app looks for the game's log in `%USERPROFILE%\Saved Games\ACE\Logs`. The app log
-(`brake_trainer.log`) says `Reading the game log: <file>` when it works, `Game log: track-limit
-violation` for each violation it sees, or `No game log found in ...` when the folder is wrong. In that
-case set "Game log folder" in Settings -> Sectors and restart the app. If the folder is right but nothing
-is reported after a violation, open the newest log and search for `Limits: car`; if those lines look
-different from `tyres out changed: 3 -> 4 with 2.62m inside`, open an issue with a few of them.
+**A sector with a cut is still saved**
+The app reads track limits from the game's shared memory: the "lap valid" flag (which drops only
+once per lap) and the live count of tyres off the track (which drops any sector with all four tyres
+off, also a second one in the same lap). The memory has no per-violation event for a *cut*, which
+the game judges from the car's position, so when the lap flag drops without four tyres having been
+off, the app logs a warning and can only drop the sector where the flag dropped. This is a limit of
+the data the game exposes, not something a setting changes. See
+[TELEMETRY.md](TELEMETRY.md#track-limits).
 
 **Corners are missing or doubled**
 Braking points closer than "Same-corner distance" (40 m) count as one corner. Tune it in Settings

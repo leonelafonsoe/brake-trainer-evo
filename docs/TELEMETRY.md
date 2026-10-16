@@ -17,8 +17,7 @@ it never writes to the game or its files.
 | Track length | `static.track_length_m`, or `graphics.lap_length_km` | Metres from positions |
 | In the pit lane | `graphics.is_in_pit_lane` | Not learning in the pits; warm-up reset |
 | Lap still valid | `graphics.is_valid_lap` | Skipping the sector where the lap was invalidated |
-| Tyres off track | `physics.number_of_tyres_out` | Skipping sectors with all four tyres out (backup for the log) |
-| Track-limit violations | the game's log (see below) | Skipping every sector with a violation |
+| Tyres off track | `physics.number_of_tyres_out` | Skipping any sector with all four tyres off |
 | Timestamp | frame timestamp | Sector times |
 
 **Position source.** The SDK also returns a position estimated from the physics data
@@ -26,28 +25,26 @@ it never writes to the game or its files.
 uses the game's own value from the graphics block. Frames without a track or car name (menus,
 loading) are ignored.
 
-## The game's log (track limits)
+## Track limits
 
-Shared memory only gives the *number* of tyres off the track. The game itself decides on track limits
-from a distance as well, and it writes each change to its log. Following the analysis behind
-`acevo-sdk` (which parsed real logs), a violation that invalidates a lap is: **all four tyres out, at
-least 2 m beyond the line**; shorter excursions are tolerated, and a very large distance (over about
-10 m) is an artefact of being teleported to the pits. The app follows the newest `*.txt` in
-`Saved Games\ACE\Logs` (a different folder can be set in Settings) and reads lines like:
+Both track-limit signals come from shared memory; the game's log is not read.
 
-```
-[physics] [info] Limits: car <uuid> tyres out changed: 3 -> 4 with 2.62m inside
-```
+- **`graphics.is_valid_lap`** is the game's own verdict. It is a *state*: it drops when the game
+  invalidates the lap and stays down until the lap ends, so it marks the sector where it dropped
+  and nothing after it.
+- **`physics.number_of_tyres_out`** is a *live count* of tyres off the track. It is checked on
+  every sample, so a sector with all four tyres off is dropped even when the lap was already
+  invalidated: a second mistake in a later sector is caught, which the one-shot flag cannot show.
 
-The player's car is recognised from the `... connected on car ..., with new carId <uuid>` line (the one
-with a Steam id). Everything already in the log when the app starts, or when the game starts a new
-log, is read only to learn the player's car, so old violations are never replayed. A violation makes
-the sector in progress not count, and a sector that closed in the last second is taken back (the log
-can arrive a moment late). This is the game's own "off limits" and is independent of the lap flag,
-so a second violation in a later sector of the same lap is caught too.
+The memory has **no distance beyond the line and no per-violation event**. The game's own rule is
+all four tyres out *and* a distance beyond the line, and it also invalidates for cuts, which are
+judged from the car's position rather than the tyre count. A cut is therefore invisible to the app:
+when the lap flag drops but the memory never reported four tyres off, the app logs a warning and can
+only drop the sector where the flag dropped.
 
-The log format and folder come from the SDK's research on the alpha game; if they change this
-signal stops working silently, and the other checks (below and the game's lap flag) still apply.
+The cut warning doubles as a check on the tyre signal: if `number_of_tyres_out` ever stopped being
+reported (a game or SDK change), every lap invalidation would look like a cut and the warning would
+appear in the log each time.
 
 ## Behaviours worth knowing
 

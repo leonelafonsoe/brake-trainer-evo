@@ -69,9 +69,20 @@ def merge_zones(zones: Sequence[float], cluster_m: float, length_m: float) -> li
     return merged
 
 
-_LATE_VIOLATION_S = 1.0  # a violation reported this soon after a sector closed still counts for it
 _CORNER_SPAN_M = 250.0  # braking point -> past the corner
 _LEAD_SPAN_M = 150.0  # the cue warns this far before a braking point
+
+# Flags shown on the overlay for the sector in progress (in priority order).
+_PASS_FLAGS = ("lap invalidated", "off track")
+
+# The one thing the game's shared memory cannot tell us about track limits: a cut, which the game
+# judges from the car's position rather than the number of tyres off the track. Said out loud when
+# it happens, because the sector it happened in then cannot be identified.
+_CUT_WARNING = (
+    "The game invalidated the lap, but shared memory never reported four tyres off the track. "
+    "That points to a cut, which the game does not expose per violation: the app can only drop "
+    "the sector where the lap flag dropped, not the sector the cut happened in."
+)
 
 
 def full_bounds(n: int, inner: Sequence[float] | None) -> list[float]:
@@ -125,7 +136,7 @@ class _Pass:
     coverage: float = 0.0
     onsets: list[float] = field(default_factory=list)
     paused: bool = False  # learning was off during part of this pass
-    flagged: str = ""  # why this pass must not count (lap invalidated, off track)
+    flagged: str = ""  # comma-separated reasons this pass must not count
 
 
 @dataclass(slots=True)
@@ -145,6 +156,7 @@ class BrakeEngine:
         on_cue: Callable[[CueKind], None] | None = None,
         on_sector: Callable[[SectorResult], None] | None = None,
         on_message: Callable[[str], None] | None = None,
+        on_warning: Callable[[str], None] | None = None,
         on_data_changed: Callable[[], None] | None = None,
     ) -> None:
         self._settings = settings
@@ -152,6 +164,7 @@ class BrakeEngine:
         self._on_cue = on_cue or (lambda kind: None)
         self._on_sector = on_sector or (lambda result: None)
         self._on_message = on_message or (lambda text: None)
+        self._on_warning = on_warning or (lambda text: None)
         self._on_data_changed = on_data_changed or (lambda: None)
         self._pending: deque[DataEdit] = deque()  # edits requested from the UI thread
 
@@ -170,8 +183,9 @@ class BrakeEngine:
         self._needs_survey = False  # sector lines still to be placed (warm-up lap survey)
         self._survey: list[float] = []
         self._survey_cov = 0.0
-        self._lap_valid = True
-        self._closed_at = 0.0
+        self._lap_valid: bool | None = None  # None until the first sample tells us
+        self._lap_saw_tyres_out = False  # four (or the set number of) tyres off the track this lap
+        self._lap_warned = False  # the cut warning was already given for this lap
         self._laps_done = 0  # laps completed since leaving the pits / session start
         self._status: list[SectorStatus] = []
         self._prev_pos: float | None = None
@@ -197,32 +211,6 @@ class BrakeEngine:
     def reset_tracking(self) -> None:
         """Forget the in-progress sector, e.g. after telemetry was interrupted."""
         self._clear_tracking()
-
-    def report_violation(self) -> None:
-        """The game's log just reported a track-limit violation by the player's car.
-
-        The sector in progress will not count. The log can arrive a moment after the event, so a
-        sector that closed within the last second is taken back too (it is removed again if it
-        had just been saved).
-        """
-        if not self._settings.skip_invalid_sectors:
-            return
-        if self._pass is not None:
-            self._pass.flagged = self._pass.flagged or "off limits"
-        now = self._last.t if self._last else None
-        if self._last_closed is None or self._data is None or now is None:
-            return
-        if now - self._closed_at > _LATE_VIOLATION_S:
-            return
-        idx, run = self._last_closed
-        runs = self._data.sectors[idx]
-        if any(r is run for r in runs):
-            self._data.sectors[idx] = [r for r in runs if r is not run]
-            self._status[idx] = SectorStatus.PENDING
-            self._last_closed = None
-            self._rebuild_zones()
-            self._store.save(self._data)
-            self._on_message(f"S{idx + 1} taken back: the game reported a track-limit violation")
 
     def queue_edit(self, edit: DataEdit) -> None:
         """Ask for a change to the stored data. Safe from any thread; applied on the next
@@ -278,6 +266,8 @@ class BrakeEngine:
                         self._laps_done += 1  # crossed the line: one more lap completed
                     self._fired_warn.clear()
                     self._fired_here.clear()
+                    self._lap_saw_tyres_out = False
+                    self._lap_warned = False
                     self._finish_survey()
             else:  # went backwards over a line
                 self._restart_pass(sector, s.t)
@@ -290,14 +280,10 @@ class BrakeEngine:
             if s.in_pit:
                 self._pass.clean = False
             if self._laps_done < st.warmup_laps:
-                self._pass.flagged = self._pass.flagged or "warm-up lap"
+                self._flag("warm-up lap")
             if self._needs_survey:
-                self._pass.flagged = self._pass.flagged or "surveying track"
-            if st.skip_invalid_sectors and self._lap_valid and not s.lap_valid:
-                self._pass.flagged = self._pass.flagged or "lap invalidated"
-            limit = self._tyres_out_limit(s.lap_valid)
-            if limit and s.tyres_out >= limit:
-                self._pass.flagged = self._pass.flagged or "off track"
+                self._flag("surveying track")
+            self._check_track_limits(s, pos)
             if not self._settings.learning_enabled:
                 self._pass.paused = True
 
@@ -343,20 +329,24 @@ class BrakeEngine:
                 self._data and self._data.boundaries is None and self._data.total_runs()
             ),
             last_result_age=(s.t - self._last_result_t) if self._last_result else None,
-            pass_flag=(
-                self._pass.flagged
-                if self._pass
-                and self._pass.flagged in ("lap invalidated", "off track", "off limits")
-                else ""
-            ),
+            pass_flag=self._pass_flag(),
             last_result=self._last_result,
         )
+
+    def _pass_flag(self) -> str:
+        """The most important reason the sector in progress will not count, or ""."""
+        if self._pass is None:
+            return ""
+        reasons = self._pass.flagged.split(", ")
+        return next((flag for flag in _PASS_FLAGS if flag in reasons), "")
 
     # ------------------------------------------------------------------ session handling
 
     def _clear_tracking(self) -> None:
         self._prev_pos = None
-        self._lap_valid = True
+        self._lap_valid = None
+        self._lap_saw_tyres_out = False
+        self._lap_warned = False
         self._sector = 0
         self._pass = None
         self._last_closed = None
@@ -422,18 +412,50 @@ class BrakeEngine:
 
     # ------------------------------------------------------------------ sectors
 
-    def _tyres_out_limit(self, lap_valid: bool) -> int:
-        """Tyres off the track that make a sector not count (0 = never).
+    def _flag(self, reason: str) -> None:
+        """Add a reason the pass in progress must not count (once per reason)."""
+        if self._pass is None:
+            return
+        reasons = self._pass.flagged.split(", ") if self._pass.flagged else []
+        if reason in reasons:
+            return
+        reasons.append(reason)
+        self._pass.flagged = ", ".join(reasons)
 
-        While the lap is valid, only the strict limit applies (the game itself judges track limits).
-        After the game has invalidated the lap its flag stays down and cannot report a second
-        mistake, so the lower limit stands in for it in the remaining sectors of that lap.
+    def _check_track_limits(self, s: Sample, pos: float) -> None:
+        """Track limits, from the game's shared memory only.
+
+        Two signals, both the game's own:
+
+        * ``number_of_tyres_out`` is a *live count*, so it reports every excursion, not just the
+          first: any sector with the set number of tyres off the track is dropped, also a second one
+          in a lap the game already invalidated.
+        * ``is_valid_lap`` is a *one-shot* state: it drops when the game invalidates the lap and
+          stays down until the lap ends, so it can only mark the sector where it dropped.
+
+        The memory has no distance beyond the line and no per-violation event, so a cut the game
+        invalidates without that many tyres off cannot be attributed to a sector; that is said out
+        loud (a warning) rather than guessed at.
         """
         st = self._settings
-        limits = [st.max_tyres_out]
-        if st.skip_invalid_sectors and not lap_valid:
-            limits.append(st.max_tyres_out_after_invalid)
-        return min((n for n in limits if n), default=0)
+        if st.max_tyres_out and s.tyres_out >= st.max_tyres_out:
+            if not self._lap_saw_tyres_out:
+                self._on_message(
+                    f"{s.tyres_out} tyres off the track at {pos:.0%} of the lap: "
+                    "this sector will not count"
+                )
+            self._lap_saw_tyres_out = True
+            self._flag("off track")
+        if st.skip_invalid_sectors and not s.lap_valid and self._lap_valid is not False:
+            self._flag("lap invalidated")
+            if self._lap_valid:  # a fresh drop, not the state the app found at start-up
+                self._on_message(
+                    f"The game invalidated the lap at {pos:.0%} of the lap: "
+                    "this sector will not count"
+                )
+                if not self._lap_saw_tyres_out and not self._lap_warned:
+                    self._lap_warned = True
+                    self._on_warning(_CUT_WARNING)
 
     def _sector_of(self, pos: float) -> int:
         return min(max(bisect_right(self._bounds, pos) - 1, 0), self._n - 1)
@@ -529,7 +551,6 @@ class BrakeEngine:
             data.sectors[idx] = kept
             if accepted:
                 self._last_closed = (idx, stored)
-                self._closed_at = t
                 self._rebuild_zones()
                 self._store.save(data)
         # with learning off the colours still show how the sector compared, but nothing is stored

@@ -353,11 +353,10 @@ def test_snapshot_flags_old_equal_split_data(store):
     assert engine.snapshot().equal_lines is True
 
 
-def _two_excursion_results(store, **settings):
-    """A faster lap with the game invalidating it in sector 2 and a cut in sector 4."""
+def _two_excursion_results(store, off_tyres: int = 4):
+    """A faster lap with the game invalidating it in sector 2 and tyres off track in sector 4."""
     results = []
-    config = Settings(n_sectors=5, warmup_laps=0, **settings)
-    engine = BrakeEngine(config, store, on_sector=results.append)
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
@@ -366,33 +365,82 @@ def _two_excursion_results(store, **settings):
         CORNERS,
         speed_fn=lambda p: 215,
         stop=1.003,
-        invalid_from=0.3,
-        off_track=(0.65, 0.66),
-        off_tyres=settings.pop("cut_tyres", 3),
+        invalid_from=0.3,  # the lap flag drops in S2
+        off_track=(0.65, 0.66),  # a mistake in S4, after the flag is already down
+        off_tyres=off_tyres,
     )
     return {r.sector: r for r in results}
 
 
-def test_every_sector_with_a_mistake_is_dropped_not_just_the_first(store):
-    # S2: the game invalidates the lap; S4: three tyres off (the optional heuristic switched on)
-    by_sector = _two_excursion_results(store, max_tyres_out_after_invalid=2)
+def test_a_second_mistake_in_a_later_sector_is_dropped_too(store):
+    # S2: the game invalidates the lap; S4: all four tyres off. The live tyre count catches the
+    # second one, which the one-shot lap flag cannot.
+    by_sector = _two_excursion_results(store)
     assert "invalidated" in by_sector[1].note
     assert by_sector[3].duration is None and "off track" in by_sector[3].note
     for clean in (0, 2, 4):  # the sectors without a mistake are kept
         assert by_sector[clean].accepted
 
 
-def test_a_cut_on_a_still_valid_lap_needs_the_strict_tyre_limit(store):
+def test_three_tyres_off_is_not_a_track_limit_violation_for_the_game(store):
+    # The game only invalidates on all four tyres out; the memory cannot see anything else.
+    by_sector = _two_excursion_results(store, off_tyres=3)
+    assert by_sector[3].accepted
+
+
+def test_the_tyre_check_can_be_switched_off(store):
     results = []
-    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
+    engine = BrakeEngine(
+        Settings(n_sectors=5, warmup_laps=0, max_tyres_out=0), store, on_sector=results.append
+    )
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
     results.clear()
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, off_track=(0.65, 0.66), off_tyres=3)
-    assert {r.sector: r for r in results}[3].accepted  # lap valid: only 4 tyres out would drop it
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, off_track=(0.65, 0.66), off_tyres=4)
+    assert {r.sector: r for r in results}[3].accepted  # "Skip sector if tyres off track" is Off
 
 
-def test_the_after_invalid_limit_can_be_switched_off(store):
-    by_sector = _two_excursion_results(store, max_tyres_out_after_invalid=0)
-    assert by_sector[3].accepted  # the old behaviour: only the first is caught
+def _warnings_engine(store):
+    warnings: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_warning=warnings.append)
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    return driver, warnings
+
+
+def test_a_cut_is_reported_as_not_visible_in_memory(store):
+    # The game invalidates the lap, but no four-tyre event is ever reported: a cut.
+    driver, warnings = _warnings_engine(store)
+    driver.lap(CORNERS, invalid_from=0.5, stop=1.003)
+    assert len(warnings) == 1 and "four tyres" in warnings[0]
+
+
+def test_no_cut_warning_when_four_tyres_were_seen_first(store):
+    driver, warnings = _warnings_engine(store)
+    driver.lap(
+        CORNERS,
+        invalid_from=0.5,
+        off_track=(0.45, 0.46),  # four tyres off before the lap flag drops
+        off_tyres=4,
+        stop=1.003,
+    )
+    assert warnings == []
+
+
+def test_no_cut_warning_for_a_lap_already_invalid_when_the_app_starts(store):
+    # The first sample can land on a lap the app never saw being invalidated: not a cut it saw.
+    warnings: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_warning=warnings.append)
+    driver = Driver(engine)
+    driver.feed(0.55, 150.0, 0.0, valid=False)
+    driver.feed(0.56, 150.0, 0.0, valid=False)
+    assert warnings == []
+    assert engine.snapshot().pass_flag == "lap invalidated"
+
+
+def test_snapshot_reports_why_the_sector_will_not_count(store):
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store)
+    Driver(engine).feed(0.65, 150.0, 0.0, tyres_out=4)
+    assert engine.snapshot().pass_flag == "off track"

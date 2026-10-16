@@ -4,6 +4,14 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+- Track limits are read from the game's shared memory only; the game's log is no longer followed.
+  The live count of tyres off the track drops any sector with all four tyres off, including a second
+  one in a lap the game already invalidated, which the one-shot "lap valid" flag cannot show. A cut
+  the game invalidates with fewer than four tyres out is not exposed by the memory; the app now says
+  so in its log instead of reading the game's files. Settings "Use the game's log for track limits"
+  and "Game log folder" are gone, and "...once the lap is invalid" is removed (it went beyond the
+  game's own rule).
+
 ## 0.3.11 - 2026-10-15
 
 - Track limits now use the game's own events: the app follows the game's log (`Saved Games\ACE\Logs`),

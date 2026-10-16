@@ -5,17 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
 from ..audio import AudioPlayer
 from ..config import Settings, SettingsHolder
 from ..engine import BrakeEngine
-from ..gamelog import DEFAULT_LOG_DIR, GameLogTail
 from ..models import Sample, ViewState
 from ..storage import DataEdit, TrackStore
-from ..telemetry import ExitReason, TelemetryReader
+from ..telemetry import TRACK_LIMITS_NOTE, ExitReason, TelemetryReader
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +36,7 @@ class EngineWorker(QThread):
             store,
             on_cue=audio.play,
             on_message=self._log_message,
+            on_warning=self._log_warning,
             on_data_changed=self.data_changed.emit,
         )
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -71,6 +70,7 @@ class EngineWorker(QThread):
     async def _main(self) -> None:
         self._loop = asyncio.get_running_loop()
         self._stop = asyncio.Event()
+        log.warning(TRACK_LIMITS_NOTE)
         reader = TelemetryReader(
             lambda: self._holder.value,
             self._on_sample,
@@ -79,25 +79,20 @@ class EngineWorker(QThread):
             on_restart=self._engine.reset_tracking,
         )
         ticker = asyncio.create_task(self._ticker())
-        settings = self._holder.value
-        directory = Path(settings.game_log_dir) if settings.game_log_dir else DEFAULT_LOG_DIR
-        tail = GameLogTail(directory, self._on_violation, self._log_message)
-        tail_task = asyncio.create_task(tail.run(self._stop))
         try:
             reason = await reader.run(self._stop)
         finally:
             ticker.cancel()
-            tail_task.cancel()
             self._engine.flush()
         if reason is ExitReason.GAME_CLOSED:
             self.game_closed.emit()
 
-    def _on_violation(self) -> None:
-        if self._holder.value.use_game_log:
-            self._engine.report_violation()
-
     def _log_message(self, text: str) -> None:
         log.info(text)
+        self.message.emit(text)
+
+    def _log_warning(self, text: str) -> None:
+        log.warning(text)
         self.message.emit(text)
 
     def _on_game_state(self, running: bool) -> None:

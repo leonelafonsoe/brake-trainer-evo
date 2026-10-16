@@ -85,19 +85,20 @@ what the sim enforces. The sector where the lap *became* invalid is dropped; lat
 because they can be driven cleanly.
 
 The catch is that the flag only *drops once* per lap: after that it says nothing about a second
-mistake. Counting only that drop would save a later sector with a cut in it, and a cut is usually
-faster, so it would become the "best" run and drag the braking points with it.
+mistake. Counting only that drop would save a later sector with a mistake in it, and a cut is
+usually faster, so it would become the "best" run and drag the braking points with it.
 
-The proper answer is the game's own per-violation event. The game writes each change in the number of
-tyres off the track, with the distance beyond the line, to its log, and (per the SDK's analysis) it
-invalidates a lap when all four tyres are out by 2 m or more. The app follows that log
-(`gamelog.py`), so every violation is seen as an event, whatever the lap flag already says. The
-tyre count in shared memory is kept as a backup. A first attempt used a lower tyre limit after the lap
-was invalid; that goes beyond the game's own rule, so it is now off by default.
+The number of tyres off track is a *live* count, so it is used as the per-violation signal: a sector
+is dropped whenever all four tyres are off, whatever the lap flag already says. That catches a
+second mistake in a later sector using the game's own data.
 
-The log can arrive a moment after the event, so a violation also takes back a sector that closed in
-the last second. The cost of relying on a log is that its location and format are those of an alpha
-game; if they change the signal is lost, which is why the other checks stay.
+The memory has no distance beyond the line and no per-violation event, and the game also invalidates
+for cuts judged from the car's position, which the tyre count cannot see. Following the game's log
+was tried for those, but the log only reports the tyre-count change too (the same signal, plus the
+distance used to filter brief excursions), so it could not catch a cut either and added a dependency
+on an alpha game's log format. It was removed; instead, when the lap flag drops without four tyres
+having been reported off, the app logs a warning that names the limitation. See
+[TELEMETRY.md](TELEMETRY.md).
 
 ### Pausing learning
 In a race you want the marks to stay as they are. Paused mode keeps cues and sector colours
@@ -136,6 +137,9 @@ reader is tested against a fake capture object.
   first sector (the line cannot move without changing the lap logic).
 - The game may flag a lap a moment after the mistake; if that crosses a sector line, the next
   sector is dropped instead.
+- A cut the game invalidates without four tyres off is not exposed per violation, so the sector it
+  happened in cannot be identified (the app logs a warning when it sees one). If the SDK ever
+  exposes the game's `race_cut_*` counters, that becomes possible.
 - Cues are position-based. A different racing line, or a damaged or very different setup, shifts
   the real braking point.
 - Possible future work: learning per corner instead of per sector, custom WAV sounds, importing
