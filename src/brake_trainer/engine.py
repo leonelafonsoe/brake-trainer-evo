@@ -75,14 +75,19 @@ _LEAD_SPAN_M = 150.0  # the cue warns this far before a braking point
 # Flags shown on the overlay for the sector in progress (in priority order).
 _PASS_FLAGS = ("lap invalidated", "off track")
 
-# The one thing the game's shared memory cannot tell us about track limits: a cut, which the game
-# judges from the car's position rather than the number of tyres off the track. Said out loud when
-# it happens, because the sector it happened in then cannot be identified.
+# Shown when the game invalidates a lap that the app saw no off-track for (no race cut, no tyres
+# off the track): the game judged it from something it does not expose per violation, so the sector
+# it happened in cannot be identified.
 _CUT_WARNING = (
-    "The game invalidated the lap, but shared memory never reported four tyres off the track. "
-    "That points to a cut, which the game does not expose per violation: the app can only drop "
-    "the sector where the lap flag dropped, not the sector the cut happened in."
+    "The game invalidated the lap, but it reported no off-track for it (no race cut and no tyres "
+    "off the track). The app can then only drop the sector where the lap flag dropped, not the "
+    "sector the cut happened in."
 )
+
+
+def race_cut_active(gained_ms: int, deadline_m: int) -> bool:
+    """Is the game currently holding a cut against the driver? Both fields are 0 when it is not."""
+    return gained_ms > 0 or deadline_m > 0
 
 
 def full_bounds(n: int, inner: Sequence[float] | None) -> list[float]:
@@ -184,10 +189,15 @@ class BrakeEngine:
         self._survey: list[float] = []
         self._survey_cov = 0.0
         self._lap_valid: bool | None = None  # None until the first sample tells us
-        self._lap_saw_tyres_out = False  # four (or the set number of) tyres off the track this lap
+        self._lap_saw_off = False  # an off-track this lap, so a bare-cut drop is not it
         self._lap_warned = False  # the cut warning was already given for this lap
         self._tyres_over = False  # the tyre count is over the limit right now (for the message)
+        self._cut_active = False  # the game's race-cut signal is up right now
+        self._cut_gained = 0  # the last race-cut gain it reported, for spotting a new cut
         self._prev_tyres_out = 0  # the previous sample's count, for the verbose log
+        self._prev_cut_active = False  # the previous sample's race-cut state, for the verbose log
+        self._prev_cut_gained = 0
+        self._prev_timing_invalid = False
         self._laps_done = 0  # laps completed since leaving the pits / session start
         self._status: list[SectorStatus] = []
         self._prev_pos: float | None = None
@@ -268,7 +278,7 @@ class BrakeEngine:
                         self._laps_done += 1  # crossed the line: one more lap completed
                     self._fired_warn.clear()
                     self._fired_here.clear()
-                    self._lap_saw_tyres_out = False
+                    self._lap_saw_off = False
                     self._lap_warned = False
                     self._tyres_over = False
                     self._finish_survey()
@@ -348,10 +358,15 @@ class BrakeEngine:
     def _clear_tracking(self) -> None:
         self._prev_pos = None
         self._lap_valid = None
-        self._lap_saw_tyres_out = False
+        self._lap_saw_off = False
         self._lap_warned = False
         self._tyres_over = False
+        self._cut_active = False
+        self._cut_gained = 0
         self._prev_tyres_out = 0
+        self._prev_cut_active = False
+        self._prev_cut_gained = 0
+        self._prev_timing_invalid = False
         self._sector = 0
         self._pass = None
         self._last_closed = None
@@ -442,27 +457,50 @@ class BrakeEngine:
         return min((n for n in limits if n), default=0)
 
     def _check_track_limits(self, s: Sample, pos: float) -> None:
-        """Track limits, from the game's shared memory only.
+        """Track limits and other infractions, from the game's telemetry.
 
-        Two signals, both the game's own:
+        Three of the game's own signals, all in the frames the app already reads:
 
-        * ``number_of_tyres_out`` is a *live count*, so it reports every excursion, not just the
-          first: any sector where enough tyres are off the track is dropped, also a second one in a
-          lap the game already invalidated. While the lap is valid the strict limit applies (all
-          four tyres, the count the game invalidates on). Once the lap is invalid a lower limit
-          stands in for the one-shot flag below (see :meth:`_tyres_out_limit`).
+        * the race-cut pair (time gained and the distance left to give it back) is filled in for
+          every off-track, so it flags the sector each one happened in — including a second one in
+          a lap the game has already invalidated;
+        * ``number_of_tyres_out`` is a live count, where the game publishes it, with the same
+          effect;
         * ``is_valid_lap`` is a *one-shot* state: it drops when the game invalidates the lap and
-          stays down until the lap ends, so it can only mark the sector where it dropped.
+          stays down until the lap ends, so on its own it can only mark the sector where it dropped.
 
-        The memory has no distance beyond the line and no per-violation event, so a cut the game
-        invalidates without enough tyres off cannot be attributed to a sector; that is said out
-        loud (a warning) rather than guessed at.
+        An infraction the game judges from something it does not expose (a cut it invalidates with
+        no race cut and no tyres off the track) cannot be pinned to a sector; that is said out loud
+        (a warning) rather than guessed at.
         """
-        if log.isEnabledFor(logging.DEBUG):  # verbose mode: trace the two signals as they change
+        if log.isEnabledFor(logging.DEBUG):  # verbose mode: trace the signals as they change
             self._trace_track_limits(s, pos)
+        self._check_race_cut(s, pos)
+        self._check_tyres_out(s, pos)
+        self._check_lap_flag(s, pos)
+
+    def _check_race_cut(self, s: Sample, pos: float) -> None:
+        """The game's per-excursion track-limits signal: the race-cut pair.
+
+        A cut is up while either field is set. A *new* cut is the pair coming up, or the gained
+        time changing to another positive value (a second off while the first is still pending). The
+        deadline counts down on its own in between, which is not a new cut.
+        """
+        active = race_cut_active(s.cut_gained_ms, s.cut_deadline_m)
+        gained_is_new = s.cut_gained_ms > 0 and s.cut_gained_ms != self._cut_gained
+        new_cut = active and (not self._cut_active or gained_is_new)
+        self._cut_active, self._cut_gained = active, s.cut_gained_ms
+        if not new_cut:
+            return
+        self._lap_saw_off = True
+        self._on_message(f"Off the track at {pos:.0%} of the lap: this sector will not count")
+        self._flag("off track")
+
+    def _check_tyres_out(self, s: Sample, pos: float) -> None:
+        """The live tyre count: drop the sector while enough tyres are off the track."""
         st = self._settings
         if st.max_tyres_out and s.tyres_out >= st.max_tyres_out:
-            self._lap_saw_tyres_out = True  # at least one full off this lap: not a bare cut
+            self._lap_saw_off = True  # at least one full off this lap: not a bare cut
         limit = self._tyres_out_limit(s.lap_valid)
         over = bool(limit) and s.tyres_out >= limit
         if over and not self._tyres_over:  # a new excursion, not the same one still under way
@@ -473,23 +511,25 @@ class BrakeEngine:
         self._tyres_over = over
         if over:
             self._flag("off track")
-        if st.skip_invalid_sectors and not s.lap_valid and self._lap_valid is not False:
-            self._flag("lap invalidated")
-            if self._lap_valid:  # a fresh drop, not the state the app found at start-up
-                self._on_message(
-                    f"The game invalidated the lap at {pos:.0%} of the lap: "
-                    "this sector will not count"
-                )
-                if not self._lap_saw_tyres_out and not self._lap_warned:
-                    self._lap_warned = True
-                    self._on_warning(_CUT_WARNING)
+
+    def _check_lap_flag(self, s: Sample, pos: float) -> None:
+        """The one-shot lap flag: drop the sector where the game first invalidated the lap."""
+        if not self._settings.skip_invalid_sectors or s.lap_valid or self._lap_valid is False:
+            return
+        self._flag("lap invalidated")
+        if self._lap_valid:  # a fresh drop, not the state the app found at start-up
+            self._on_message(
+                f"The game invalidated the lap at {pos:.0%} of the lap: this sector will not count"
+            )
+            if not self._lap_saw_off and not self._lap_warned:
+                self._lap_warned = True
+                self._on_warning(_CUT_WARNING)
 
     def _trace_track_limits(self, s: Sample, pos: float) -> None:
         """Verbose log of the game's track-limit signals, only when one of them changes.
 
-        This is the detail a report about a missed sector needs: what the live tyre count actually
-        reported and when the lap flag dropped, with the position and sector. Off unless verbose
-        logging is on.
+        This is the detail a report about a missed sector needs: what the game actually reported
+        and when, with the position and sector. Off unless verbose logging is on.
         """
         if s.tyres_out != self._prev_tyres_out:
             log.debug(
@@ -502,6 +542,29 @@ class BrakeEngine:
                 self._sector + 1,
             )
             self._prev_tyres_out = s.tyres_out
+        active = race_cut_active(s.cut_gained_ms, s.cut_deadline_m)
+        if active != self._prev_cut_active or s.cut_gained_ms != self._prev_cut_gained:
+            log.debug(
+                "limits: race_cut %s at %.1f%% of the lap "
+                "(gained=%d ms, deadline=%d m, delta=%+.2f s, S%d)",
+                "up" if active else "clear",
+                pos * 100.0,
+                s.cut_gained_ms,
+                s.cut_deadline_m,
+                s.cut_delta_s,
+                self._sector + 1,
+            )
+            self._prev_cut_active = active
+            self._prev_cut_gained = s.cut_gained_ms
+        if s.timing_invalid != self._prev_timing_invalid:
+            log.debug(
+                "limits: timing_invalid %s -> %s at %.1f%% of the lap (S%d)",
+                self._prev_timing_invalid,
+                s.timing_invalid,
+                pos * 100.0,
+                self._sector + 1,
+            )
+            self._prev_timing_invalid = s.timing_invalid
         if s.lap_valid != self._lap_valid:
             log.debug(
                 "limits: lap_valid %s -> %s at %.1f%% of the lap (S%d)",

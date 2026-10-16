@@ -177,9 +177,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
   a truth.
 - A braking zone very close to the start/finish line can wobble between the last and first
   sector. More in [Design notes](docs/DESIGN.md#known-limitations-and-ideas).
-- Track limits are read from the game's shared memory. A cut the game invalidates without enough
-  tyres off cannot be pinned to a sector, because the memory does not expose it; the app says so in
-  its log. More in [Telemetry notes](docs/TELEMETRY.md#track-limits).
+- Track limits are read from the game's telemetry. Its per-excursion signal is the "race cut" pair it
+  writes when a wheel goes off; an infraction it judges from something it does not expose cannot be
+  pinned to a sector, and the app says so in its log. More in
+  [Telemetry notes](docs/TELEMETRY.md#track-limits).
 - Windows only (it uses the game's shared memory, `tasklist` and `winsound`).
 
 ## Credits

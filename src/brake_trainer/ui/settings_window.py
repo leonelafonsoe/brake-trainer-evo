@@ -303,9 +303,9 @@ TABS: dict[str, list[Spec]] = {
             1,
             special="Off",
             tip=(
-                "The game's live count of tyres off the track. A sector is not saved if this many "
-                "were off at any moment, also a second time in the same lap (the lap flag only "
-                "drops once). Off relies on the lap flag alone."
+                "The game's live count of tyres off the track, where it publishes it. A sector is "
+                "not saved if this many were off at any moment, also twice in the same lap. Off "
+                "leaves it to the game's race cut and the lap flag."
             ),
         ),
         Spec(
@@ -317,9 +317,9 @@ TABS: dict[str, list[Spec]] = {
             1,
             special="Off",
             tip=(
-                "The game's lap flag only drops once, so it cannot show a second mistake in the "
-                "same lap. For the rest of an invalidated lap a sector is not saved if this many "
-                "tyres go off the track in it."
+                "The game's lap flag only drops once, so the race cut and the tyre count carry the "
+                "later mistakes. For the rest of an invalidated lap a sector is not saved if this "
+                "many tyres go off the track in it."
             ),
         ),
         Spec(
@@ -412,8 +412,9 @@ TABS: dict[str, list[Spec]] = {
             "Verbose (debug) logging",
             "bool",
             tip=(
-                "Write extra detail to the log, including the game's live tyre count and lap flag "
-                "at every change. Turn it on, reproduce a problem, then share the log file."
+                "Write extra detail to the log, including the game's track-limit signals (the race "
+                "cut and the live tyre count) and the lap flag at every change. Turn it on, "
+                "reproduce a problem, then share the log file."
             ),
         ),
     ],
@@ -534,8 +535,9 @@ class SettingsWindow(QDialog):
         layout.setContentsMargins(16, 16, 16, 16)
         intro = QLabel(
             "Troubleshooting. Verbose logging adds detail about the game's track-limit signals "
-            "(the live tyre count and lap flag). Turn it on, reproduce the problem, then share the "
-            "log file: it is the fastest way to explain a sector that was kept or dropped wrongly."
+            "(the race cut and the live tyre count) and the lap flag. Turn it on, reproduce the "
+            "problem, then share the log file: it is the fastest way to explain a sector that was "
+            "kept or dropped wrongly."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)

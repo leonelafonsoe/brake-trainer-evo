@@ -4,21 +4,21 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
-- Track limits are read from the game's shared memory only; the game's log is no longer followed.
-  The live count of tyres off the track drops any sector with all four tyres off, including a second
-  one in a lap the game already invalidated, which the one-shot "lap valid" flag cannot show. A cut
-  the game invalidates with fewer than four tyres out is not exposed by the memory; the app now says
-  so in its log instead of reading the game's files. Settings "Use the game's log for track limits"
-  and "Game log folder" are gone.
-- Fix: a second off-track moment in a later sector of an already invalidated lap was still missed
-  when fewer than four tyres left the track, which is common. The lap flag only drops once, so for
-  the rest of an invalid lap a sector is now dropped from a lower tyre count ("...once the lap is
-  invalid", default 2, Off keeps the strict all-four rule). Each sector with a mistake is dropped and
-  the clean ones in between are kept.
+- Fix: a second off-track moment in a later sector of an already invalidated lap was still missed.
+  The game's "lap valid" flag only drops once, so on its own it can only mark the sector where the
+  lap was invalidated. Track limits now use the game's *per-excursion* signal — the "race cut" pair it
+  writes every time a wheel goes off (the time it judged you gained and the distance left to give it
+  back) — so each off-track drops the sector it happened in, also a second one in a lap the game
+  already invalidated, and the clean sectors in between are kept.
+- The live count of tyres off the track is used as well, where the game publishes it (all four while
+  the lap is valid; the lower "...once the lap is invalid" count afterwards). In testing the game did
+  not publish it at all, so the race cut is what does the work. The game's log is no longer followed
+  ("use the game's log" settings are gone): it reported the same tyre-count signal.
 - Verbose (debug) logging for troubleshooting: a new Settings -> Diagnostics tab turns it on (also
-  `--debug` on the command line or `BRAKE_TRAINER_DEBUG=1`), and logs the game's live tyre count and
-  lap flag at every change, with position and sector. "Open log folder" opens the log for sharing.
-  Off by default.
+  `--debug` on the command line or `BRAKE_TRAINER_DEBUG=1`), and logs the game's track-limit signals
+  at every change (the race-cut pair, the live tyre count, the lap flag, the timing invalid flag),
+  with position and sector, plus the telemetry regions the SDK attached to. "Open log folder" opens
+  the log for sharing. Off by default.
 
 ## 0.3.11 - 2026-10-15
 

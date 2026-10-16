@@ -83,17 +83,15 @@ The line under the sector bar usually tells you why nothing is being learned:
 | Warm-up lap · not learning | The first lap after the pits (and after starting the app) is skipped | Keep driving, or set "Ignore laps after leaving the pits" to Off |
 | Learning paused | Learning is off | Press the resume button on the overlay |
 | S3 won't count · lap invalidated | The game invalidated the lap in that sector | Nothing; the next clean sector counts |
-| S3 won't count · off track | Enough tyres were off the track (all four while the lap is valid, fewer once it is invalid) | If it triggers too often set "Skip sector if tyres off track" and "...once the lap is invalid" to Off |
+| S3 won't count · off track | The game recorded an off-track in that sector | If it triggers too often set "Skip sector if tyres off track" and "...once the lap is invalid" to Off |
 | No braking points yet | Nothing learned for this track and car | Drive 2-3 clean laps after the warm-up lap |
 
 **A second off-track moment in the same lap is not dropped**
 Once the game has invalidated a lap its "lap valid" flag stays down, so it cannot show a later
-mistake. The live count of tyres off the track is what catches those: while the lap is valid it takes
-all four tyres, and for the rest of an invalid lap a lower count ("...once the lap is invalid",
-default 2). If a later sector is still saved after a moment the game flagged, lower that setting
-(for example to 1). The live count has no distance and the game also invalidates for *cuts* judged
-from the car's position; when the lap flag drops without four tyres ever being off, the app logs a
-warning and can only drop the sector where the flag dropped. See
+mistake. The game's per-excursion signal — the "race cut" pair it writes when a wheel goes off — is
+what catches those, along with the live count of tyres off the track where the game publishes it. If a
+later sector is still saved after a moment the game flagged, turn on verbose logging and share the
+log: it records every track-limit signal the game reported, with position and sector. See
 [TELEMETRY.md](TELEMETRY.md#track-limits).
 
 **Corners are missing or doubled**
@@ -130,8 +128,9 @@ The app always writes a rotating log (about 1 MB per file, 3 older ones kept):
 `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`
 
 Settings -> Diagnostics -> **Open log folder** opens it. **Verbose (debug) logging** adds a line
-every time the game's track-limit signals change (the live count of tyres off the track, and the
-lap flag), with the position and sector. That is the detail a report about a kept or dropped sector
+every time the game's track-limit signals change (the race-cut pair, the live count of tyres off the
+track, the lap flag and the timing invalid flag), with the position and sector, and records which
+telemetry regions the SDK attached to. That is the detail a report about a kept or dropped sector
 needs, so the fastest way to report a track-limits problem is:
 
 1. Turn on "Verbose (debug) logging" (Settings -> Diagnostics), apply, and reproduce the problem

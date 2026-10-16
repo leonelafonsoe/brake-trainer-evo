@@ -80,34 +80,28 @@ from getting properly placed lines). They are used only until the new car has 2 
 sector and are never saved into its file.
 
 ### Validity checks use the game's own flags
-`is_valid_lap` and the number of tyres off track come from the game, so track-limit rules match
-what the sim enforces. The sector where the lap *became* invalid is dropped; later sectors are kept
-because they can be driven cleanly.
+The game's own signals decide what counts, so track-limit rules match what the sim enforces. The
+sector where the lap *became* invalid is dropped, and a sector with an off-track is dropped too.
 
-The catch is that the flag only *drops once* per lap: after that it says nothing about a second
-mistake. Counting only that drop would save a later sector with a mistake in it, and a cut is
+The catch is that the "lap valid" flag only *drops once* per lap: after that it says nothing about a
+second mistake. Counting only that drop would save a later sector with a mistake in it, and a cut is
 usually faster, so it would become the "best" run and drag the braking points with it.
 
-The number of tyres off track is a *live* count, so it is used as the per-violation signal: a sector
-is dropped whenever enough tyres are off, whatever the lap flag already says. That catches a second
-mistake in a later sector using the game's own data.
+The game's *per-excursion* signal is the race-cut pair it writes every time a wheel goes off the track
+(`race_cut_gained_time_ms`, `distance_to_deadline`): a new cut is that pair coming up, or the gained
+time changing to another value. It is used as the per-violation trigger, so a sector is dropped
+whenever the game records an off-track in it, whatever the lap flag already says. The live count of
+tyres off the track is used as well where the game publishes it (all four tyres while the lap is
+valid; for the rest of an invalid lap the lower "...once the lap is invalid" count, default 2).
 
-While the lap is still valid the count is all four tyres: that is the rule the game itself invalidates
-on, and reading only its flag would already have caught this first mistake. The value of the count
-shows once the lap is *already* invalid, where the flag is silent. There the game's own rule may be
-more than the tyre count the live signal exposes at the moment the app samples it (the game also
-judges cuts from position, and four-tyres-off is a brief spike). So for the rest of an invalid lap a
-lower count (the "...once the lap is invalid" setting, default 2) stands in for the flag. The cost is
-confined to laps that are already invalid, where dropping a sector costs little; clean sectors in
-between are still kept.
+In testing the game never published the tyre count at all (it stayed 0 while the game invalidated
+laps), so the race cut is what does the work and the tyre count is a fallback. The cost of a wrong
+drop is confined to a sector, and clean sectors in between are still kept.
 
-The memory has no distance beyond the line and no per-violation event, and the game also invalidates
-for cuts judged from the car's position, which the tyre count cannot see. Following the game's log
-was tried for those, but the log only reports the tyre-count change too (the same signal, plus the
-distance used to filter brief excursions), so it could not catch a cut either and added a dependency
-on an alpha game's log format. It was removed; instead, when the lap flag drops without four tyres
-having been reported off, the app logs a warning that names the limitation. See
-[TELEMETRY.md](TELEMETRY.md).
+Following the game's log for these events was tried and removed: it reported the same tyre-count
+signal, which the game does not publish live either, and it added a dependency on an alpha game's log
+format. When the lap flag drops with no race cut and no tyres reported off, the app logs a warning
+that names the limitation. See [TELEMETRY.md](TELEMETRY.md).
 
 ### Pausing learning
 In a race you want the marks to stay as they are. Paused mode keeps cues and sector colours
@@ -146,9 +140,9 @@ reader is tested against a fake capture object.
   first sector (the line cannot move without changing the lap logic).
 - The game may flag a lap a moment after the mistake; if that crosses a sector line, the next
   sector is dropped instead.
-- A cut the game invalidates without enough tyres off is not exposed per violation, so the sector it
-  happened in cannot be identified (the app logs a warning when it sees one). If the SDK ever
-  exposes the game's `race_cut_*` counters, that becomes possible.
+- An off-track the game judges from something it does not expose per violation (no race cut and no
+  tyres reported off) cannot be pinned to a sector; the app logs a warning when the lap flag drops
+  for one.
 - Cues are position-based. A different racing line, or a damaged or very different setup, shifts
   the real braking point.
 - Possible future work: learning per corner instead of per sector, custom WAV sounds, importing

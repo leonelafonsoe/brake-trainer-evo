@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import struct
 import subprocess
 import sys
 import time
@@ -22,16 +23,21 @@ _PROBE_FALLBACK_S = 1.0  # watching a running game we could not open a handle to
 _GAME_MISSING_CHECKS = 2  # consecutive misses (fallback mode) before the game counts as closed
 _RESTART_DELAY_S = 2.0
 
-# Said once at start-up, so the app's limits with track limits are never a silent surprise. The
-# game's shared memory has no distance beyond the line and no per-violation event.
+# The graphics block carries the game's "race cut" fields, its own record of the last off-track:
+# the time it judged the driver gained, and how far they still have to drive to give it back. The
+# SDK decodes the graphics region but does not surface these three, so they are read from the raw
+# bytes (``FrameData.graphics_raw``) at the offsets its offset table already defines.
+_GFX_RACE_CUT_OFFSET = 2464  # race_cut_gained_time_ms (int32), then distance_to_deadline (int32)
+_GFX_RACE_CUT_BYTES = 12  # ...then race_cut_current_delta (float32)
+
+# Said once at start-up, so the app's limits with track limits are never a silent surprise.
 TRACK_LIMITS_NOTE = (
-    "Track limits come from the game's shared memory only (the game's log is not read). "
-    "'is_valid_lap' is a one-shot flag, so it marks only the first invalidation of a lap; "
-    "'number_of_tyres_out' is a live count, so every sector where enough tyres are off is dropped, "
-    "including a second one in a lap the game already invalidated. While the lap is valid that is "
-    'all four tyres; once it is invalid a lower limit applies ("...once the lap is invalid" in '
-    "Settings). A cut the game invalidates with fewer tyres out than that is not exposed by the "
-    "memory and cannot be pinned to a sector."
+    "Track limits come from the game's telemetry only (its log is not read). 'is_valid_lap' is a "
+    "one-shot flag: it marks only the first invalidation of a lap. The game's own per-excursion "
+    "signal is the race-cut pair it fills in every time a wheel goes off (time gained and the "
+    "distance left to give it back), so each off-track drops the sector it happened in, including "
+    "a second one in a lap the game already invalidated. The live count of tyres off the track is "
+    "used as well where the game publishes it."
 )
 
 
@@ -124,6 +130,27 @@ def _frame_time(frame: Any) -> float:
     return time.time()
 
 
+def _race_cut(frame: Any) -> tuple[int, int, float]:
+    """The game's race-cut fields from the raw graphics bytes: (gained_ms, deadline_m, delta_s).
+
+    All zero when the game has not flagged an off-track (or when the region is not there yet).
+    """
+    raw = getattr(frame, "graphics_raw", None)
+    if not raw:
+        return 0, 0, 0.0
+    start = _GFX_RACE_CUT_OFFSET * 2  # hex: two characters per byte
+    chunk = raw[start : start + _GFX_RACE_CUT_BYTES * 2]
+    if len(chunk) < _GFX_RACE_CUT_BYTES * 2:
+        return 0, 0, 0.0
+    try:
+        data = bytes.fromhex(chunk)
+    except ValueError:
+        return 0, 0, 0.0
+    gained = int.from_bytes(data[0:4], "little", signed=True)
+    deadline = int.from_bytes(data[4:8], "little", signed=True)
+    return gained, deadline, struct.unpack_from("<f", data, 8)[0]
+
+
 def sample_from_frame(frame: Any) -> Sample | None:
     """Reduce an SDK frame to a :class:`Sample`; None if the game isn't in a session."""
     gfx = getattr(frame, "graphics", None) or {}
@@ -138,6 +165,7 @@ def sample_from_frame(frame: Any) -> Sample | None:
     if not track or not car:  # menus, loading screens
         return None
     length = stat.get("track_length_m") or (gfx.get("lap_length_km") or 0) * 1000 or None
+    gained, deadline, delta = _race_cut(frame)
     return Sample(
         track=str(track),
         car=str(car),
@@ -149,6 +177,10 @@ def sample_from_frame(frame: Any) -> Sample | None:
         t=_frame_time(frame),
         lap_valid=bool(gfx.get("is_valid_lap", True)),
         tyres_out=int(phys.get("number_of_tyres_out", 0) or 0),
+        cut_gained_ms=gained,
+        cut_deadline_m=deadline,
+        cut_delta_s=delta,
+        timing_invalid=bool(gfx.get("is_invalid")),
     )
 
 
@@ -193,6 +225,7 @@ class TelemetryReader:
         self._on_message("Waiting for the game...")
         last_check, seen, missing = 0.0, False, 0
         watcher: ProcessWatcher | None = None
+        logged_regions = False
         try:
             while not stop.is_set():
                 await asyncio.sleep(self._poll_s)
@@ -201,11 +234,15 @@ class TelemetryReader:
                     await asyncio.sleep(_RESTART_DELAY_S)
                     cap = self._capture_factory(self._get_settings().telemetry_hz)
                     await cap.start_capture()
+                    logged_regions = False
                     self._on_restart()
                     continue
 
                 frames = cap.get_frames()
                 cap.clear()  # keep memory flat
+                if frames and not logged_regions:
+                    logged_regions = True
+                    self._log_regions(cap)
                 for frame in frames:
                     sample = sample_from_frame(frame)
                     if sample is not None:
@@ -242,3 +279,14 @@ class TelemetryReader:
         self._on_game_state(False)
         self._on_message("Game closed")
         return ExitReason.GAME_CLOSED
+
+    @staticmethod
+    def _log_regions(cap: Any) -> None:
+        """Once per capture, note which shared-memory regions the SDK attached to.
+
+        Verbose only, and only useful in a report: it tells "the game publishes nothing on this
+        field" apart from "the region was not attached".
+        """
+        get_metadata = getattr(cap, "get_metadata", None)
+        meta = get_metadata() if callable(get_metadata) else None
+        log.debug("telemetry attached: regions=%s", getattr(meta, "regions_found", None))

@@ -431,6 +431,49 @@ def test_the_tyre_check_can_be_switched_off(store):
     assert {r.sector: r for r in results}[3].accepted
 
 
+def test_a_second_off_is_caught_by_the_games_race_cut_signal(store):
+    # The one-shot lap flag drops in S2. The race-cut pair the game fills in for a second
+    # off-track in S4 lets that sector be dropped too, with no tyres-out event involved.
+    results = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    results.clear()
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, invalid_from=0.3, cut=(0.65, 0.70))
+    by_sector = {r.sector: r for r in results}
+    assert "invalidated" in by_sector[1].note
+    assert by_sector[3].duration is None and "off track" in by_sector[3].note
+    for clean in (0, 2, 4):  # the sectors without an off-track are kept
+        assert by_sector[clean].accepted
+
+
+def test_one_race_cut_is_flagged_once(store):
+    # The deadline counts down for the rest of the off-track; that must not flag the sector again.
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_message=messages.append)
+    driver = Driver(engine)
+    driver.feed(0.10, 150.0, 0.0)
+    for p in (0.11, 0.12, 0.13, 0.14):
+        driver.feed(p, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=120)
+    for p in (0.15, 0.16):
+        driver.feed(p, 150.0, 0.0)  # cut cleared
+    assert sum("Off the track" in m for m in messages) == 1
+    assert engine.snapshot().pass_flag == "off track"
+
+
+def test_a_later_race_cut_is_flagged_again(store):
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_message=messages.append)
+    driver = Driver(engine)
+    driver.feed(0.10, 150.0, 0.0)
+    driver.feed(0.30, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=120)
+    driver.feed(0.31, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=100)
+    driver.feed(0.32, 150.0, 0.0)  # cleared
+    driver.feed(0.60, 150.0, 0.0, cut_gained_ms=180, cut_deadline_m=90)  # a second, later cut
+    assert sum("Off the track" in m for m in messages) == 2
+
+
 def _warnings_engine(store):
     warnings: list[str] = []
     engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_warning=warnings.append)
@@ -441,10 +484,11 @@ def _warnings_engine(store):
 
 
 def test_a_cut_is_reported_as_not_visible_in_memory(store):
-    # The game invalidates the lap, but no four-tyre event is ever reported: a cut.
+    # The game invalidates the lap, but it reported no off-track event: a cut it judged from
+    # something it does not expose.
     driver, warnings = _warnings_engine(store)
     driver.lap(CORNERS, invalid_from=0.5, stop=1.003)
-    assert len(warnings) == 1 and "four tyres" in warnings[0]
+    assert len(warnings) == 1 and "no race cut" in warnings[0]
 
 
 def test_no_cut_warning_when_four_tyres_were_seen_first(store):
@@ -485,7 +529,11 @@ def test_verbose_logging_traces_the_track_limit_signals(store, caplog):
         driver.feed(0.10, 150.0, 0.0)
         driver.feed(0.11, 150.0, 0.0, tyres_out=4)
         driver.feed(0.12, 150.0, 0.0, tyres_out=0)
+        driver.feed(0.13, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=120)
+        driver.feed(0.14, 150.0, 0.0)
     text = "\n".join(record.getMessage() for record in caplog.records)
     assert "tyres_out 0 -> 4" in text
     assert "tyres_out 4 -> 0" in text
+    assert "race_cut up" in text and "gained=250 ms" in text
+    assert "race_cut clear" in text
     assert "lap_valid None -> True" in text
