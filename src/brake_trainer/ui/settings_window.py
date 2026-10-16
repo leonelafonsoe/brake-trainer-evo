@@ -6,6 +6,7 @@ import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QUrl, Signal
@@ -33,6 +34,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..config import Settings
 from ..models import CueKind
+from ..paths import app_dir
 from ..storage import DataEdit, DeleteEntry, DeleteRun, DeleteSector, TrackStore
 from . import theme
 
@@ -307,6 +309,20 @@ TABS: dict[str, list[Spec]] = {
             ),
         ),
         Spec(
+            "max_tyres_out_after_invalid",
+            "...once the lap is invalid",
+            "int",
+            0,
+            4,
+            1,
+            special="Off",
+            tip=(
+                "The game's lap flag only drops once, so it cannot show a second mistake in the "
+                "same lap. For the rest of an invalidated lap a sector is not saved if this many "
+                "tyres go off the track in it."
+            ),
+        ),
+        Spec(
             "top_runs",
             "Fastest runs kept per sector",
             "int",
@@ -390,6 +406,17 @@ TABS: dict[str, list[Spec]] = {
             tip="How often telemetry is read. Higher is more precise; 60 is plenty.",
         ),
     ],
+    "Diagnostics": [
+        Spec(
+            "debug_logging",
+            "Verbose (debug) logging",
+            "bool",
+            tip=(
+                "Write extra detail to the log, including the game's live tyre count and lap flag "
+                "at every change. Turn it on, reproduce a problem, then share the log file."
+            ),
+        ),
+    ],
 }
 
 
@@ -463,7 +490,8 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(self)
         self._tabs = QTabWidget()
         for title, specs in TABS.items():
-            self._tabs.addTab(self._form(specs), title)
+            page = self._diagnostics_tab(specs) if title == "Diagnostics" else self._form(specs)
+            self._tabs.addTab(page, title)
         self._tabs.addTab(self._data_tab(), "Data")
         self._tabs.addTab(self._about_tab(), "About")
         layout.addWidget(self._tabs)
@@ -498,6 +526,31 @@ class SettingsWindow(QDialog):
             widget = _make_widget(spec)
             self._widgets[spec.name] = (spec, widget)
             form.addRow(spec.label, widget)
+        return page
+
+    def _diagnostics_tab(self, specs: list[Spec]) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(16, 16, 16, 16)
+        intro = QLabel(
+            "Troubleshooting. Verbose logging adds detail about the game's track-limit signals "
+            "(the live tyre count and lap flag). Turn it on, reproduce the problem, then share the "
+            "log file: it is the fastest way to explain a sector that was kept or dropped wrongly."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        layout.addWidget(self._form(specs))
+        row = QHBoxLayout()
+        for text, slot in (
+            ("Open log folder", self._open_log_folder),
+            ("Open data folder", self._open_folder),
+        ):
+            btn = QPushButton(text)
+            btn.clicked.connect(slot)
+            row.addWidget(btn)
+        row.addStretch(1)
+        layout.addLayout(row)
+        layout.addStretch(1)
         return page
 
     def _data_tab(self) -> QWidget:
@@ -625,7 +678,13 @@ class SettingsWindow(QDialog):
             self.edit_requested.emit(edit)  # applied by the worker, then the tab refreshes
 
     def _open_folder(self) -> None:
-        folder = self._store.directory
+        self._reveal(self._store.directory)
+
+    def _open_log_folder(self) -> None:
+        self._reveal(app_dir())
+
+    @staticmethod
+    def _reveal(folder: Path) -> None:
         folder.mkdir(parents=True, exist_ok=True)
         if sys.platform == "win32":
             os.startfile(folder)  # noqa: S606

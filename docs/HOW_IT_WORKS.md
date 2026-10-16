@@ -81,15 +81,17 @@ A sector pass is not saved when:
   where the invalidation happened. Earlier sectors on the same lap are kept. A sector you *enter*
   after the lap was already invalid is kept too, as long as you stay on the track in it (see the
   next point).
-- **Off track**: all four tyres were off the track at some moment (Settings: "Skip sector if
-  tyres off track"). This is the game's live count of tyres off the track, so it catches **every**
-  excursion, including a second one in a later sector of a lap the game already invalidated
-  — which the one-shot lap flag cannot show.
+- **Off track**: enough tyres were off the track at some moment (Settings: "Skip sector if tyres off
+  track", and "...once the lap is invalid"). This is the game's live count of tyres off the track, so
+  it catches **every** excursion, including a second one in a later sector of a lap the game already
+  invalidated — which the one-shot lap flag cannot show. While the lap is still valid the count is
+  all four tyres (the game's own rule). Once the lap is invalid the flag stays down and cannot show a
+  second mistake, so a lower count (default 2) applies for the rest of that lap.
 - **Paused**: learning was paused at any point during it.
 
 The two signals above are the game's own, read from shared memory. The game also invalidates a lap
 for a *cut*, which it judges from the car's position and does not expose per violation; if the lap
-flag drops without four tyres having been off, the app says so in its log and can only drop the
+flag drops without enough tyres having been off, the app says so in its log and can only drop the
 sector where the flag dropped. See [TELEMETRY.md](TELEMETRY.md).
 
 The reason is shown on the overlay ("S3 won't count · lap invalidated") and in the log.

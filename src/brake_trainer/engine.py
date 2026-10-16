@@ -186,6 +186,8 @@ class BrakeEngine:
         self._lap_valid: bool | None = None  # None until the first sample tells us
         self._lap_saw_tyres_out = False  # four (or the set number of) tyres off the track this lap
         self._lap_warned = False  # the cut warning was already given for this lap
+        self._tyres_over = False  # the tyre count is over the limit right now (for the message)
+        self._prev_tyres_out = 0  # the previous sample's count, for the verbose log
         self._laps_done = 0  # laps completed since leaving the pits / session start
         self._status: list[SectorStatus] = []
         self._prev_pos: float | None = None
@@ -268,6 +270,7 @@ class BrakeEngine:
                     self._fired_here.clear()
                     self._lap_saw_tyres_out = False
                     self._lap_warned = False
+                    self._tyres_over = False
                     self._finish_survey()
             else:  # went backwards over a line
                 self._restart_pass(sector, s.t)
@@ -347,6 +350,8 @@ class BrakeEngine:
         self._lap_valid = None
         self._lap_saw_tyres_out = False
         self._lap_warned = False
+        self._tyres_over = False
+        self._prev_tyres_out = 0
         self._sector = 0
         self._pass = None
         self._last_closed = None
@@ -422,29 +427,51 @@ class BrakeEngine:
         reasons.append(reason)
         self._pass.flagged = ", ".join(reasons)
 
+    def _tyres_out_limit(self, lap_valid: bool) -> int:
+        """Tyres off the track that drop the sector in progress (0 = never).
+
+        While the lap is valid the strict limit applies, i.e. the count the game itself invalidates
+        on. Once the game has invalidated the lap its ``is_valid_lap`` flag stays down and cannot
+        report a second mistake, so the lower "once the lap is invalid" limit stands in for it in
+        the remaining sectors of that lap.
+        """
+        st = self._settings
+        limits = [st.max_tyres_out]
+        if st.skip_invalid_sectors and not lap_valid:
+            limits.append(st.max_tyres_out_after_invalid)
+        return min((n for n in limits if n), default=0)
+
     def _check_track_limits(self, s: Sample, pos: float) -> None:
         """Track limits, from the game's shared memory only.
 
         Two signals, both the game's own:
 
         * ``number_of_tyres_out`` is a *live count*, so it reports every excursion, not just the
-          first: any sector with the set number of tyres off the track is dropped, also a second one
-          in a lap the game already invalidated.
+          first: any sector where enough tyres are off the track is dropped, also a second one in a
+          lap the game already invalidated. While the lap is valid the strict limit applies (all
+          four tyres, the count the game invalidates on). Once the lap is invalid a lower limit
+          stands in for the one-shot flag below (see :meth:`_tyres_out_limit`).
         * ``is_valid_lap`` is a *one-shot* state: it drops when the game invalidates the lap and
           stays down until the lap ends, so it can only mark the sector where it dropped.
 
         The memory has no distance beyond the line and no per-violation event, so a cut the game
-        invalidates without that many tyres off cannot be attributed to a sector; that is said out
+        invalidates without enough tyres off cannot be attributed to a sector; that is said out
         loud (a warning) rather than guessed at.
         """
+        if log.isEnabledFor(logging.DEBUG):  # verbose mode: trace the two signals as they change
+            self._trace_track_limits(s, pos)
         st = self._settings
         if st.max_tyres_out and s.tyres_out >= st.max_tyres_out:
-            if not self._lap_saw_tyres_out:
-                self._on_message(
-                    f"{s.tyres_out} tyres off the track at {pos:.0%} of the lap: "
-                    "this sector will not count"
-                )
-            self._lap_saw_tyres_out = True
+            self._lap_saw_tyres_out = True  # at least one full off this lap: not a bare cut
+        limit = self._tyres_out_limit(s.lap_valid)
+        over = bool(limit) and s.tyres_out >= limit
+        if over and not self._tyres_over:  # a new excursion, not the same one still under way
+            self._on_message(
+                f"{s.tyres_out} tyres off the track at {pos:.0%} of the lap: "
+                "this sector will not count"
+            )
+        self._tyres_over = over
+        if over:
             self._flag("off track")
         if st.skip_invalid_sectors and not s.lap_valid and self._lap_valid is not False:
             self._flag("lap invalidated")
@@ -456,6 +483,33 @@ class BrakeEngine:
                 if not self._lap_saw_tyres_out and not self._lap_warned:
                     self._lap_warned = True
                     self._on_warning(_CUT_WARNING)
+
+    def _trace_track_limits(self, s: Sample, pos: float) -> None:
+        """Verbose log of the game's track-limit signals, only when one of them changes.
+
+        This is the detail a report about a missed sector needs: what the live tyre count actually
+        reported and when the lap flag dropped, with the position and sector. Off unless verbose
+        logging is on.
+        """
+        if s.tyres_out != self._prev_tyres_out:
+            log.debug(
+                "limits: tyres_out %d -> %d at %.1f%% of the lap (lap_valid=%s, limit=%d, S%d)",
+                self._prev_tyres_out,
+                s.tyres_out,
+                pos * 100.0,
+                s.lap_valid,
+                self._tyres_out_limit(s.lap_valid),
+                self._sector + 1,
+            )
+            self._prev_tyres_out = s.tyres_out
+        if s.lap_valid != self._lap_valid:
+            log.debug(
+                "limits: lap_valid %s -> %s at %.1f%% of the lap (S%d)",
+                self._lap_valid,
+                s.lap_valid,
+                pos * 100.0,
+                self._sector + 1,
+            )
 
     def _sector_of(self, pos: float) -> int:
         return min(max(bisect_right(self._bounds, pos) - 1, 0), self._n - 1)

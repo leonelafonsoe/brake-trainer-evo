@@ -17,7 +17,7 @@ it never writes to the game or its files.
 | Track length | `static.track_length_m`, or `graphics.lap_length_km` | Metres from positions |
 | In the pit lane | `graphics.is_in_pit_lane` | Not learning in the pits; warm-up reset |
 | Lap still valid | `graphics.is_valid_lap` | Skipping the sector where the lap was invalidated |
-| Tyres off track | `physics.number_of_tyres_out` | Skipping any sector with all four tyres off |
+| Tyres off track | `physics.number_of_tyres_out` | Skipping any sector with enough tyres off |
 | Timestamp | frame timestamp | Sector times |
 
 **Position source.** The SDK also returns a position estimated from the physics data
@@ -33,8 +33,11 @@ Both track-limit signals come from shared memory; the game's log is not read.
   invalidates the lap and stays down until the lap ends, so it marks the sector where it dropped
   and nothing after it.
 - **`physics.number_of_tyres_out`** is a *live count* of tyres off the track. It is checked on
-  every sample, so a sector with all four tyres off is dropped even when the lap was already
+  every sample, so a sector where enough tyres are off is dropped even when the lap was already
   invalidated: a second mistake in a later sector is caught, which the one-shot flag cannot show.
+  While the lap is valid "enough" is all four tyres (the game's own rule); once the lap is invalid a
+  lower count (Settings: "...once the lap is invalid", default 2) applies for the rest of that lap,
+  because the flag stays down and the four-tyre spike can be easy to miss.
 
 The memory has **no distance beyond the line and no per-violation event**. The game's own rule is
 all four tyres out *and* a distance beyond the line, and it also invalidates for cuts, which are

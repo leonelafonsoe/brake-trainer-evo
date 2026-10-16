@@ -353,10 +353,12 @@ def test_snapshot_flags_old_equal_split_data(store):
     assert engine.snapshot().equal_lines is True
 
 
-def _two_excursion_results(store, off_tyres: int = 4):
+def _two_excursion_results(store, off_tyres: int = 4, **settings):
     """A faster lap with the game invalidating it in sector 2 and tyres off track in sector 4."""
     results = []
-    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
+    engine = BrakeEngine(
+        Settings(n_sectors=5, warmup_laps=0, **settings), store, on_sector=results.append
+    )
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
@@ -382,23 +384,51 @@ def test_a_second_mistake_in_a_later_sector_is_dropped_too(store):
         assert by_sector[clean].accepted
 
 
-def test_three_tyres_off_is_not_a_track_limit_violation_for_the_game(store):
-    # The game only invalidates on all four tyres out; the memory cannot see anything else.
-    by_sector = _two_excursion_results(store, off_tyres=3)
-    assert by_sector[3].accepted
+def test_a_smaller_excursion_is_dropped_once_the_lap_is_invalid(store):
+    # The flag has already dropped, so a two-tyre cut in a later sector is caught by the lower
+    # "...once the lap is invalid" limit instead.
+    by_sector = _two_excursion_results(store, off_tyres=2)
+    assert by_sector[3].duration is None and "off track" in by_sector[3].note
+    assert by_sector[4].accepted  # a clean sector after the mistake is still kept
+
+
+def test_the_same_excursion_is_kept_while_the_lap_is_still_valid(store):
+    # No flag has dropped, so only the strict limit (all four tyres) applies.
+    results = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    results.clear()
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, off_track=(0.65, 0.66), off_tyres=2)
+    assert {r.sector: r for r in results}[3].accepted
+
+
+def test_the_after_invalid_limit_can_be_switched_off(store):
+    by_sector = _two_excursion_results(store, off_tyres=3, max_tyres_out_after_invalid=0)
+    assert by_sector[3].accepted  # only the strict limit applies after the lap is invalid
 
 
 def test_the_tyre_check_can_be_switched_off(store):
     results = []
     engine = BrakeEngine(
-        Settings(n_sectors=5, warmup_laps=0, max_tyres_out=0), store, on_sector=results.append
+        Settings(n_sectors=5, warmup_laps=0, max_tyres_out=0, max_tyres_out_after_invalid=0),
+        store,
+        on_sector=results.append,
     )
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
     results.clear()
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, off_track=(0.65, 0.66), off_tyres=4)
-    assert {r.sector: r for r in results}[3].accepted  # "Skip sector if tyres off track" is Off
+    driver.lap(
+        CORNERS,
+        speed_fn=lambda p: 215,
+        stop=1.003,
+        invalid_from=0.3,  # the lap is invalid, but both tyre checks are Off
+        off_track=(0.65, 0.66),
+        off_tyres=4,
+    )
+    assert {r.sector: r for r in results}[3].accepted
 
 
 def _warnings_engine(store):
@@ -444,3 +474,18 @@ def test_snapshot_reports_why_the_sector_will_not_count(store):
     engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store)
     Driver(engine).feed(0.65, 150.0, 0.0, tyres_out=4)
     assert engine.snapshot().pass_flag == "off track"
+
+
+def test_verbose_logging_traces_the_track_limit_signals(store, caplog):
+    import logging
+
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store)
+    driver = Driver(engine)
+    with caplog.at_level(logging.DEBUG, logger="brake_trainer.engine"):
+        driver.feed(0.10, 150.0, 0.0)
+        driver.feed(0.11, 150.0, 0.0, tyres_out=4)
+        driver.feed(0.12, 150.0, 0.0, tyres_out=0)
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "tyres_out 0 -> 4" in text
+    assert "tyres_out 4 -> 0" in text
+    assert "lap_valid None -> True" in text

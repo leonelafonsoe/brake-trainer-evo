@@ -26,10 +26,12 @@ _RESTART_DELAY_S = 2.0
 # game's shared memory has no distance beyond the line and no per-violation event.
 TRACK_LIMITS_NOTE = (
     "Track limits come from the game's shared memory only (the game's log is not read). "
-    "'is_valid_lap' is a one-shot flag, so it marks the first invalidation of a lap; "
-    "'number_of_tyres_out' is a live count, so every sector with all four tyres off is dropped, "
-    "including a second one in a lap the game already invalidated. A cut the game invalidates "
-    "with fewer than four tyres out is not exposed by the memory and cannot be pinned to a sector."
+    "'is_valid_lap' is a one-shot flag, so it marks only the first invalidation of a lap; "
+    "'number_of_tyres_out' is a live count, so every sector where enough tyres are off is dropped, "
+    "including a second one in a lap the game already invalidated. While the lap is valid that is "
+    'all four tyres; once it is invalid a lower limit applies ("...once the lap is invalid" in '
+    "Settings). A cut the game invalidates with fewer tyres out than that is not exposed by the "
+    "memory and cannot be pinned to a sector."
 )
 
 

@@ -89,8 +89,17 @@ mistake. Counting only that drop would save a later sector with a mistake in it,
 usually faster, so it would become the "best" run and drag the braking points with it.
 
 The number of tyres off track is a *live* count, so it is used as the per-violation signal: a sector
-is dropped whenever all four tyres are off, whatever the lap flag already says. That catches a
-second mistake in a later sector using the game's own data.
+is dropped whenever enough tyres are off, whatever the lap flag already says. That catches a second
+mistake in a later sector using the game's own data.
+
+While the lap is still valid the count is all four tyres: that is the rule the game itself invalidates
+on, and reading only its flag would already have caught this first mistake. The value of the count
+shows once the lap is *already* invalid, where the flag is silent. There the game's own rule may be
+more than the tyre count the live signal exposes at the moment the app samples it (the game also
+judges cuts from position, and four-tyres-off is a brief spike). So for the rest of an invalid lap a
+lower count (the "...once the lap is invalid" setting, default 2) stands in for the flag. The cost is
+confined to laps that are already invalid, where dropping a sector costs little; clean sectors in
+between are still kept.
 
 The memory has no distance beyond the line and no per-violation event, and the game also invalidates
 for cuts judged from the car's position, which the tyre count cannot see. Following the game's log
@@ -137,7 +146,7 @@ reader is tested against a fake capture object.
   first sector (the line cannot move without changing the lap logic).
 - The game may flag a lap a moment after the mistake; if that crosses a sector line, the next
   sector is dropped instead.
-- A cut the game invalidates without four tyres off is not exposed per violation, so the sector it
+- A cut the game invalidates without enough tyres off is not exposed per violation, so the sector it
   happened in cannot be identified (the app logs a warning when it sees one). If the SDK ever
   exposes the game's `race_cut_*` counters, that becomes possible.
 - Cues are position-based. A different racing line, or a damaged or very different setup, shifts

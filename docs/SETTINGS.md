@@ -45,6 +45,7 @@ or the tray icon. **Apply** saves and takes effect immediately. Settings are sto
 | Ignore laps after leaving the pits | `warmup_laps` | 1 | off (0), or 1 - 5 | Cold tyres and brakes make you brake earlier, so these laps are not learned. |
 | Skip sector if lap invalidated | `skip_invalid_sectors` | on | on / off | A sector where the game invalidates your lap (track limits, cuts) is not saved. |
 | Skip sector if tyres off track | `max_tyres_out` | 4 | off (0), or 1 - 4 | The game's live count of tyres off the track. A sector is not saved if this many were off at any moment, also a second time in the same lap (the lap flag only drops once). Off relies on the lap flag alone. |
+| ...once the lap is invalid | `max_tyres_out_after_invalid` | 2 | off (0), or 1 - 4 | The game's lap flag only drops once, so it cannot show a second mistake in the same lap. For the rest of an invalidated lap a sector is not saved if this many tyres go off the track in it. |
 | Fastest runs kept per sector | `top_runs` | 3 | 1 - 10 | Cue points are the median of these runs. 1 = copy your single best run. |
 | Own runs before leaving reference | `own_runs_to_replace_ref` | 2 | 1 - 10 | With a new car, borrowed points are used until you have this many runs. |
 | Preferred reference car | `reference_car` | empty | text | Part of a car name. Empty = the car with the most data on that track. |
@@ -65,6 +66,12 @@ or the tray icon. **Apply** saves and takes effect immediately. Settings are sto
 | Close when the game exits | `close_with_game` | on | on / off | Quit automatically (after saving) when the game exits. |
 | Game process name contains | `game_process` | assettocorsaevo | text | Part of the game's process name, used to detect that it is running or has closed. |
 | Telemetry rate | `telemetry_hz` | 60 Hz | 5 - 60 Hz | How often telemetry is read. Higher is more precise; 60 is plenty. |
+
+## Diagnostics
+
+| Setting | Key | Default | Range | What it does |
+| --- | --- | --- | --- | --- |
+| Verbose (debug) logging | `debug_logging` | off | on / off | Write extra detail to the log, including the game's live tyre count and lap flag at every change. Turn it on, reproduce a problem, then share the log file. |
 
 ## Stored but not shown in the window
 

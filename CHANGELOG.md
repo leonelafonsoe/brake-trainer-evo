@@ -9,8 +9,16 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   one in a lap the game already invalidated, which the one-shot "lap valid" flag cannot show. A cut
   the game invalidates with fewer than four tyres out is not exposed by the memory; the app now says
   so in its log instead of reading the game's files. Settings "Use the game's log for track limits"
-  and "Game log folder" are gone, and "...once the lap is invalid" is removed (it went beyond the
-  game's own rule).
+  and "Game log folder" are gone.
+- Fix: a second off-track moment in a later sector of an already invalidated lap was still missed
+  when fewer than four tyres left the track, which is common. The lap flag only drops once, so for
+  the rest of an invalid lap a sector is now dropped from a lower tyre count ("...once the lap is
+  invalid", default 2, Off keeps the strict all-four rule). Each sector with a mistake is dropped and
+  the clean ones in between are kept.
+- Verbose (debug) logging for troubleshooting: a new Settings -> Diagnostics tab turns it on (also
+  `--debug` on the command line or `BRAKE_TRAINER_DEBUG=1`), and logs the game's live tyre count and
+  lap flag at every change, with position and sector. "Open log folder" opens the log for sharing.
+  Off by default.
 
 ## 0.3.11 - 2026-10-15
 

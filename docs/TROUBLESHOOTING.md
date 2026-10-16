@@ -83,16 +83,17 @@ The line under the sector bar usually tells you why nothing is being learned:
 | Warm-up lap · not learning | The first lap after the pits (and after starting the app) is skipped | Keep driving, or set "Ignore laps after leaving the pits" to Off |
 | Learning paused | Learning is off | Press the resume button on the overlay |
 | S3 won't count · lap invalidated | The game invalidated the lap in that sector | Nothing; the next clean sector counts |
-| S3 won't count · off track | All four tyres were off the track | If it triggers too often set "Skip sector if tyres off track" to Off |
+| S3 won't count · off track | Enough tyres were off the track (all four while the lap is valid, fewer once it is invalid) | If it triggers too often set "Skip sector if tyres off track" and "...once the lap is invalid" to Off |
 | No braking points yet | Nothing learned for this track and car | Drive 2-3 clean laps after the warm-up lap |
 
-**A sector with a cut is still saved**
-The app reads track limits from the game's shared memory: the "lap valid" flag (which drops only
-once per lap) and the live count of tyres off the track (which drops any sector with all four tyres
-off, also a second one in the same lap). The memory has no per-violation event for a *cut*, which
-the game judges from the car's position, so when the lap flag drops without four tyres having been
-off, the app logs a warning and can only drop the sector where the flag dropped. This is a limit of
-the data the game exposes, not something a setting changes. See
+**A second off-track moment in the same lap is not dropped**
+Once the game has invalidated a lap its "lap valid" flag stays down, so it cannot show a later
+mistake. The live count of tyres off the track is what catches those: while the lap is valid it takes
+all four tyres, and for the rest of an invalid lap a lower count ("...once the lap is invalid",
+default 2). If a later sector is still saved after a moment the game flagged, lower that setting
+(for example to 1). The live count has no distance and the game also invalidates for *cuts* judged
+from the car's position; when the lap flag drops without four tyres ever being off, the app logs a
+warning and can only drop the sector where the flag dropped. See
 [TELEMETRY.md](TELEMETRY.md#track-limits).
 
 **Corners are missing or doubled**
@@ -124,7 +125,24 @@ name contains". "Close when the game exits" must also be on.
 
 ## Logs and resetting
 
-- Log: `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`
+The app always writes a rotating log (about 1 MB per file, 3 older ones kept):
+
+`%APPDATA%\BrakeTrainerEvo\brake_trainer.log`
+
+Settings -> Diagnostics -> **Open log folder** opens it. **Verbose (debug) logging** adds a line
+every time the game's track-limit signals change (the live count of tyres off the track, and the
+lap flag), with the position and sector. That is the detail a report about a kept or dropped sector
+needs, so the fastest way to report a track-limits problem is:
+
+1. Turn on "Verbose (debug) logging" (Settings -> Diagnostics), apply, and reproduce the problem
+   for a lap or two.
+2. Open the log folder and share the `brake_trainer.log` file.
+
+Verbose logging can also be forced for a single run, before the app starts, without changing a
+setting: pass `--debug` on the command line, or set the environment variable `BRAKE_TRAINER_DEBUG=1`.
+It takes effect immediately when you toggle the setting, no restart needed. It is off by default,
+so the log stays small in normal use.
+
 - Reset settings: delete `%APPDATA%\BrakeTrainerEvo\settings.json`
 - Reset learned data: Settings -> Data, or delete the files in `%APPDATA%\BrakeTrainerEvo\data\`
 
