@@ -286,6 +286,61 @@ def test_snapped_sector_lines_stay_out_of_braking_zones():
     assert snap_boundaries(5, [], LENGTH) == [0.2, 0.4, 0.6, 0.8]  # nothing known: equal splits
 
 
+def test_sector_lines_sit_in_the_middle_of_the_long_straights():
+    from brake_trainer.engine import snap_boundaries
+
+    zones = [0.25, 0.75]  # one long straight between two corners
+    lines = snap_boundaries(3, zones, LENGTH)
+    assert len(lines) == 2
+    assert any(abs(p - 0.50) < 0.02 for p in lines)  # the straight gets its line mid-way along
+    assert not any(_inside_a_braking_zone(p, zones) for p in lines)
+
+
+def test_a_corner_taken_without_braking_is_kept_whole():
+    from brake_trainer.engine import _CORNER_CLEAR_M, snap_boundaries
+
+    margins = _CORNER_CLEAR_M / LENGTH
+    turns = [(0.47, 0.55)]  # a long corner with no braking point, like Curva Grande
+    lines = snap_boundaries(4, [0.05, 0.95], LENGTH, turns)
+    assert len(lines) == 3
+    assert not any(0.47 - margins <= p <= 0.55 + margins for p in lines)
+
+
+def test_sector_lines_hold_still_when_a_corner_moves_a_little():
+    from brake_trainer.engine import snap_boundaries
+
+    turns = [(0.40, 0.44)]
+    before = snap_boundaries(5, [0.20, 0.45, 0.80], LENGTH, turns)
+    assert snap_boundaries(5, [0.20, 0.4501, 0.80], LENGTH, turns) == before
+
+
+def test_a_track_with_no_room_reports_how_many_sectors_fit():
+    from brake_trainer.engine import clean_sector_count
+
+    crowd = [i / 40 for i in range(0, 40, 2)]  # corners every 250 m: no straights to speak of
+    assert clean_sector_count(crowd, [], LENGTH, 3) == 3  # never below the user's minimum
+
+
+def test_the_survey_says_when_fewer_sectors_fit_the_straights(store):
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=8, warmup_laps=1), store, on_message=messages.append)
+    Driver(engine).lap([i / 12 for i in range(12)], stop=1.003)
+    assert any("fit fully on this track" in m for m in messages)
+
+
+def test_a_flat_corner_surveyed_from_the_steering_gets_no_line(store):
+    from brake_trainer.engine import _CORNER_CLEAR_M
+
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=4, warmup_laps=1), store, on_message=messages.append)
+    flat = (0.38, 0.44)  # taken flat, so only the steering gives it away
+    Driver(engine).lap([0.20, 0.60], stop=1.003, turn=flat)
+    lines = list(engine.snapshot().boundaries[1:-1])
+    margin = _CORNER_CLEAR_M / LENGTH
+    assert not any(flat[0] - margin <= p <= flat[1] + margin for p in lines)
+    assert any("corner taken without braking" in m for m in messages)
+
+
 def test_sector_lines_are_surveyed_on_the_warm_up_lap_and_reused(store):
     corners = [0.20, 0.50, 0.80]  # 0.20 and 0.80 sit on the equal-split lines
     engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=1), store)

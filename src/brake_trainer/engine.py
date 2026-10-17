@@ -71,6 +71,13 @@ def merge_zones(zones: Sequence[float], cluster_m: float, length_m: float) -> li
 
 _CORNER_SPAN_M = 250.0  # braking point -> past the corner
 _LEAD_SPAN_M = 150.0  # the cue warns this far before a braking point
+_CORNER_CLEAR_M = 60.0  # a sector line keeps this far from a corner it must not split
+_MIN_SECTOR_M = 500.0  # a sector shorter than this is not a useful thing to coach
+_GRID_STEPS = 400  # places to look for a spot for a sector line, spread over the lap
+_GRID_MIN_STEP_M = 5.0  # ...but never look closer together than this
+_RELINE_MARGIN_M = 25.0  # move existing sector lines only when they improve by this much
+_TURN_STEER = 0.15  # |steering| above this counts as being in a corner
+_TURN_MIN_M = 40.0  # ...for at least this long, so kerbs and corrections don't count
 
 # Flags shown on the overlay for the sector in progress (in priority order).
 _PASS_FLAGS = ("lap invalidated", "off track")
@@ -111,39 +118,148 @@ def full_bounds(n: int, inner: Sequence[float] | None) -> list[float]:
     return [0.0, *inner, 1.0]
 
 
-def _clearance_m(pos: float, zones: Sequence[float], length_m: float) -> float:
-    """Distance from ``pos`` to the nearest braking zone (0 when inside one)."""
-    worst = float("inf")
+def _blocked_spans(
+    zones: Sequence[float], turns: Sequence[tuple[float, float]], length_m: float
+) -> list[tuple[float, float]]:
+    """The parts of the lap a sector line must stay out of, in metres.
+
+    A braking zone covers its cue lead and the corner after it; a corner the driver turned
+    through covers itself, so a flat corner is left whole too. Spans may wrap or overlap.
+    """
+    spans: list[tuple[float, float]] = []
     for z in zones:
-        past = ((pos - z) % 1.0) * length_m  # metres since the braking point
-        ahead = length_m - past  # metres until we reach it again
-        if past <= _CORNER_SPAN_M or ahead <= _LEAD_SPAN_M:
-            return 0.0
-        worst = min(worst, past - _CORNER_SPAN_M, ahead - _LEAD_SPAN_M)
-    return worst
+        centre = z * length_m
+        spans.append((centre - _LEAD_SPAN_M, centre + _CORNER_SPAN_M))
+    for lo, hi in turns:
+        spans.append((lo * length_m - _CORNER_CLEAR_M, hi * length_m + _CORNER_CLEAR_M))
+    return spans
 
 
-def snap_boundaries(n: int, zones: Sequence[float], length_m: float) -> list[float]:
-    """The n-1 inner sector lines, each moved to the middle of the nearest straight.
+def clearance_m(pos_m: float, spans: Sequence[tuple[float, float]], length_m: float) -> float:
+    """How far ``pos_m`` sits from the nearest corner a sector line must avoid (0 inside one)."""
+    worst = float("inf")
+    for start, end in spans:
+        width = end - start
+        if width <= 0:
+            continue
+        past = (pos_m - start) % length_m  # metres past the start of this span
+        worst = min(worst, 0.0 if past <= width else min(past - width, length_m - past))
+    return worst if worst != float("inf") else length_m / 2.0
 
-    A line may move up to 35% of a sector from its equal-split position; within that range it
-    takes the spot furthest from any braking zone (braking point and the corner after it).
+
+def _sector_lengths(lines: Sequence[float], length_m: float) -> list[float]:
+    """The lengths of the sectors the given inner lines would give, start line included."""
+    edges = sorted([0.0, *lines, length_m])
+    return [b - a for a, b in zip(edges, edges[1:], strict=False)]
+
+
+def _too_close(lines: Sequence[float], pos_m: float, length_m: float) -> bool:
+    """Is ``pos_m`` within a grid step of the start line or a line already placed?"""
+    for other in (0.0, *lines):
+        away = abs(pos_m - other)
+        if min(away, length_m - away) < _GRID_MIN_STEP_M:
+            return True
+    return False
+
+
+def _next_line(
+    lines: Sequence[float], spans: Sequence[tuple[float, float]], length_m: float, clear_m: float
+) -> float | None:
+    """The spot that leaves the longest shortest sector, at least ``clear_m`` clear of a corner.
+
+    Maximising the shortest sector is what keeps the lines spread over the lap: a line only
+    crowds another one when the track has no room left anywhere else.
+    """
+    step = max(length_m / _GRID_STEPS, _GRID_MIN_STEP_M)
+    best_key: tuple[float, float, float] | None = None
+    best: float | None = None
+    for i in range(_GRID_STEPS):
+        pos = i * step
+        clear = clearance_m(pos, spans, length_m)
+        if clear <= clear_m or _too_close(lines, pos, length_m):
+            continue
+        key = (min(_sector_lengths([*lines, pos], length_m)), clear, -pos)
+        if best_key is None or key > best_key:
+            best_key, best = key, pos
+    return best
+
+
+def snap_boundaries(
+    n: int,
+    zones: Sequence[float],
+    length_m: float,
+    turns: Sequence[tuple[float, float]] = (),
+) -> list[float]:
+    """The n-1 inner sector lines, each in a straight the driver is not turning in.
+
+    Every line is placed at the spot that leaves the longest shortest sector, and never closer
+    than a minimum distance to a corner, so a corner is only ever split once the track has no
+    straighter place left. When the survey has no corners to go on, equal splits are kept.
     """
     equal = [k / n for k in range(1, n)]
-    if not zones or n < 2:
+    if n < 2 or length_m <= 0 or (not zones and not turns):
         return equal
-    half, step = 0.35 / n, 10.0 / length_m
+    spans = _blocked_spans(zones, turns, length_m)
+    if not spans:
+        return equal
     lines: list[float] = []
-    for target in equal:
-        best, best_key = target, (-1.0, 0.0)
-        pos = target - half
-        while pos <= target + half:
-            key = (_clearance_m(pos, zones, length_m), -abs(pos - target))
-            if key > best_key:
-                best, best_key = pos, key
-            pos += step
-        lines.append(best)
-    return lines
+    for clear_m in (_CORNER_CLEAR_M, _CORNER_CLEAR_M / 2.0, 0.0):
+        while len(lines) < n - 1:
+            nxt = _next_line(lines, spans, length_m, clear_m)
+            if nxt is None:
+                break
+            lines.append(nxt)
+        if len(lines) >= n - 1:
+            break
+    if len(lines) < n - 1:  # the track cannot hold that many lines: top up with an even split
+        lines = _fill_sectors(lines, n, length_m)
+    return sorted(pos / length_m for pos in lines)
+
+
+def _fill_sectors(lines: Sequence[float], n: int, length_m: float) -> list[float]:
+    """Nowhere left at all: keep bisecting the longest sector until there are n-1 lines."""
+    out = list(lines)
+    while len(out) < n - 1:
+        edges = sorted([0.0, *out, length_m])
+        k = max(range(len(edges) - 1), key=lambda i: edges[i + 1] - edges[i])
+        if edges[k + 1] - edges[k] <= 0:
+            break
+        out.append((edges[k] + edges[k + 1]) / 2.0)
+    return out
+
+
+def clean_sector_count(
+    zones: Sequence[float],
+    turns: Sequence[tuple[float, float]],
+    length_m: float,
+    min_sectors: int = 1,
+) -> int:
+    """How many sectors this track can hold with no sector shorter than a usable run (0 unknown)."""
+    if not zones and not turns:
+        return 0
+    spans = _blocked_spans(zones, turns, length_m)
+    if not spans:
+        return 0
+    lines: list[float] = []
+    while True:
+        nxt = _next_line(lines, spans, length_m, _CORNER_CLEAR_M)
+        if nxt is None or min(_sector_lengths([*lines, nxt], length_m)) < _MIN_SECTOR_M:
+            break
+        lines.append(nxt)
+    return max(min_sectors, len(lines) + 1)
+
+
+def worst_clearance(
+    lines: Sequence[float],
+    zones: Sequence[float],
+    turns: Sequence[tuple[float, float]],
+    length_m: float,
+) -> float:
+    """How far the worst of ``lines`` sits from the nearest corner (0.0 when it splits one)."""
+    if not lines:
+        return 0.0
+    spans = _blocked_spans(zones, turns, length_m)
+    return min(clearance_m(line * length_m, spans, length_m) for line in lines)
 
 
 @dataclass(slots=True)
@@ -203,7 +319,9 @@ class BrakeEngine:
         self._bounds: list[float] = []
         self._needs_survey = False  # sector lines still to be placed (warm-up lap survey)
         self._survey: list[float] = []
+        self._survey_turns: list[tuple[float, float]] = []  # corners driven, not braked for
         self._survey_cov = 0.0
+        self._turn_from: float | None = None
         self._lap_valid: bool | None = None  # None until the first sample tells us
         self._lap_no = 0  # counted up at every line crossing, so a late cut knows its own lap
         self._status_lap = 0  # the lap whose colours _status holds: the last one, until S1 ends
@@ -292,9 +410,13 @@ class BrakeEngine:
         self._prev_pos = pos
         if jump or s.in_pit:
             self._survey.clear()
+            self._survey_turns.clear()
+            self._turn_from = None
             self._survey_cov = 0.0
         elif delta > 0 and self._needs_survey:
             self._survey_cov += delta
+        if self._needs_survey and not jump and not s.in_pit and delta >= 0:
+            self._survey_steering(pos, s.steer)
 
         if self._pass is None or jump:  # start, reset or teleport
             self._restart_pass(sector, s.t)
@@ -843,7 +965,8 @@ class BrakeEngine:
         """Pick the sector lines for this track + car (stored, borrowed, or surveyed later)."""
         data = self._data
         assert data is not None
-        self._survey, self._survey_cov, self._needs_survey = [], 0.0, False
+        self._survey, self._survey_turns, self._survey_cov = [], [], 0.0
+        self._turn_from, self._needs_survey = None, False
         fresh = data.boundaries is None and not data.total_runs()
         if fresh and self._ref is not None and self._ref.boundaries:
             data.boundaries = list(self._ref.boundaries)  # share the other car's lines
@@ -859,18 +982,70 @@ class BrakeEngine:
         if self._laps_done < self._settings.warmup_laps or self._survey_cov < 0.9:
             return  # not a complete lap yet
         self._needs_survey = False
+        if self._turn_from is not None:  # the lap ended mid-corner: close it at the line
+            self._close_turn(self._last.pos if self._last else 0.0)
+        self._place_lines()
+
+    def _survey_steering(self, pos: float, steer: float) -> None:
+        """Note where the driver turns: a corner taken without braking is still a corner."""
+        if abs(steer) < _TURN_STEER:
+            if self._turn_from is not None:
+                self._close_turn(pos)
+            return
+        if self._turn_from is None:
+            self._turn_from = pos
+
+    def _close_turn(self, end: float) -> None:
+        start, self._turn_from = self._turn_from, None
+        if start is not None and ((end - start) % 1.0) * self._length_m >= _TURN_MIN_M:
+            self._survey_turns.append((start, end))
+
+    def _survey_zones(self) -> list[float]:
+        """The corners the survey knows: the braking points it saw, plus the other car's."""
         zones = build_zones(
             [[SectorRun(0.0, list(self._survey))]], self._settings.cluster_m, self._length_m
         )
-        self._survey.clear()
-        if not zones:
+        return merge_zones(zones + self._ref_zones, self._settings.cluster_m, self._length_m)
+
+    def _place_lines(self) -> None:
+        """Put the sector lines on the widest straights; say when the track cannot hold them all."""
+        data = self._data
+        assert data is not None
+        zones, turns = self._survey_zones(), list(self._survey_turns)
+        if not zones and not turns:
             return
-        inner = snap_boundaries(self._n, zones, self._length_m)
-        self._data.boundaries = inner
+        st = self._settings
+        inner = snap_boundaries(self._n, zones, self._length_m, turns)
+        if len(inner) != self._n - 1:
+            return
+        had = data.boundaries
+        if data.total_runs():
+            # A stored run is timed between two of these lines, so moving them would silently
+            # re-file every sector. The survey only ever runs on a fresh entry, before any run is
+            # saved; deleting the track's data is what places the lines again.
+            return
+        if had is not None and len(had) == len(inner):
+            kept = worst_clearance(had, zones, turns, self._length_m)
+            if kept + _RELINE_MARGIN_M >= worst_clearance(inner, zones, turns, self._length_m):
+                return  # not a real improvement: leave the lines where they are
+        if not st.learning_enabled:
+            return
+        data.boundaries = inner
         self._bounds = full_bounds(self._n, inner)
-        self._on_message(f"Sector lines placed on the straights ({len(zones)} corners surveyed)")
-        if self._settings.learning_enabled:
-            self._store.save(self._data)
+        self._store.save(data)
+        turn_note = ""
+        if turns:
+            noun = "corner" if len(turns) == 1 else "corners"
+            turn_note = f", {len(turns)} {noun} taken without braking"
+        self._on_message(
+            f"Sector lines placed on the straights ({len(zones)} braking points{turn_note})"
+        )
+        fit = clean_sector_count(zones, turns, self._length_m, st.min_sectors)
+        if 0 < fit < self._n:
+            self._on_message(
+                f"Only {fit} of {self._n} sectors fit fully on this track's straights: set "
+                f"'Sectors per lap' to {fit} (Settings > Sectors) to keep every corner whole"
+            )
 
     def _restart_pass(self, sector: int, t: float) -> None:
         self._sector, self._pass, self._last_closed = sector, _Pass(t, clean=False), None

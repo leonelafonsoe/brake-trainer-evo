@@ -71,6 +71,20 @@ judged only by its time, so braking late can win time in one sector and lose it 
 the late braking point is still saved. Putting the lines on straights avoids both. The warm-up
 lap is free to use for this because nothing is learned on it anyway.
 
+The survey looks for corners two ways. Braking points are the obvious one, but a corner taken flat
+has no braking point at all - Curva Grande at Monza is the example that exposed it - and lines were
+being dropped straight through it. So the survey also watches the steering the car is carrying
+(`steering_percent`, from the same graphics frame the app already reads) and counts a stretch of
+sustained steering as a corner even when no braking point was seen. Each line is then placed at the
+position that leaves the longest shortest sector, subject to a hard margin from every corner, so the
+app gives up a little length before it will ever cut through a corner. Asking for more
+sectors than the straights can hold pads the extra lines and says in the log which lower count fits
+("set 'Sectors per lap' to 5"), rather than silently slicing corners. The survey can last more than
+one warm-up lap (*Warm-up laps*), and the placement is made once at the end of it: a bigger sample of
+braking points and steering gives a better answer. After that the lines are left alone, because a
+stored run is timed *between* two of them - moving a line would silently re-file every sector - so
+placing them again means deleting the track's entry and driving another warm-up lap.
+
 ### The reference car is the one with the most data
 A new car borrows braking points from another car on the same track. Choosing the *fastest* car
 would hand a slow car the latest braking points; the one with the most data is the most reliable.
@@ -95,12 +109,13 @@ where the game publishes them (all four tyres while the lap is valid; for the re
 the lower "...once the lap is invalid" count, default 2).
 
 A cut is judged by the time it gains, and the game only reports it at the end of its give-back
-window. The report therefore arrives after the cut, and the sector it is about is the one the
-give-back distance behind it (`cut_give_back_m`). That distance is a couple of hundred metres, not
-the 500 m first assumed: on Monza a cut in the Ascari chicane is reported around the corner's exit,
-which put the first guess out on the straight before it. That is why a dropped sector may already
-have been saved: its run is then taken back, restoring the list it replaced. The cost of a wrong drop
-is confined to a sector, and clean sectors in between are still kept.
+window. The report therefore arrives at or after the cut, and the sector it is about is the one the
+give-back distance behind it (`cut_give_back_m`, `0` by default). Measured on track the game reports
+a cut around the corner it happened in - a Monza cut in the Ascari chicane is reported around the
+corner's exit - so the position the report arrives at is taken as it is; a non-zero window is still
+read back that far for older data that expects it. Because the cut sector may already have been
+saved, its run is then taken back, restoring the list it replaced. The cost of a wrong drop is
+confined to a sector, and clean sectors in between are still kept.
 
 The game buffers its log (a few KB, flushed when full), so in quiet running a line can sit unwritten
 for a minute or more, and a single read can bring a whole lap's cuts. Each line's own timestamp is

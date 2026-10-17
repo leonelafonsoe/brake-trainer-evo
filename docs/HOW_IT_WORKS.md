@@ -39,9 +39,14 @@ part of it:
 
 Sector lines are not simply equal splits. A corner that sits on a line would be cut between two
 sectors, and its braking point would flip between them from lap to lap. Instead, the warm-up lap
-surveys where your braking zones are and the lines are moved to the middle of the nearest
-straight (up to about a third of a sector away). The lines are stored with the track data and
-shared with other cars, so a borrowed reference stays aligned.
+surveys where you brake *and* where you steer - so a corner taken flat with no braking point (Curva
+Grande at Monza) is not missed - and each line is put in the middle of the longest straight, at the
+spot that leaves the sectors as even as they can be. A line is never placed within 60 m of a corner,
+so a corner is only cut once the track has nowhere straighter left; and when you ask for more sectors
+than the straights can hold, the app says which count fits. The lines are stored with the track data
+and shared with other cars, so a borrowed reference stays aligned. They are placed once, at the end of
+the warm-up, and then left alone: a stored run is timed between two lines, so to place them again
+delete the track's entry and drive another warm-up lap.
 
 **Data from older versions** (before 0.3.5) keeps the equal splits it was learned with, so a corner can
 still be cut by a line. The overlay then shows "equal sector lines" in its quiet summary, and
@@ -85,9 +90,9 @@ A sector pass is not saved when:
   in a lap it has already invalidated), and, where the game publishes them, the "race cut" pair and
   the live count of tyres off the track (Settings: "Skip sector if tyres off track", and "...once the
   lap is invalid"; while the lap is still valid the tyre count takes all four tyres, the game's own
-  rule). Because the game only reports a cut at the end of its give-back window (a couple of hundred
-  metres), the sector it really happened in is that far behind the report; if that sector was already
-  saved, its run is taken back.
+  rule). The game reports a cut around the corner it happened in, so the position in the report is
+  taken as-is (the give-back read-back distance is `0` by default; older data can still ask for a
+  distance back). If that sector was already saved, its run is taken back.
   The game buffers its log, so a cut can be read a minute after it was written, or after the lap it
   belongs to has ended, and several can arrive at once. Each line carries its own time, so every cut
   still lands in the sector - and the lap - it happened in, never in the sector of the same number in

@@ -29,6 +29,7 @@ def frame(**over):
             "car_model": "Ferrari 296 GTB",
             "is_in_pit_lane": False,
             "is_valid_lap": False,
+            "steering_percent": 37.0,
         },
         physics={"brake": 0.7, "speed_kmh": 120.0, "number_of_tyres_out": 2},
         static={"track": "Monza", "track_length_m": 5793.0},
@@ -44,6 +45,7 @@ def test_sample_from_frame():
     assert (s.track, s.car, s.pos) == ("Monza", "Ferrari 296 GTB", 0.42)
     assert (s.brake, s.length_m) == (0.7, 5793.0)
     assert (s.lap_valid, s.tyres_out) == (False, 2)
+    assert s.steer == 0.37  # the graphics block carries the steering, -1..1
     assert (s.cut_gained_ms, s.cut_deadline_m, s.cut_delta_s) == (0, 0, 0.0)  # no raw graphics
 
 

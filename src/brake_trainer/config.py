@@ -67,11 +67,10 @@ class Settings:
     # Once the game has invalidated the lap its flag stays down and cannot report a second mistake,
     # so a lower tyre count stands in for it in the remaining sectors of that lap (0 = off).
     max_tyres_out_after_invalid: int = 2
-    # The game judges a cut and only reports it after its give-back window has passed, so the
-    # sector a report is about is this far behind the position the report arrives at (0 = trust the
-    # report's own position). Kept small: on Monza an Ascari cut is reported around the corner's
-    # exit, so the window is a couple of hundred metres, not the 500 m guessed at first.
-    cut_give_back_m: float = 150.0
+    # The game judges a cut and only reports it after its give-back window has passed. Its report
+    # names the corner it happened in, so the position it arrives at is used as-is (0 = trust it).
+    # A non-zero window reads the report this far back along the lap for old data that expects it.
+    cut_give_back_m: float = 0.0
     own_runs_to_replace_ref: int = 2
     reference_car: str = ""  # "" = automatic
     # --- cues ---

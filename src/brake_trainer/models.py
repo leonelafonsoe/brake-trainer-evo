@@ -47,6 +47,7 @@ class Sample:
     cut_deadline_m: int = 0  # graphics race-cut: distance left to give that time back
     cut_delta_s: float = 0.0  # graphics race-cut: delta vs the cleanly-driven reference
     timing_invalid: bool = False  # graphics timing state: the current lap marked invalid
+    steer: float = 0.0  # -1..1 steering input, so corners that need no braking can be found
 
 
 @dataclass(slots=True)

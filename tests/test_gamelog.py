@@ -150,8 +150,8 @@ CORNERS = [0.20, 0.50, 0.80]
 def _engine(store, **settings):
     """A warmed-up engine on a 5-sector, 5000 m track: a 500 m lookback is 0.1 of a lap.
 
-    The lookback is pinned here so these tests exercise the attribution, not the shipped default,
-    which is far smaller and would keep several of the cuts inside the sector the report lands in.
+    The lookback is pinned here so these tests exercise the attribution, not the shipped default of
+    0, which would keep several of the cuts inside the sector the report lands in.
     """
     settings.setdefault("cut_give_back_m", 500.0)
     results: list = []
@@ -298,19 +298,28 @@ def test_a_cut_from_before_the_kept_history_is_skipped_rather_than_guessed(store
     assert not any("reported a cut" in m for m in messages)
 
 
-def test_the_shipped_lookback_only_shifts_a_cut_a_little(store):
-    # The shipped default is small on purpose: the game reports a cut around the corner it happened
-    # in, not far down the road. 150 m on this 5000 m track is 0.03 of a lap, so a cut reported
-    # inside a sector stays in that sector and only a report made just past a line steps back over
-    # it.
+def test_the_shipped_default_takes_the_reported_position_as_it_is(store):
+    # The game reports a cut at the corner it happened in, so no lookback is applied by default:
+    # a report made inside a sector drops that sector.
+    assert Settings().cut_give_back_m == 0.0
     engine, driver, _, messages = _engine(store, cut_give_back_m=Settings().cut_give_back_m)
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.55)  # 150 m back is 0.52, still 0.4..0.6
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.55)
     engine.report_infraction("the game reported a cut", driver.t)
     assert engine.snapshot().pass_flag == "off track"
     assert any("S3 will not count" in m for m in messages)
 
 
-def test_the_give_back_distance_can_be_switched_off(store):
+def test_a_give_back_window_still_steps_a_report_back_when_one_is_set(store):
+    # The window is still honoured for data that asks for it: a cut reported just past a line then
+    # belongs to the sector it was read back into.
+    engine, driver, _, messages = _engine(store, cut_give_back_m=500.0)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.62)  # 500 m is 0.1 of this 5000 m track
+    engine.report_infraction("the game reported a cut", driver.t)
+    assert engine.snapshot().sector == 3  # the driver is in S4 ...
+    assert any("S3 had its stored run taken back" in m for m in messages)  # ... read in S3
+
+
+def test_a_zero_give_back_window_trusts_the_reported_position(store):
     # 0 = trust the position the report arrives at, so the sector in progress is the one dropped.
     engine, driver, _, _ = _engine(store, cut_give_back_m=0)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.63)

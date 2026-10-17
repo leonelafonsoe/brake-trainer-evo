@@ -177,10 +177,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
   a truth.
 - A braking zone very close to the start/finish line can wobble between the last and first
   sector. More in [Design notes](docs/DESIGN.md#known-limitations-and-ideas).
-- Track limits follow the game. It reports each cut only at the end of its give-back window (a couple
-  of hundred metres of track), so the app reads the sector back from the report by that distance
-  (`Cut give-back window`, default 150 m) and takes back the run if it was already saved. The game
-  buffers its log (a few KB, flushed when full), so a cut can be read a minute later,
+- Track limits follow the game. It reports each cut around the corner it happened in, so the position
+  in the report is used as it is (`Cut give-back window`, `0` by default) and the run is taken back if
+  that sector was already saved. The game buffers its log (a few KB, flushed when full), so a cut can
+  be read a minute later,
   or after the lap it belongs to has ended, and several can arrive at once; each line's own time is
   what the app attributes from, so every one still lands in its own sector of its own lap, and one
   for a lap that is over is named on the status line. An infraction it judges from something it does

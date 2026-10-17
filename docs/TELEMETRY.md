@@ -17,6 +17,7 @@ to the game or its files.
 | Track / car name | `static.track`, `graphics.car_model` | Keys for the stored data |
 | Track length | `static.track_length_m`, or `graphics.lap_length_km` | Metres from positions |
 | In the pit lane | `graphics.is_in_pit_lane` | Not learning in the pits; warm-up reset |
+| Steering (-1..1) | `graphics.steering_percent`, scaled | Finding a corner taken flat, for sector-line placement |
 | Lap still valid | `graphics.is_valid_lap` | Skipping the first sector the game invalidates |
 | Race cut (off-track) | `graphics.race_cut_gained_time_ms`, `graphics.distance_to_deadline` (raw graphics block) | Skipping the sector where an off-track happened |
 | Tyres off track | `physics.number_of_tyres_out` | Skipping any sector with enough tyres off |
@@ -46,13 +47,14 @@ Track limits follow the game, using three of its own signals:
   rule); once the lap is invalid a lower count (Settings: *...once the lap is invalid*, default 2)
   applies for the rest of that lap.
 
-**Why a report is read back.** The game judges a cut by the time it gains: it gives the driver a
-window to give that time back, and only reports the cut once the window has passed. By then the car
-has driven on, so the sector the cut is really about is the one the give-back distance behind the
-report (Settings: *Cut give-back window*, default 150 m). On-track data (Monza) puts that window at a
-couple of hundred metres - a cut in the Ascari chicane is reported around the corner's exit. If that
-sector was already saved, its run is taken back (`S3: its stored run was taken back`); if it is still
-in progress, the pass is flagged (`S3 will not count`).
+**Why a report may still be read back.** The game judges a cut by the time it gains: it gives the
+driver a window to give that time back, and only reports the cut once the window has passed. On-track
+data (Monza) shows the report naming the corner it happened in - a cut in the Ascari chicane comes
+back around the corner's exit - so the position in the report is used as it is (`cut_give_back_m`
+defaults to `0`). A non-zero window still reads the report that far back along the lap, for data that
+expects it. If the sector a cut lands in was already saved, its run is taken back
+(`S3: its stored run was taken back`); if it is still in progress, the pass is flagged
+(`S3 will not count`).
 
 **Read from the line's own time.** The game buffers this log (a few KB, flushed when full), so a line
 can reach the file a minute after it was written - or after the lap it belongs to has ended - and one

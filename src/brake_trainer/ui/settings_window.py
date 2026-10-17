@@ -324,22 +324,6 @@ TABS: dict[str, list[Spec]] = {
             ),
         ),
         Spec(
-            "cut_give_back_m",
-            "Cut give-back window",
-            "float",
-            0,
-            2000,
-            50,
-            0,
-            " m",
-            tip=(
-                "The game judges a cut by the time it gains and reports it only at the end of its "
-                "give-back window, so the sector it happened in sits this far behind the report. "
-                "Kept small: measured on track, a cut is reported around the corner it happened "
-                "in. 0 uses the position the report arrives at."
-            ),
-        ),
-        Spec(
             "top_runs",
             "Fastest runs kept per sector",
             "int",

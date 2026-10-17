@@ -176,6 +176,7 @@ def sample_from_frame(frame: Any) -> Sample | None:
         speed_kmh=float(phys.get("speed_kmh", 0.0)),
         in_pit=bool(gfx.get("is_in_pit_lane") or gfx.get("is_in_pit")),
         t=_frame_time(frame),
+        steer=min(max(float(gfx.get("steering_percent", 0.0) or 0.0) / 100.0, -1.0), 1.0),
         lap_valid=bool(gfx.get("is_valid_lap", True)),
         tyres_out=int(phys.get("number_of_tyres_out", 0) or 0),
         cut_gained_ms=gained,
