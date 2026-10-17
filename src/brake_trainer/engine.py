@@ -79,6 +79,11 @@ _PASS_FLAGS = ("lap invalidated", "off track")
 # report within this long is folded into the first.
 _DUPLICATE_REPORT_S = 2.0
 
+# How much of the recent sample history to keep, so a cut can be attributed from the position the
+# car had when the game wrote the line. The game's log is buffered, so a line can be read a dozen
+# seconds late, and the cut itself is a give-back window behind that; this covers both, with room.
+_HISTORY_S = 180.0
+
 # Shown when the game invalidates a lap that the app saw no off-track for (no race cut, no tyres
 # off the track, no cut in its log): the game judged it from something it does not expose per
 # violation, so the sector it happened in cannot be identified.
@@ -199,6 +204,8 @@ class BrakeEngine:
         self._cut_active = False  # the game's race-cut signal is up right now
         self._cut_gained = 0  # the last race-cut gain it reported, for spotting a new cut
         self._cut_reported_at = 0.0  # when the game last reported a cut, to fold duplicate signals
+        self._history: deque[tuple[float, float, bool]] = deque()  # (t, pos, in_pit) recently seen,
+        # so a cut the log reports late is still attributed from where the car was when it happened
         self._lap_runs: dict[int, tuple[SectorRun, list[SectorRun]]] = {}  # stored run, and the
         # list it replaced, so a cut the game reports late can be taken back cleanly
         self._prev_tyres_out = 0  # the previous sample's count, for the verbose log
@@ -262,6 +269,10 @@ class BrakeEngine:
 
         pos = min(max(s.pos, 0.0), 0.99999)
         sector = self._sector_of(pos)
+
+        self._history.append((s.t, pos, s.in_pit))
+        while self._history and self._history[0][0] < s.t - _HISTORY_S:
+            self._history.popleft()
 
         delta, jump = 0.0, False
         if self._prev_pos is not None:
@@ -371,6 +382,7 @@ class BrakeEngine:
         self._cut_active = False
         self._cut_gained = 0
         self._cut_reported_at = 0.0
+        self._history.clear()
         self._lap_runs = {}
         self._prev_tyres_out = 0
         self._prev_cut_active = False
@@ -532,44 +544,72 @@ class BrakeEngine:
         """
         if not self._settings.skip_invalid_sectors or s.lap_valid or self._lap_valid is False:
             return
+        fresh = bool(self._lap_valid)  # a fresh drop, not the state the app found at start-up
         where = pos if s.in_pit else self._infraction_pos(pos)
         took_back = self._attribute("lap invalidated", where)
+        duplicate = abs(s.t - self._cut_reported_at) < _DUPLICATE_REPORT_S
         self._cut_reported_at = s.t
-        if self._lap_valid:  # a fresh drop, not the state the app found at start-up
-            self._on_message(
-                f"The game invalidated the lap at {where:.0%} of the lap: {self._note(took_back)}"
-            )
-            if not self._lap_saw_off and not self._lap_warned:
-                self._lap_warned = True
-                self._on_warning(_CUT_WARNING)
+        if not fresh or duplicate:
+            return
+        self._on_message(
+            f"The game invalidated the lap at {where:.0%} of the lap: {self._note(took_back)}"
+        )
+        if self._lap_saw_off or self._lap_warned:
+            return
+        self._lap_warned = True
+        if self._settings.use_game_log:
+            # The log reports every cut - including this one, a few seconds later - so it is the
+            # authority on the sector the cut happened in; only note the fallback, do not warn.
+            log.debug("limits: lap flag dropped with no cut seen yet; the log may still explain it")
+        else:
+            self._on_warning(_CUT_WARNING)
 
-    def report_infraction(self, reason: str) -> None:
+    def report_infraction(self, reason: str, at: float) -> None:
         """The game's log reported a cut; drop the sector it happened in.
 
-        Called from the log tail (same thread as :meth:`update`). One report per cut, including a
-        second one in a lap the lap flag has already invalidated, which that flag cannot show.
+        Called from the log tail (same thread as :meth:`update`). ``at`` is when the game wrote the
+        line: the game buffers its log, so it can be read seconds later, and a whole lap's cuts can
+        arrive in one read. Attributing from the car's position at ``at`` keeps each of them in its
+        own sector.
         """
         s = self._last
         if s is None or self._pass is None or not self._settings.skip_invalid_sectors:
             return
-        if s.t - self._cut_reported_at < _DUPLICATE_REPORT_S:
+        self._lap_saw_off = True  # the game did report a cut: the bare-cut warning does not apply
+        if abs(at - self._cut_reported_at) < _DUPLICATE_REPORT_S:
             return  # the lap flag already stood for this same cut
-        pos = min(max(s.pos, 0.0), 0.99999)
-        where = pos if s.in_pit else self._infraction_pos(pos)
-        self._lap_saw_off = True
-        self._cut_reported_at = s.t
+        self._cut_reported_at = at
+        pos, in_pit = self._pos_at(at)
+        where = pos if in_pit else self._infraction_pos(pos)
         took_back = self._attribute("off track", where)
         log.debug(
-            "limits: %s, reported at %.1f%% (S%d), attributed %s at %.1f%% (S%d), run %s",
+            "limits: %s written at %.3f (read %.1f s later), car at %.1f%% (S%d), "
+            "attributed %s at %.1f%% (S%d), run %s",
             reason,
+            at,
+            s.t - at,
             pos * 100.0,
-            self._sector + 1,
+            self._sector_of(pos) + 1,
             f"{self._settings.cut_give_back_m:.0f} m back",
             where * 100.0,
             self._sector_of(where) + 1,
             "taken back" if took_back else "not stored",
         )
         self._on_message(f"{reason} at {where:.0%} of the lap: {self._note(took_back)}")
+
+    def _pos_at(self, at: float) -> tuple[float, bool]:
+        """Where the car was (position, in the pits) when the game wrote a report at time ``at``.
+
+        Falls back to the latest sample when ``at`` is outside the kept history, or ahead of it,
+        which a little clock skew between the log and the telemetry can do.
+        """
+        s = self._last
+        if s is not None and at >= s.t:
+            return min(max(s.pos, 0.0), 0.99999), s.in_pit
+        for ts, pos, in_pit in reversed(self._history):
+            if ts <= at:
+                return pos, in_pit
+        return (min(max(s.pos, 0.0), 0.99999), s.in_pit) if s is not None else (0.0, False)
 
     @staticmethod
     def _note(took_back: bool) -> str:

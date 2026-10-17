@@ -53,11 +53,19 @@ give-back distance behind the report (Settings: *Cut give-back window*, default 
 sector was already saved, its run is taken back (`S3: its stored run was taken back`); if it is still
 in progress, the pass is flagged (`S3 won't count`).
 
+**Read from the line's own time.** The game buffers this log, so a line can reach the file several
+seconds after it was written, and one read can bring a whole lap's cuts at once. Every line carries
+its own timestamp, so the app attributes each cut from the car's position *at that time* — not from
+wherever the car is when the line is finally read. That is what keeps several cuts, read together,
+each in their own sector. The debug log shows the read lag per cut
+(`... written at ... (read 12.3 s later), car at 49.7% (S3) ...`).
+
 The old tyre-count log format (`Limits: car ... tyres out changed`) is still recognised for older
 builds, with the player's car taken from the log's connection lines. An infraction the game judges
 from something it does not expose (no cut in its log, no race cut and no tyres reported off) cannot
-be pinned to a sector: when the lap flag drops with no other signal, the app logs a warning and can
-only drop the sector where the flag dropped.
+be pinned to a sector. With the log being read, every cut is in it, so the app stays quiet and notes
+the fallback only in its debug log; with the log switched off it warns, and can only drop the sector
+where the flag dropped.
 
 ## Behaviours worth knowing
 

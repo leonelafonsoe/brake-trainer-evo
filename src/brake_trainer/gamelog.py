@@ -11,6 +11,11 @@ cannot show a second cut; the notification arrives once per cut. Because the rep
 the give-back window, the engine attributes it to the sector the cut happened in, not the one the
 report lands in (see ``Settings.cut_give_back_m``).
 
+The game buffers this log, so the app can read a notification several seconds after the game wrote
+it, and several cuts can arrive in one read. Every line carries its own timestamp, so the reader
+reports the cut *with the time it happened*, and the engine attributes it from the car's position
+then - not from wherever the car is when the line is finally seen.
+
 Older builds wrote the excursion itself instead of a notification::
 
     ... [physics] [info] Limits: car <uuid> tyres out changed: 3 -> 4 with 2.62m inside
@@ -28,6 +33,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -38,6 +44,8 @@ PIT_TELEPORT_M = 10.0  # larger values are an artefact of being teleported to th
 
 # One HUD notification per cut, written once the give-back window has passed.
 _NOTIFY_RE = re.compile(r"Adding notification UINotificationType_SessionPenalty\b")
+# Every line starts with its own wall-clock time, in local time: ``[2026-10-16 22:11:06.027]``.
+_TS_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]")
 # Older builds: each change of the player's tyre-off count, with how far past the line they are.
 _LIMITS_RE = re.compile(
     r"\[physics\] \[info\] Limits: car ([a-f0-9\-]+) tyres out changed: \d+ -> (\d+) "
@@ -49,6 +57,21 @@ _CONNECT_RE = re.compile(
 
 REPORTED_CUT = "the game reported a cut"
 REPORTED_TYRES_OUT = "the game's log reported all four tyres off the track"
+
+
+def line_time(line: str, fallback: float) -> float:
+    """The wall-clock time the game wrote ``line``, as POSIX seconds.
+
+    The game buffers its log, so a line can be read long after it was written; the line's own
+    timestamp is the only reliable time for the event. Falls back to ``fallback`` if it is missing.
+    """
+    match = _TS_RE.match(line)
+    if match is None:
+        return fallback
+    try:
+        return datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S.%f").timestamp()
+    except ValueError:
+        return fallback
 
 
 def _norm(uuid: str) -> str:
@@ -117,7 +140,7 @@ class GameLogTail:
     def __init__(
         self,
         directory: Path,
-        on_cut: Callable[[str], None],
+        on_cut: Callable[[str, float], None],
         on_message: Callable[[str], None] = lambda text: None,
         poll_s: float = 0.25,
         rescan_s: float = 2.0,
@@ -173,10 +196,15 @@ class GameLogTail:
                     self._switch_to(latest)
             if self._path is not None:
                 lines = await asyncio.to_thread(self._read_new)
+                if lines:
+                    # The game buffers its log: this can be a dozen lines or a whole minute of
+                    # them. Each carries its own time, which is what the engine attributes from.
+                    log.debug("gamelog: read %d new lines", len(lines))
+                now = time.time()
                 for line in lines:
                     reason = parse_line(line, self._state)
                     if reason and self._live:
-                        self._on_cut(reason)
+                        self._on_cut(reason, line_time(line, now))
                 self._live = True  # everything that existed at the start has been read
             with contextlib.suppress(asyncio.TimeoutError):  # builtin TimeoutError only from 3.11
                 await asyncio.wait_for(stop.wait(), timeout=self._poll_s)

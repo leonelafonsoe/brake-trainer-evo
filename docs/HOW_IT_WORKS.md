@@ -87,11 +87,15 @@ A sector pass is not saved when:
   lap is invalid"; while the lap is still valid the tyre count takes all four tyres, the game's own
   rule). Because the game only reports a cut after its give-back window (500 m), the sector it really
   happened in is that far behind the report; if that sector was already saved, its run is taken back.
+  The game buffers its log, so a cut can be read seconds after it was written (and several at once);
+  each line carries its own time, so every cut still lands in the sector it happened in.
 - **Paused**: learning was paused at any point during it.
 
 The signals above are the game's own. When the game invalidates a lap for an infraction it does not
 expose (no cut in its log, no race cut and no tyres reported off), the app says so in its log and can
-only drop the sector where the flag dropped. See [TELEMETRY.md](TELEMETRY.md).
+only drop the sector where the flag dropped. That warning is for the case where there is no log to
+read: with the game log being followed, every cut is in it, so the app uses it instead. See
+[TELEMETRY.md](TELEMETRY.md).
 
 The reason is shown on the overlay ("S3 won't count · lap invalidated") and in the log.
 

@@ -100,6 +100,10 @@ The game only reports a cut after its 500 m give-back window, so the app reads t
 the report by that distance. If your build uses a different window, tune Settings -> Sectors ->
 *Cut give-back window*: larger reads further back, `0` uses the sector the report arrives in.
 
+The game buffers its log, so a cut can be read seconds after it was written, and a whole lap's cuts
+can arrive at once. The app attributes each one from the time on its line, not from when it was read,
+so a late read does not push a cut into the next sector.
+
 **Corners are missing or doubled**
 Braking points closer than "Same-corner distance" (40 m) count as one corner. Tune it in Settings
 -> Detection. Light braking never counts: raise or lower "Minimum peak pressure" and "Minimum

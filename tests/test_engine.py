@@ -483,8 +483,12 @@ def test_a_later_race_cut_is_flagged_again(store):
 
 
 def _warnings_engine(store):
+    # With the game log read (the default) a cut is always pinned to its own sector, so the
+    # fallback warning only exists for when there is no per-cut source: the log is switched off.
     warnings: list[str] = []
-    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_warning=warnings.append)
+    engine = BrakeEngine(
+        Settings(n_sectors=5, warmup_laps=0, use_game_log=False), store, on_warning=warnings.append
+    )
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
@@ -514,7 +518,9 @@ def test_no_cut_warning_when_four_tyres_were_seen_first(store):
 def test_no_cut_warning_for_a_lap_already_invalid_when_the_app_starts(store):
     # The first sample can land on a lap the app never saw being invalidated: not a cut it saw.
     warnings: list[str] = []
-    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_warning=warnings.append)
+    engine = BrakeEngine(
+        Settings(n_sectors=5, warmup_laps=0, use_game_log=False), store, on_warning=warnings.append
+    )
     driver = Driver(engine)
     driver.feed(0.55, 150.0, 0.0, valid=False)
     driver.feed(0.56, 150.0, 0.0, valid=False)

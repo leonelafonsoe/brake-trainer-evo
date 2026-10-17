@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import BrakeEngine
-from brake_trainer.gamelog import GameLogTail, LogState, parse_line
+from brake_trainer.gamelog import GameLogTail, LogState, line_time, parse_line
 from brake_trainer.models import SectorStatus
 
 from .conftest import Driver
@@ -81,8 +82,10 @@ async def _wait(condition, timeout=3.0):
 async def test_tail_reports_only_new_cuts_and_follows_newer_logs(tmp_path: Path):
     old = tmp_path / "old.txt"
     old.write_text("\n".join([CONNECT, NOTIFICATION]) + "\n", encoding="utf-8")
-    hits: list[str] = []
-    tail = GameLogTail(tmp_path, hits.append, poll_s=0.01, rescan_s=0.02)
+    hits: list[tuple[str, float]] = []
+    tail = GameLogTail(
+        tmp_path, lambda reason, at: hits.append((reason, at)), poll_s=0.01, rescan_s=0.02
+    )
     stop = asyncio.Event()
     task = asyncio.create_task(tail.run(stop))
     await asyncio.sleep(0.3)
@@ -96,6 +99,8 @@ async def test_tail_reports_only_new_cuts_and_follows_newer_logs(tmp_path: Path)
         assert hits == []
         fh.write(NOTIFICATION[30:] + "\n")
     assert await _wait(lambda: len(hits) == 1)
+    # The time is the line's own, not when it was read: the game buffers this log.
+    assert hits[0][1] == datetime(2026, 10, 16, 20, 41, 38, 703000).timestamp()
 
     new = tmp_path / "new.txt"  # the game was restarted
     new.write_text(CONNECT + "\n" + NOTIFICATION + "\n", encoding="utf-8")
@@ -109,10 +114,23 @@ async def test_tail_reports_only_new_cuts_and_follows_newer_logs(tmp_path: Path)
     await asyncio.wait_for(task, 2)
 
 
+def test_a_line_time_is_read_from_the_line_and_falls_back_when_missing():
+    fallback = 1234.5
+    assert (
+        line_time(NOTIFICATION, fallback) == datetime(2026, 10, 16, 20, 41, 38, 703000).timestamp()
+    )
+    assert line_time("[no timestamp here]", fallback) == fallback
+    assert line_time("[2026-13-99 99:99:99.999] broken", fallback) == fallback
+
+
 async def test_tail_without_a_log_folder_just_says_so(tmp_path: Path):
     messages: list[str] = []
     tail = GameLogTail(
-        tmp_path / "missing", lambda reason: None, messages.append, poll_s=0.01, rescan_s=0.01
+        tmp_path / "missing",
+        lambda reason, at: None,
+        messages.append,
+        poll_s=0.01,
+        rescan_s=0.01,
     )
     stop = asyncio.Event()
     task = asyncio.create_task(tail.run(stop))
@@ -157,7 +175,7 @@ def test_a_cut_reported_in_a_later_sector_is_taken_back_to_where_it_happened(sto
     before = stored_times(store, 2)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.63)  # S2 closed and was saved
     assert stored_times(store, 2)[0] < before[0]
-    engine.report_infraction("the game reported a cut")
+    engine.report_infraction("the game reported a cut", driver.t)
     assert stored_times(store, 2) == before
     assert any("taken back" in m for m in messages)
     assert engine.snapshot().pass_flag != "off track"  # S3, the sector it was reported in, is clean
@@ -166,16 +184,52 @@ def test_a_cut_reported_in_a_later_sector_is_taken_back_to_where_it_happened(sto
 def test_a_cut_reported_while_still_in_its_sector_drops_that_sector(store):
     engine, driver, _, _ = _engine(store)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.55)  # in S2, 500 m past the cut
-    engine.report_infraction("the game reported a cut")
+    engine.report_infraction("the game reported a cut", driver.t)
     snap = engine.snapshot()
     assert snap.sector == 2 and snap.pass_flag == "off track"
+
+
+def test_a_cut_read_late_is_still_dropped_in_the_sector_it_happened_in(store):
+    # The game buffers its log, so this cut is read long after it was written - here when the car is
+    # already past the 0.6 line. The line carries its own time, so it still lands in the sector it
+    # happened in (0.4..0.6), half a give-back window behind where the car was when it was written.
+    engine, driver, _, _ = _engine(store)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.55)  # 0.4..0.6, past a cut there
+    written_at = driver.t
+    driver.lap(
+        CORNERS, speed_fn=lambda p: 215, start=0.56, stop=0.78
+    )  # by now the car is in 0.6..0.8
+    assert engine.snapshot().sector == 3
+    engine.report_infraction("the game reported a cut", written_at)
+    snap = engine.snapshot()
+    assert snap.sector_status[2] is SectorStatus.PENDING  # 0.4..0.6, where the cut happened
+    assert snap.pass_flag == ""  # 0.6..0.8, where the line was read, was driven cleanly
+    assert engine.snapshot().sector == 3
+
+
+def test_two_cuts_read_in_one_batch_each_drop_their_own_sector(store):
+    # A buffered log can hold a minute of lines, so a batch can carry cuts from far apart. Each is
+    # attributed from its own time: both sectors go, and the clean one between them stays.
+    engine, driver, _, _ = _engine(store)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.35)  # a cut judged in 0.2..0.4
+    first = driver.t
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.36, stop=0.72)  # one judged in 0.6..0.8
+    second = driver.t
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.73, stop=0.95)  # read only now, together
+    engine.report_infraction("the game reported a cut", first)
+    engine.report_infraction("the game reported a cut", second)
+    status = engine.snapshot().sector_status
+    assert status[1] is SectorStatus.PENDING  # 0.2..0.4
+    assert status[3] is SectorStatus.PENDING  # 0.6..0.8
+    assert status[2] is not SectorStatus.PENDING  # 0.4..0.6, between them, was clean
+    assert engine.snapshot().pass_flag == ""  # the sector they were read in is clean
 
 
 def test_the_give_back_distance_can_be_switched_off(store):
     # 0 = trust the position the report arrives at, so the sector in progress is the one dropped.
     engine, driver, _, _ = _engine(store, cut_give_back_m=0)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.63)
-    engine.report_infraction("the game reported a cut")
+    engine.report_infraction("the game reported a cut", driver.t)
     snap = engine.snapshot()
     assert snap.sector == 3 and snap.pass_flag == "off track"
 
@@ -186,9 +240,9 @@ def test_two_late_reported_cuts_drop_only_their_own_sectors(store):
     engine, driver, results, _ = _engine(store)
     before = [stored_times(store, i) for i in range(5)]
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.63)  # into S4; S3's cut is now reported
-    engine.report_infraction("the game reported a cut")
+    engine.report_infraction("the game reported a cut", driver.t)
     driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.64, stop=0.93)  # into S5's cut
-    engine.report_infraction("the game reported a cut")
+    engine.report_infraction("the game reported a cut", driver.t)
     driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.94, stop=1.003)
     by_sector = {r.sector: r for r in results}
     assert stored_times(store, 2) == before[2]  # S3's faster run was taken back
@@ -202,7 +256,7 @@ def test_a_cut_in_a_sector_that_was_not_saved_still_shows_as_not_counted(store):
     # the sector must still stop counting.
     engine, driver, _, messages = _engine(store)
     driver.lap(CORNERS, speed_fn=lambda p: 195, stop=0.63)  # slower than the warm-up runs
-    engine.report_infraction("the game reported a cut")
+    engine.report_infraction("the game reported a cut", driver.t)
     assert engine.snapshot().sector_status[2] is SectorStatus.PENDING
     assert any("will not count" in m for m in messages)
 
@@ -210,7 +264,7 @@ def test_a_cut_in_a_sector_that_was_not_saved_still_shows_as_not_counted(store):
 def test_cuts_are_ignored_when_invalid_sectors_are_not_skipped(store):
     engine, driver, results, _ = _engine(store, skip_invalid_sectors=False)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.55)
-    engine.report_infraction("the game reported a cut")
+    engine.report_infraction("the game reported a cut", driver.t)
     driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.56, stop=1.003)
     assert {r.sector: r for r in results}[2].accepted
 
@@ -220,6 +274,6 @@ def test_a_cut_the_lap_flag_already_stood_for_is_not_counted_twice(store):
     # the first must not drop another sector.
     engine, driver, _, messages = _engine(store)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.63)
-    engine.report_infraction("the game reported a cut")
-    engine.report_infraction("the game reported a cut")  # the same cut, a second signal
+    engine.report_infraction("the game reported a cut", driver.t)
+    engine.report_infraction("the game reported a cut", driver.t)  # the same cut, a second signal
     assert sum("reported a cut" in m for m in messages) == 1
