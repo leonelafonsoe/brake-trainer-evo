@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from datetime import datetime
@@ -355,11 +356,14 @@ def test_cuts_are_ignored_when_invalid_sectors_are_not_skipped(store):
     assert {r.sector: r for r in results}[2].accepted
 
 
-def test_a_cut_the_lap_flag_already_stood_for_is_not_counted_twice(store):
+def test_a_cut_the_lap_flag_already_stood_for_is_not_counted_twice(store, caplog):
     # The log notification and the lap flag describe the same cut; a second signal so soon after
-    # the first must not drop another sector.
+    # the first must not drop another sector. The log names the cut it folded away, so the game's
+    # notices can still be counted against the app's drops.
     engine, driver, _, messages = _engine(store)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.63)
     engine.report_infraction("the game reported a cut", driver.t)
-    engine.report_infraction("the game reported a cut", driver.t)  # the same cut, a second signal
+    with caplog.at_level(logging.DEBUG):
+        engine.report_infraction("the game reported a cut", driver.t)  # same cut, second signal
     assert sum("reported a cut" in m for m in messages) == 1
+    assert any("already stood for" in r.getMessage() for r in caplog.records)

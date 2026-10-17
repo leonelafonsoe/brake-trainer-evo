@@ -596,7 +596,15 @@ class BrakeEngine:
         if s is None or self._pass is None or not self._settings.skip_invalid_sectors:
             return
         if abs(at - self._cut_reported_at) < _DUPLICATE_REPORT_S:
-            return  # the lap flag already stood for this same cut
+            # The lap flag caught this cut live, so only one sector is dropped for it. Say so, or a
+            # reader counting the game's notices against the app's drops comes up one short.
+            log.debug(
+                "limits: %s written at %.3f is the cut the lap flag already stood for: "
+                "not counted twice",
+                reason,
+                at,
+            )
+            return
         self._cut_reported_at = at
         found = self._pos_at(at)
         if found is None:
