@@ -160,6 +160,11 @@ class Snapshot:
     last_result_age: float | None = None  # seconds since the last sector result
     pass_flag: str = ""  # why the current sector will not count ("lap invalidated", ...)
     last_result: SectorResult | None = None
+    # A cut the log reported for a lap the sector bar no longer shows (the game buffers its log, so
+    # a report can arrive a lap late). There is nothing left on the bar to grey, so the status line
+    # says it instead.
+    late_cut: str = ""
+    late_cut_age: float | None = None  # seconds since that report
 
 
 @dataclass(frozen=True, slots=True)

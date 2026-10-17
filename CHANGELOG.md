@@ -10,12 +10,19 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   app follows, and it is the only source that shows every cut — the "lap valid" flag drops once per
   lap. The live "race cut" pair and the count of tyres off the track still drop a sector where a build
   publishes them. New settings: "Follow the game's log for cuts" and "Game log folder".
-- Fix: the game buffers its log, so a cut can reach the app seconds after it was written, and one read
-  can bring a whole lap's cuts at once. Each line's own time is now what a cut is attributed from -
-  the car's position *then*, taken from a short history of recent samples - instead of the position
-  when the line was read. That is what keeps every cut in the sector it happened in when several
-  arrive together; before, later cuts in a delayed read were folded into the first and lost, and a
-  late cut was dropped one sector too far on. The verbose log now shows the read lag per cut.
+- Fix: the game buffers its log (a few KB, flushed when full), so a cut can reach the app a minute
+  after it was written - or after the lap it belongs to has ended - and one read can bring a whole
+  lap's cuts at once. Each line's own time is now what a cut is attributed from - the car's position
+  *then*, and the lap that time falls in, taken from a short history of recent samples - instead of
+  the position when the line was read. That keeps every cut in the sector it happened in when several
+  arrive together, and keeps a late one out of the lap being driven: the run its own lap saved is
+  taken back, and the sector of the same number in the current lap is left alone. Before, later cuts
+  in a delayed read were folded into the first and lost, a late cut was dropped one sector too far on,
+  and a cut read after its lap had ended greyed the wrong lap's sector. The verbose log now shows the
+  read lag and the lap per cut.
+- A cut the log reports for a lap the sector bar has already moved past is named on the status line
+  ("S6 of the last lap won't count · cut") for a few seconds: there is no colour left on the bar to
+  grey, and the stored run it takes back leaves no trace there either.
 - The "the game reported no off-track for this invalidation" warning is only shown when the game log
   is not being followed: with the log on, every cut is in it (a few seconds later), so the fallback is
   noted in the debug log instead of warning about a limitation that does not apply.

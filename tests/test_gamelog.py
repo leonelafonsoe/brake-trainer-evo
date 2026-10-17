@@ -225,6 +225,73 @@ def test_two_cuts_read_in_one_batch_each_drop_their_own_sector(store):
     assert engine.snapshot().pass_flag == ""  # the sector they were read in is clean
 
 
+def test_a_cut_read_a_lap_late_takes_back_that_laps_run_not_a_later_ones(store):
+    # The game buffers its log, so this cut is only read after the lap it belongs to has ended and
+    # a later lap has stored its own, faster run in the same sector. Only the earlier lap's run
+    # goes, and the message says which lap it was.
+    engine, driver, _, messages = _engine(store)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.85)  # judged with the car at 0.85: the cut
+    written_at = driver.t  # is 500 m back at 0.75, in the sector 0.6..0.8
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.86, stop=1.003)  # lap A: sector saved
+    lap_a = stored_times(store, 3)
+    driver.lap(CORNERS, speed_fn=lambda p: 230, start=0.001, stop=0.85)  # lap B: faster still
+    lap_b = stored_times(store, 3)
+    assert lap_b[0] < lap_a[0]
+
+    engine.report_infraction("the game reported a cut", written_at)
+
+    after = stored_times(store, 3)
+    assert after[0] == lap_b[0]  # the clean run of the lap driven since is kept
+    assert lap_a[0] not in after  # the cut lap's run was taken back
+    assert any("in the previous lap" in m and "taken back" in m for m in messages)
+
+
+def test_a_cut_read_a_lap_late_does_not_mark_the_sector_of_the_lap_being_driven(store):
+    # By the time it is read the sector bar shows the lap being driven (its first sector has closed,
+    # so the last lap's colours are gone). The cut must not grey a sector of that lap: it belongs to
+    # the one before, and the status line names it instead.
+    engine, driver, _, messages = _engine(store)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.85)  # the cut, as above
+    written_at = driver.t
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.86, stop=1.003)  # lap A ends
+    driver.lap(CORNERS, speed_fn=lambda p: 205, start=0.001, stop=0.85)  # lap B: 0.6..0.8 clean
+    on_screen = engine.snapshot().sector_status[3]
+    assert on_screen is not SectorStatus.PENDING
+
+    engine.report_infraction("the game reported a cut", written_at)
+
+    after = engine.snapshot()
+    assert after.sector_status[3] is on_screen  # left alone
+    assert after.late_cut == "S4 of the last lap won't count · cut"  # said on the status line
+    assert after.late_cut_age == 0.0
+    assert any("in the previous lap" in m for m in messages)
+
+
+def test_a_lap_flag_dropping_just_after_the_line_takes_back_the_previous_laps_run(store):
+    # A cut on the last corner is judged a give-back window later, so the flag can drop just after
+    # the line. The cut belongs to the lap that has just ended: its run is taken back and its sector
+    # - still on the bar, since this lap's first sector has not closed - is greyed, not this lap's.
+    engine, driver, _, _ = _engine(store)
+    p = driver.lap(CORNERS, speed_fn=lambda p: 215)  # lap A ends: S5 saved as the new best
+    lap_a = stored_times(store, 4)
+    assert lap_a and engine.snapshot().sector_status[4] is not SectorStatus.PENDING
+
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=p, stop=p + 0.03, invalid_from=1.01)
+
+    assert engine.snapshot().sector_status[4] is SectorStatus.PENDING  # the last lap's S5, greyed
+    assert lap_a[0] not in stored_times(store, 4)  # and its run taken back
+
+
+def test_a_cut_from_before_the_kept_history_is_skipped_rather_than_guessed(store):
+    # Guessing from the current position would drop whatever sector the car is in now, which is
+    # worse than saying nothing: a report older than the kept history is dropped.
+    engine, driver, _, messages = _engine(store)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.85)
+    engine.report_infraction("the game reported a cut", driver.t - 1000.0)
+    assert engine.snapshot().pass_flag == ""
+    assert not any("reported a cut" in m for m in messages)
+
+
 def test_the_give_back_distance_can_be_switched_off(store):
     # 0 = trust the position the report arrives at, so the sector in progress is the one dropped.
     engine, driver, _, _ = _engine(store, cut_give_back_m=0)

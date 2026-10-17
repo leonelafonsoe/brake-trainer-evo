@@ -60,3 +60,17 @@ def test_reference_and_idle_fallbacks():
 def test_idle_summary_mentions_equal_sector_lines():
     text = status_line(snap(equal_lines=True), ST, True)[0]
     assert text == "2 braking points · equal sector lines"
+
+
+def test_a_cut_reported_for_a_lap_that_is_gone_is_announced():
+    # The sector bar shows the lap being driven, so a cut the log reports for an earlier lap has
+    # nowhere else to appear; it outranks the current sector's own flag, which the bar shows anyway.
+    s = snap(
+        late_cut="S6 of the last lap won't count · cut",
+        late_cut_age=3.0,
+        pass_flag="lap invalidated",
+    )
+    assert status_line(s, ST, True) == ("S6 of the last lap won't count · cut", theme.RED)
+    # ... and it stops after a while, giving the line back
+    stale = snap(late_cut="S6 of the last lap won't count · cut", late_cut_age=60.0)
+    assert status_line(stale, ST, True)[0] == "2 braking points"

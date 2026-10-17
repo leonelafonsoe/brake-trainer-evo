@@ -7,6 +7,7 @@ from ..models import SectorStatus, Snapshot
 from . import theme
 
 RESULT_SHOW_S = 6.0  # how long a finished sector's result stays on screen
+LATE_CUT_SHOW_S = 12.0  # how long a cut reported for a lap that is already gone stays on screen
 
 _WORDS = {SectorStatus.BEST: "best", SectorStatus.GOOD: "good", SectorStatus.SLOWER: "slower"}
 _QUIET_NOTES = ("warm-up", "surveying")  # results that only repeat the warm-up message
@@ -15,11 +16,15 @@ _QUIET_NOTES = ("warm-up", "surveying")  # results that only repeat the warm-up 
 def status_line(snap: Snapshot, settings: Settings, live: bool) -> tuple[str, str] | None:
     """(text, colour) for the line under the sector bar, or None when there is nothing to say.
 
-    Priority: the current sector can't count > learning paused > warm-up > the last sector
-    result (for a few seconds) > borrowed reference > a quiet summary of what is learned.
+    Priority: a cut reported for a lap that is already gone > the current sector can't count >
+    learning paused > warm-up > the last sector result (for a few seconds) > borrowed reference >
+    a quiet summary of what is learned.
     """
     if not live:
         return None
+    if snap.late_cut and snap.late_cut_age is not None and snap.late_cut_age < LATE_CUT_SHOW_S:
+        # The sector bar has moved on to another lap, so this is the only place it can appear.
+        return (snap.late_cut, theme.RED)
     if snap.pass_flag and snap.sector is not None:
         return (f"S{snap.sector + 1} won't count · {snap.pass_flag}", theme.RED)
     if not settings.learning_enabled:

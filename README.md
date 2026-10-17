@@ -179,10 +179,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
   sector. More in [Design notes](docs/DESIGN.md#known-limitations-and-ideas).
 - Track limits follow the game. It reports each cut only after its give-back window (500 m), so the
   app reads the sector back from the report by that distance and takes back the run if it was already
-  saved. The game buffers its log, so cuts can be read seconds later (several at once); each line's
-  own time is what the app attributes from, so every one still lands in its own sector. An infraction
-  it judges from something it does not expose cannot be pinned to a sector, and the app says so in
-  its log. More in [Telemetry notes](docs/TELEMETRY.md#track-limits).
+  saved. The game buffers its log (a few KB, flushed when full), so a cut can be read a minute later,
+  or after the lap it belongs to has ended, and several can arrive at once; each line's own time is
+  what the app attributes from, so every one still lands in its own sector of its own lap, and one
+  for a lap that is over is named on the status line. An infraction it judges from something it does
+  not expose cannot be pinned to a sector, and the app says so in its log. More in
+  [Telemetry notes](docs/TELEMETRY.md#track-limits).
 - Windows only (it uses the game's shared memory, `tasklist` and `winsound`).
 
 ## Credits

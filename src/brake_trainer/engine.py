@@ -80,9 +80,14 @@ _PASS_FLAGS = ("lap invalidated", "off track")
 _DUPLICATE_REPORT_S = 2.0
 
 # How much of the recent sample history to keep, so a cut can be attributed from the position the
-# car had when the game wrote the line. The game's log is buffered, so a line can be read a dozen
-# seconds late, and the cut itself is a give-back window behind that; this covers both, with room.
-_HISTORY_S = 180.0
+# car had when the game wrote the line. The game buffers its log (a few KB, flushed when full), so a
+# cut can be read a whole lap after it was judged - the give-back window is behind that again - so
+# this covers a lap or two of driving at any sane rate.
+_HISTORY_S = 300.0
+
+# How many laps back a late cut can still take its sector's stored run back from. Only the runs of
+# the last few laps are worth keeping for that.
+_RUNS_KEPT_LAPS = 3
 
 # Shown when the game invalidates a lap that the app saw no off-track for (no race cut, no tyres
 # off the track, no cut in its log): the game judged it from something it does not expose per
@@ -193,21 +198,26 @@ class BrakeEngine:
         self._last: Sample | None = None
         self._last_result: SectorResult | None = None
         self._last_result_t = 0.0
+        self._late_cut = ""  # a cut reported for a lap the sector bar no longer shows
+        self._late_cut_t = 0.0
         self._bounds: list[float] = []
         self._needs_survey = False  # sector lines still to be placed (warm-up lap survey)
         self._survey: list[float] = []
         self._survey_cov = 0.0
         self._lap_valid: bool | None = None  # None until the first sample tells us
+        self._lap_no = 0  # counted up at every line crossing, so a late cut knows its own lap
+        self._status_lap = 0  # the lap whose colours _status holds: the last one, until S1 ends
         self._lap_saw_off = False  # an off-track this lap, so a bare-cut drop is not it
         self._lap_warned = False  # the cut warning was already given for this lap
         self._tyres_over = False  # the tyre count is over the limit right now (for the message)
         self._cut_active = False  # the game's race-cut signal is up right now
         self._cut_gained = 0  # the last race-cut gain it reported, for spotting a new cut
         self._cut_reported_at = 0.0  # when the game last reported a cut, to fold duplicate signals
-        self._history: deque[tuple[float, float, bool]] = deque()  # (t, pos, in_pit) recently seen,
-        # so a cut the log reports late is still attributed from where the car was when it happened
-        self._lap_runs: dict[int, tuple[SectorRun, list[SectorRun]]] = {}  # stored run, and the
-        # list it replaced, so a cut the game reports late can be taken back cleanly
+        self._history: deque[tuple[float, float, bool, int]] = deque()  # (t, pos, in_pit, lap)
+        # recently seen, so a cut the log reports late is still attributed from where the car was
+        self._lap_runs: dict[tuple[int, int], tuple[SectorRun, list[SectorRun]]] = {}  # per lap and
+        # sector: the run it stored, and the list it replaced, so a cut the game reports a lap late
+        # can be taken back cleanly without touching the run a later lap stored for that sector
         self._prev_tyres_out = 0  # the previous sample's count, for the verbose log
         self._prev_cut_active = False  # the previous sample's race-cut state, for the verbose log
         self._prev_cut_gained = 0
@@ -270,7 +280,7 @@ class BrakeEngine:
         pos = min(max(s.pos, 0.0), 0.99999)
         sector = self._sector_of(pos)
 
-        self._history.append((s.t, pos, s.in_pit))
+        self._history.append((s.t, pos, s.in_pit, self._lap_no))
         while self._history and self._history[0][0] < s.t - _HISTORY_S:
             self._history.popleft()
 
@@ -294,6 +304,8 @@ class BrakeEngine:
                 if sector == 0:
                     if not s.in_pit:
                         self._laps_done += 1  # crossed the line: one more lap completed
+                    self._lap_no += 1  # a new lap: late cuts of the old one no longer mark it
+                    self._prune_lap_runs()
                     self._fired_warn.clear()
                     self._fired_here.clear()
                     self._lap_saw_off = False
@@ -362,6 +374,8 @@ class BrakeEngine:
             last_result_age=(s.t - self._last_result_t) if self._last_result else None,
             pass_flag=self._pass_flag(),
             last_result=self._last_result,
+            late_cut=self._late_cut,
+            late_cut_age=(s.t - self._late_cut_t) if self._late_cut else None,
         )
 
     def _pass_flag(self) -> str:
@@ -376,6 +390,10 @@ class BrakeEngine:
     def _clear_tracking(self) -> None:
         self._prev_pos = None
         self._lap_valid = None
+        self._lap_no = 0
+        self._status_lap = 0
+        self._late_cut = ""
+        self._late_cut_t = 0.0
         self._lap_saw_off = False
         self._lap_warned = False
         self._tyres_over = False
@@ -546,7 +564,7 @@ class BrakeEngine:
             return
         fresh = bool(self._lap_valid)  # a fresh drop, not the state the app found at start-up
         where = pos if s.in_pit else self._infraction_pos(pos)
-        took_back = self._attribute("lap invalidated", where)
+        took_back = self._attribute("lap invalidated", where, self._infraction_lap(pos, s.in_pit))
         duplicate = abs(s.t - self._cut_reported_at) < _DUPLICATE_REPORT_S
         self._cut_reported_at = s.t
         if not fresh or duplicate:
@@ -568,26 +586,42 @@ class BrakeEngine:
         """The game's log reported a cut; drop the sector it happened in.
 
         Called from the log tail (same thread as :meth:`update`). ``at`` is when the game wrote the
-        line: the game buffers its log, so it can be read seconds later, and a whole lap's cuts can
-        arrive in one read. Attributing from the car's position at ``at`` keeps each of them in its
-        own sector.
+        line. The game buffers its log (a few KB, flushed when full), so a cut can be read seconds
+        or a whole lap after it was judged, and a whole batch can arrive at once. Each is therefore
+        attributed from the car's position *then*, and to the lap it happened in - never to the
+        sector of the same number in the lap being driven now.
         """
         s = self._last
         if s is None or self._pass is None or not self._settings.skip_invalid_sectors:
             return
-        self._lap_saw_off = True  # the game did report a cut: the bare-cut warning does not apply
         if abs(at - self._cut_reported_at) < _DUPLICATE_REPORT_S:
             return  # the lap flag already stood for this same cut
         self._cut_reported_at = at
-        pos, in_pit = self._pos_at(at)
+        found = self._pos_at(at)
+        if found is None:
+            log.debug(
+                "limits: %s written at %.3f is older than the kept history (%.0f s): not used",
+                reason,
+                at,
+                _HISTORY_S,
+            )
+            return
+        pos, in_pit, lap = found
+        if lap == self._lap_no:  # a cut of the lap being driven: not a bare lap-flag drop
+            self._lap_saw_off = True
         where = pos if in_pit else self._infraction_pos(pos)
-        took_back = self._attribute("off track", where)
+        took_back = self._attribute("off track", where, lap)
+        if lap != self._status_lap:  # the bar does not hold that lap any more: nothing to grey
+            lap_word = "the last lap" if self._lap_no - lap == 1 else "an earlier lap"
+            self._late_cut = f"S{self._sector_of(where) + 1} of {lap_word} won't count · cut"
+            self._late_cut_t = s.t
         log.debug(
-            "limits: %s written at %.3f (read %.1f s later), car at %.1f%% (S%d), "
+            "limits: %s written at %.3f (read %.1f s later, %s), car at %.1f%% (S%d), "
             "attributed %s at %.1f%% (S%d), run %s",
             reason,
             at,
             s.t - at,
+            self._laps_back(lap),
             pos * 100.0,
             self._sector_of(pos) + 1,
             f"{self._settings.cut_give_back_m:.0f} m back",
@@ -595,21 +629,55 @@ class BrakeEngine:
             self._sector_of(where) + 1,
             "taken back" if took_back else "not stored",
         )
-        self._on_message(f"{reason} at {where:.0%} of the lap: {self._note(took_back)}")
+        self._on_message(self._report_text(reason, where, lap, took_back))
 
-    def _pos_at(self, at: float) -> tuple[float, bool]:
-        """Where the car was (position, in the pits) when the game wrote a report at time ``at``.
+    def _report_text(self, reason: str, where: float, lap: int, took_back: bool) -> str:
+        """What to tell the driver about a reported cut.
 
-        Falls back to the latest sample when ``at`` is outside the kept history, or ahead of it,
-        which a little clock skew between the log and the telemetry can do.
+        For a lap that is over the sector is named: its colours have been replaced on the sector bar
+        by the lap being driven, so "this sector" would point at the wrong one.
+        """
+        if lap == self._lap_no:
+            return f"{reason} at {where:.0%} of the lap: {self._note(took_back)}"
+        outcome = "had its stored run taken back" if took_back else "will not count"
+        return (
+            f"{reason}{self._lap_phrase(lap)} at {where:.0%} of it: "
+            f"S{self._sector_of(where) + 1} {outcome}"
+        )
+
+    def _laps_back(self, lap: int) -> str:
+        """``this lap`` when a report is about the lap being driven, else how far back it is."""
+        back = self._lap_no - lap
+        if back <= 0:
+            return "this lap"
+        return "1 lap back" if back == 1 else f"{back} laps back"
+
+    def _lap_phrase(self, lap: int) -> str:
+        """The lap a report belongs to, for the message, when it is not the one being driven."""
+        back = self._lap_no - lap
+        if back <= 0:
+            return ""
+        return " in the previous lap" if back == 1 else " in an earlier lap"
+
+    def _pos_at(self, at: float) -> tuple[float, bool, int] | None:
+        """The car when the game wrote a report at ``at``: (position, in the pits, lap).
+
+        None when ``at`` is older than the kept history - guessing from the current position would
+        drop the wrong sector, which is worse than saying nothing.
         """
         s = self._last
         if s is not None and at >= s.t:
-            return min(max(s.pos, 0.0), 0.99999), s.in_pit
-        for ts, pos, in_pit in reversed(self._history):
+            return min(max(s.pos, 0.0), 0.99999), s.in_pit, self._lap_no
+        for ts, pos, in_pit, lap in reversed(self._history):
             if ts <= at:
-                return pos, in_pit
-        return (min(max(s.pos, 0.0), 0.99999), s.in_pit) if s is not None else (0.0, False)
+                return pos, in_pit, lap
+        return None
+
+    def _prune_lap_runs(self) -> None:
+        """Forget the stored-run records of laps too old for a late cut to still reach."""
+        oldest = self._lap_no - _RUNS_KEPT_LAPS + 1
+        for key in [k for k in self._lap_runs if k[0] < oldest]:
+            del self._lap_runs[key]
 
     @staticmethod
     def _note(took_back: bool) -> str:
@@ -624,32 +692,63 @@ class BrakeEngine:
         back = self._settings.cut_give_back_m / max(self._length_m, 1.0)
         return (pos - back) % 1.0
 
-    def _attribute(self, reason: str, where: float) -> bool:
-        """Make the sector at ``where`` not count; True if a stored run was taken back.
+    def _infraction_lap(self, pos: float, in_pit: bool) -> int:
+        """The lap a cut reported at ``pos`` happened in.
 
-        The sector may still be in progress (the pass is flagged) or already closed this lap (its
-        stored run is removed, since the game reported the cut too late to stop it being saved).
-        A closed sector is shown as not counted either way, even when it had no run to take back.
+        Same reasoning as :meth:`_infraction_pos`: a report closer to the line than the give-back
+        distance is about a cut in the lap that has just ended, and taking it out of this lap's
+        sector of that number would take the wrong run and grey the wrong colour.
+        """
+        if in_pit:
+            return self._lap_no
+        back = self._settings.cut_give_back_m / max(self._length_m, 1.0)
+        return self._lap_no - 1 if pos - back < 0.0 else self._lap_no
+
+    def _attribute(self, reason: str, where: float, lap: int) -> bool:
+        """Make the sector of ``lap`` at ``where`` not count; True if a stored run was taken back.
+
+        The sector may still be in progress (the pass is flagged) or already closed (its stored run
+        is removed, since the game reported the cut too late to stop it being saved). A closed
+        sector is shown as not counted either way, even when it had no run to take back.
+
+        ``_status`` only holds one lap's colours: the lap being driven, after its first sector has
+        closed, and the previous lap's until then. A cut is dropped on the lap it belongs to, so a
+        late one for a lap whose colours are already gone touches no sector of the current lap.
         """
         idx = self._sector_of(where)
-        if idx == self._sector:
+        if lap == self._lap_no and idx == self._sector:
             self._flag(reason)
             return False
-        if 0 <= idx < len(self._status):
+        if lap == self._status_lap and 0 <= idx < len(self._status):
             self._status[idx] = SectorStatus.PENDING
-        return self._drop_run(idx)
+        return self._drop_run(lap, idx)
 
-    def _drop_run(self, idx: int) -> bool:
-        """Take back the run this lap stored for sector ``idx``; True if there was one to take.
+    def _drop_run(self, lap: int, idx: int) -> bool:
+        """Take back the run ``lap`` stored for sector ``idx``; True if there was one to take.
 
-        The whole previous list is restored, not just the new run removed: keeping the top runs
-        already discarded the one it displaced.
+        Both the stored run and the run it displaced when it was kept are undone, as the top-runs
+        list has already dropped the latter. The entry is keyed by lap, so a cut the game reports a
+        lap late cannot take back the run a later lap has stored for the same sector.
         """
-        entry = self._lap_runs.pop(idx, None)
+        entry = self._lap_runs.pop((lap, idx), None)
         if entry is None or self._data is None:
             return False
         run, previous = entry
-        self._data.sectors[idx] = previous
+        # Remove exactly the run this cut put in, and put back whatever it displaced. The whole
+        # list cannot just be restored: a later lap may have stored a run of its own in this sector
+        # since, and that one is clean and must stay. Runs are matched by identity, since two laps
+        # can hold runs of equal value; the value is a fallback for data reloaded from disk.
+        current = list(self._data.sectors[idx])
+        kept = [r for r in current if r is not run]
+        if len(kept) == len(current):
+            for pos, other in enumerate(current):
+                if other == run:
+                    kept = [*current[:pos], *current[pos + 1 :]]
+                    break
+        for r in previous:
+            if not any(r is k for k in kept):
+                kept.append(r)
+        self._data.sectors[idx] = sorted(kept, key=lambda r: r.t)[: self._settings.top_runs]
         if self._last_closed is not None and self._last_closed[1] is run:
             self._last_closed = None
         self._rebuild_zones()
@@ -766,12 +865,15 @@ class BrakeEngine:
     def _close_sector(self, t: float) -> None:
         run, idx, data = self._pass, self._sector, self._data
         self._last_closed = None
-        self._lap_runs.pop(idx, None)  # this run is being replaced; only what we store now counts
+        # this run is being replaced; only what we store now counts (this lap's, not a late cut's
+        # entry for an earlier lap of the same sector number)
+        self._lap_runs.pop((self._lap_no, idx), None)
         if run is None or data is None:
             return
         learning = self._settings.learning_enabled
         if idx == 0:  # a new lap's first sector is done: clear last lap's colours
             self._status = [SectorStatus.PENDING] * self._n
+            self._status_lap = self._lap_no
         if not run.clean:
             note = "not counted (pit, reset or partial)"
             self._report(SectorResult(idx, None, False, None, note))
@@ -806,7 +908,7 @@ class BrakeEngine:
             data.sectors[idx] = kept
             if accepted:
                 self._last_closed = (idx, stored)
-                self._lap_runs[idx] = (stored, previous)
+                self._lap_runs[(self._lap_no, idx)] = (stored, previous)
                 self._rebuild_zones()
                 self._store.save(data)
         # with learning off the colours still show how the sector compared, but nothing is stored

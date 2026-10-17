@@ -100,10 +100,14 @@ one the give-back distance behind it (`cut_give_back_m`). That is why a dropped 
 have been saved: its run is then taken back, restoring the list it replaced. The cost of a wrong drop
 is confined to a sector, and clean sectors in between are still kept.
 
-The game buffers its log, so a line can be read seconds after it was written and a single read can
-bring several cuts. Each line's own timestamp is therefore what the engine attributes from: it looks
-the car's position up from a short history of recent samples (three minutes) instead of using the
-position at read time. Without that, a cut read late would be dropped one sector too far on.
+The game buffers its log (a few KB, flushed when full), so in quiet running a line can sit unwritten
+for a minute or more, and a single read can bring a whole lap's cuts. Each line's own timestamp is
+therefore what the engine attributes from: it looks the car's position, and the lap, up from a short
+history of recent samples (five minutes) instead of using the position at read time. Without that, a
+cut read late would be dropped one sector too far on. A cut can even land after the lap it belongs to
+has ended. Its sector is still the one it is taken out of - the run that lap saved is taken back -
+never the sector of the same number in the lap being driven now, and when the sector bar has already
+moved on to the next lap the status line says which sector of which lap it was.
 
 If the game's log cannot be found the app says so and falls back to the lap flag alone (one cut per
 lap). When the lap flag drops with no other signal at all, the app logs a warning that names the
