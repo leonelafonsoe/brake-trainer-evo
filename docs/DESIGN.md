@@ -94,9 +94,11 @@ already-invalid lap. The live race-cut pair and the count of tyres off the track
 where the game publishes them (all four tyres while the lap is valid; for the rest of an invalid lap
 the lower "...once the lap is invalid" count, default 2).
 
-A cut is judged by the time it gains, and the game only reports it after its give-back window (500 m
-of track) has passed. The report therefore arrives after the cut, and the sector it is about is the
-one the give-back distance behind it (`cut_give_back_m`). That is why a dropped sector may already
+A cut is judged by the time it gains, and the game only reports it at the end of its give-back
+window. The report therefore arrives after the cut, and the sector it is about is the one the
+give-back distance behind it (`cut_give_back_m`). That distance is a couple of hundred metres, not
+the 500 m first assumed: on Monza a cut in the Ascari chicane is reported around the corner's exit,
+which put the first guess out on the straight before it. That is why a dropped sector may already
 have been saved: its run is then taken back, restoring the list it replaced. The cost of a wrong drop
 is confined to a sector, and clean sectors in between are still kept.
 

@@ -147,7 +147,12 @@ CORNERS = [0.20, 0.50, 0.80]
 
 
 def _engine(store, **settings):
-    """A warmed-up engine on a 5-sector, 5000 m track: a 500 m lookback is 0.1 of a lap."""
+    """A warmed-up engine on a 5-sector, 5000 m track: a 500 m lookback is 0.1 of a lap.
+
+    The lookback is pinned here so these tests exercise the attribution, not the shipped default,
+    which is far smaller and would keep several of the cuts inside the sector the report lands in.
+    """
+    settings.setdefault("cut_give_back_m", 500.0)
     results: list = []
     messages: list[str] = []
     engine = BrakeEngine(
@@ -292,6 +297,18 @@ def test_a_cut_from_before_the_kept_history_is_skipped_rather_than_guessed(store
     assert not any("reported a cut" in m for m in messages)
 
 
+def test_the_shipped_lookback_only_shifts_a_cut_a_little(store):
+    # The shipped default is small on purpose: the game reports a cut around the corner it happened
+    # in, not far down the road. 150 m on this 5000 m track is 0.03 of a lap, so a cut reported
+    # inside a sector stays in that sector and only a report made just past a line steps back over
+    # it.
+    engine, driver, _, messages = _engine(store, cut_give_back_m=Settings().cut_give_back_m)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.55)  # 150 m back is 0.52, still 0.4..0.6
+    engine.report_infraction("the game reported a cut", driver.t)
+    assert engine.snapshot().pass_flag == "off track"
+    assert any("S3 will not count" in m for m in messages)
+
+
 def test_the_give_back_distance_can_be_switched_off(store):
     # 0 = trust the position the report arrives at, so the sector in progress is the one dropped.
     engine, driver, _, _ = _engine(store, cut_give_back_m=0)
@@ -325,7 +342,9 @@ def test_a_cut_in_a_sector_that_was_not_saved_still_shows_as_not_counted(store):
     driver.lap(CORNERS, speed_fn=lambda p: 195, stop=0.63)  # slower than the warm-up runs
     engine.report_infraction("the game reported a cut", driver.t)
     assert engine.snapshot().sector_status[2] is SectorStatus.PENDING
-    assert any("will not count" in m for m in messages)
+    # The message names the sector rather than saying "this sector", so the driver can tell which
+    # cell on the bar just went grey (the app counts sectors from 1, so 0.4..0.6 is S3).
+    assert any("S3 will not count" in m for m in messages)
 
 
 def test_cuts_are_ignored_when_invalid_sectors_are_not_skipped(store):

@@ -333,10 +333,10 @@ TABS: dict[str, list[Spec]] = {
             0,
             " m",
             tip=(
-                "The game judges a cut by the time it gains and reports it only after you have "
-                "failed to give that time back within this distance, so the sector it happened in "
-                "is this far behind the report. 500 m is the game's own window; 0 uses the "
-                "position the report arrives at."
+                "The game judges a cut by the time it gains and reports it only at the end of its "
+                "give-back window, so the sector it happened in sits this far behind the report. "
+                "Kept small: measured on track, a cut is reported around the corner it happened "
+                "in. 0 uses the position the report arrives at."
             ),
         ),
         Spec(

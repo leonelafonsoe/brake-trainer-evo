@@ -85,8 +85,9 @@ A sector pass is not saved when:
   in a lap it has already invalidated), and, where the game publishes them, the "race cut" pair and
   the live count of tyres off the track (Settings: "Skip sector if tyres off track", and "...once the
   lap is invalid"; while the lap is still valid the tyre count takes all four tyres, the game's own
-  rule). Because the game only reports a cut after its give-back window (500 m), the sector it really
-  happened in is that far behind the report; if that sector was already saved, its run is taken back.
+  rule). Because the game only reports a cut at the end of its give-back window (a couple of hundred
+  metres), the sector it really happened in is that far behind the report; if that sector was already
+  saved, its run is taken back.
   The game buffers its log, so a cut can be read a minute after it was written, or after the lap it
   belongs to has ended, and several can arrive at once. Each line carries its own time, so every cut
   still lands in the sector - and the lap - it happened in, never in the sector of the same number in

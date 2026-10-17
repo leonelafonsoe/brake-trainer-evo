@@ -1,8 +1,8 @@
 """The game's own log: the per-cut events its shared memory does not publish.
 
-Assetto Corsa EVO judges a track cut by the time it gains. It gives the driver a fixed give-back
-window (~500 m) to hand that time back and only reports the cut once the window has passed, as a
-HUD notification. That notification is written to the log as::
+Assetto Corsa EVO judges a track cut by the time it gains. It gives the driver a give-back window to
+hand that time back and only reports the cut once the window has passed, as a HUD notification. That
+notification is written to the log as::
 
     ... [gameface] [info] Adding notification UINotificationType_SessionPenalty
 

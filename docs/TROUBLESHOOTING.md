@@ -96,9 +96,11 @@ position, sector and the sector the cut was attributed to. See
 [TELEMETRY.md](TELEMETRY.md#track-limits).
 
 **A cut is dropped one sector too late (or too early)**
-The game only reports a cut after its 500 m give-back window, so the app reads the sector back from
-the report by that distance. If your build uses a different window, tune Settings -> Sectors ->
-*Cut give-back window*: larger reads further back, `0` uses the sector the report arrives in.
+The game only reports a cut at the end of its give-back window, so the app reads the sector back from
+the report by that distance (Settings -> Sectors -> *Cut give-back window*, default 150 m). If your
+build reports cuts from further back, raise it: larger reads further back, `0` uses the sector the
+report arrives in. The verbose log prints, per cut, the car's position when the report was written,
+the position attributed and the sector of each, so the right value can be read off a single run.
 
 The game buffers its log (a few KB, flushed when full), so a cut can be read a minute after it was
 written - or after the lap it was in has ended - and a whole lap's cuts can arrive at once. The app

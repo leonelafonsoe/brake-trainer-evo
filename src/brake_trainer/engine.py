@@ -570,7 +570,8 @@ class BrakeEngine:
         if not fresh or duplicate:
             return
         self._on_message(
-            f"The game invalidated the lap at {where:.0%} of the lap: {self._note(took_back)}"
+            f"The game invalidated the lap at {where:.0%} of the lap: "
+            f"{self._drop_text(where, took_back)}"
         )
         if self._lap_saw_off or self._lap_warned:
             return
@@ -632,17 +633,17 @@ class BrakeEngine:
         self._on_message(self._report_text(reason, where, lap, took_back))
 
     def _report_text(self, reason: str, where: float, lap: int, took_back: bool) -> str:
-        """What to tell the driver about a reported cut.
+        """What to tell the driver about a reported cut, always naming the sector it dropped.
 
-        For a lap that is over the sector is named: its colours have been replaced on the sector bar
-        by the lap being driven, so "this sector" would point at the wrong one.
+        The sector is named rather than called "this sector": on a lap that is over the sector bar
+        holds the lap being driven instead, and even on the lap being driven the attributed spot can
+        sit on the far side of a line from the sector the driver felt they were in.
         """
         if lap == self._lap_no:
-            return f"{reason} at {where:.0%} of the lap: {self._note(took_back)}"
-        outcome = "had its stored run taken back" if took_back else "will not count"
+            return f"{reason} at {where:.0%} of the lap: {self._drop_text(where, took_back)}"
         return (
             f"{reason}{self._lap_phrase(lap)} at {where:.0%} of it: "
-            f"S{self._sector_of(where) + 1} {outcome}"
+            f"{self._drop_text(where, took_back)}"
         )
 
     def _laps_back(self, lap: int) -> str:
@@ -679,9 +680,10 @@ class BrakeEngine:
         for key in [k for k in self._lap_runs if k[0] < oldest]:
             del self._lap_runs[key]
 
-    @staticmethod
-    def _note(took_back: bool) -> str:
-        return "its stored run was taken back" if took_back else "this sector will not count"
+    def _drop_text(self, where: float, took_back: bool) -> str:
+        """The sector a dropped spot fell in, and what happened to its run: "S4 will not count"."""
+        outcome = "had its stored run taken back" if took_back else "will not count"
+        return f"S{self._sector_of(where) + 1} {outcome}"
 
     def _infraction_pos(self, pos: float) -> float:
         """The lap position a report arriving at ``pos`` is really about.

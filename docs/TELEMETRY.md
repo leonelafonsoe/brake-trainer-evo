@@ -47,11 +47,12 @@ Track limits follow the game, using three of its own signals:
   applies for the rest of that lap.
 
 **Why a report is read back.** The game judges a cut by the time it gains: it gives the driver a
-fixed window (500 m, its own rule) to give that time back, and only reports the cut once the window
-has passed. By then the car has driven on, so the sector the cut is really about is the one the
-give-back distance behind the report (Settings: *Cut give-back window*, default 500 m). If that
+window to give that time back, and only reports the cut once the window has passed. By then the car
+has driven on, so the sector the cut is really about is the one the give-back distance behind the
+report (Settings: *Cut give-back window*, default 150 m). On-track data (Monza) puts that window at a
+couple of hundred metres - a cut in the Ascari chicane is reported around the corner's exit. If that
 sector was already saved, its run is taken back (`S3: its stored run was taken back`); if it is still
-in progress, the pass is flagged (`S3 won't count`).
+in progress, the pass is flagged (`S3 will not count`).
 
 **Read from the line's own time.** The game buffers this log (a few KB, flushed when full), so a line
 can reach the file a minute after it was written - or after the lap it belongs to has ended - and one

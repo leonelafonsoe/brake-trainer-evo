@@ -180,7 +180,10 @@ def test_sector_straddling_a_pause_is_not_stored(store):
 
 def _fast_lap_results(store, **lap_kwargs):
     results = []
-    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
+    # The lookback is pinned (a 500 m report is 0.1 of this 5000 m lap): these tests exercise the
+    # read-back, not the shipped default, which is far smaller.
+    settings = Settings(n_sectors=5, warmup_laps=0, cut_give_back_m=500.0)
+    engine = BrakeEngine(settings, store, on_sector=results.append)
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)

@@ -4,6 +4,12 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+- The give-back read-back distance is now 150 m by default, not 500 m, and every cut message names
+  the sector it dropped ("S4 will not count") on the lap being driven as well as on an earlier one.
+  Measured on track, the game reports a cut around the corner it happened in (a Monza cut in the
+  Ascari chicane came back at the corner's exit), where 500 m put the named spot out on the straight
+  before it; the named position is now where the driver felt the off. Which sector a cut lands in is
+  unchanged for the logs checked. Tune it in Settings -> Sectors -> "Cut give-back window".
 - Fix: every off-track moment is dropped from the sector it happened in, including a second one in a
   lap the game has already invalidated. The game reports each cut in its log, once per cut
   (`Adding notification UINotificationType_SessionPenalty`); that notification is now the signal the
@@ -26,8 +32,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - The "the game reported no off-track for this invalidation" warning is only shown when the game log
   is not being followed: with the log on, every cut is in it (a few seconds later), so the fallback is
   noted in the debug log instead of warning about a limitation that does not apply.
-- Fix: the game only reports a cut after its give-back window (500 m of track), so the report arrives
-  after the sector it is about. The app now reads the sector back from the report by that distance
+- Fix: the game only reports a cut at the end of its give-back window, so the report arrives after the
+  sector it is about. The app reads the sector back from the report by that distance
   (Settings -> Sectors -> "Cut give-back window"; `0` uses the sector the report arrives in) and takes
   back the run if that sector was already saved, restoring the list it replaced. The clean sectors in
   between are kept.
