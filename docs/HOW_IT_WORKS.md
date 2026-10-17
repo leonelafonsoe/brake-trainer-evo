@@ -76,23 +76,22 @@ A sector pass is not saved when:
 - **Warm-up**: it is part of a warm-up lap (see above).
 - **Pit lane**: you were in the pit lane, or reset to the pits, during it.
 - **Partial**: you reset or teleported mid-sector, or drove less than 90% of it.
-- **Invalid lap**: the game invalidated your lap *while you were in that sector* (track limits,
-  cuts). The game's "lap valid" flag drops once and stays down, so it can only mark the sector
-  where the invalidation happened. Earlier sectors on the same lap are kept. A sector you *enter*
-  after the lap was already invalid is kept too, as long as you stay on the track in it (see the
-  next point).
-- **Off track**: the game recorded an off-track while you were in that sector (Settings: "Skip sector
-  if tyres off track", and "...once the lap is invalid"). This uses the game's per-excursion signal —
-  the "race cut" pair it writes when a wheel goes off (time gained, distance left to give it back) —
-  and, where the game publishes it, the live count of tyres off the track. It catches **every**
-  excursion, including a second one in a later sector of a lap the game already invalidated, which the
-  one-shot lap flag cannot show. While the lap is still valid the tyre count takes all four tyres (the
-  game's own rule); once the lap is invalid a lower count (default 2) applies for the rest of that lap.
+- **Invalid lap**: the game invalidated your lap for a cut that happened in it (track limits). The
+  game's "lap valid" flag drops once and stays down, so on its own it can only mark the first cut of
+  a lap. A sector you *enter* after the lap was already invalid is kept, as long as you stay on the
+  track in it (see the next point).
+- **Off track**: the game reported a cut that happened while you were in that sector. This uses the
+  per-cut event the game writes to its log (one per cut, and the only signal that shows a second cut
+  in a lap it has already invalidated), and, where the game publishes them, the "race cut" pair and
+  the live count of tyres off the track (Settings: "Skip sector if tyres off track", and "...once the
+  lap is invalid"; while the lap is still valid the tyre count takes all four tyres, the game's own
+  rule). Because the game only reports a cut after its give-back window (500 m), the sector it really
+  happened in is that far behind the report; if that sector was already saved, its run is taken back.
 - **Paused**: learning was paused at any point during it.
 
-The signals above are the game's own, read from its telemetry. When the game invalidates a lap for an
-infraction it does not expose per violation (no race cut and no tyres reported off), the app says so
-in its log and can only drop the sector where the flag dropped. See [TELEMETRY.md](TELEMETRY.md).
+The signals above are the game's own. When the game invalidates a lap for an infraction it does not
+expose (no cut in its log, no race cut and no tyres reported off), the app says so in its log and can
+only drop the sector where the flag dropped. See [TELEMETRY.md](TELEMETRY.md).
 
 The reason is shown on the overlay ("S3 won't count · lap invalidated") and in the log.
 

@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..config import Settings
+from ..gamelog import DEFAULT_LOG_DIR
 from ..models import CueKind
 from ..paths import app_dir
 from ..storage import DataEdit, DeleteEntry, DeleteRun, DeleteSector, TrackStore
@@ -323,6 +324,22 @@ TABS: dict[str, list[Spec]] = {
             ),
         ),
         Spec(
+            "cut_give_back_m",
+            "Cut give-back window",
+            "float",
+            0,
+            2000,
+            50,
+            0,
+            " m",
+            tip=(
+                "The game judges a cut by the time it gains and reports it only after you have "
+                "failed to give that time back within this distance, so the sector it happened in "
+                "is this far behind the report. 500 m is the game's own window; 0 uses the "
+                "position the report arrives at."
+            ),
+        ),
+        Spec(
             "top_runs",
             "Fastest runs kept per sector",
             "int",
@@ -393,6 +410,25 @@ TABS: dict[str, list[Spec]] = {
             "Game process name contains",
             "text",
             tip="Part of the game's process name, used to detect that it is running or has closed.",
+        ),
+        Spec(
+            "use_game_log",
+            "Follow the game's log for cuts",
+            "bool",
+            tip=(
+                'The game\'s shared memory can only show the first cut of a lap (its "lap valid" '
+                "flag drops once). The game's log records one event per cut, which the app uses to "
+                "drop a second cut's sector too."
+            ),
+        ),
+        Spec(
+            "game_log_dir",
+            "Game log folder",
+            "text",
+            tip=(
+                "Where the game writes its logs. Empty = the usual place under Saved Games "
+                "(<profile>/Saved Games/ACE/Logs)."
+            ),
         ),
         Spec(
             "telemetry_hz",
@@ -535,16 +571,17 @@ class SettingsWindow(QDialog):
         layout.setContentsMargins(16, 16, 16, 16)
         intro = QLabel(
             "Troubleshooting. Verbose logging adds detail about the game's track-limit signals "
-            "(the race cut and the live tyre count) and the lap flag. Turn it on, reproduce the "
-            "problem, then share the log file: it is the fastest way to explain a sector that was "
-            "kept or dropped wrongly."
+            "(every cut read from the game's log, with the sector it is attributed to, and the lap "
+            "flag). Turn it on, reproduce the problem, then share the app log: the fastest way to "
+            "explain a sector that was kept or dropped wrongly."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
         layout.addWidget(self._form(specs))
         row = QHBoxLayout()
         for text, slot in (
-            ("Open log folder", self._open_log_folder),
+            ("Open app log folder", self._open_log_folder),
+            ("Open the game's log folder", self._open_game_log_folder),
             ("Open data folder", self._open_folder),
         ):
             btn = QPushButton(text)
@@ -684,6 +721,10 @@ class SettingsWindow(QDialog):
 
     def _open_log_folder(self) -> None:
         self._reveal(app_dir())
+
+    def _open_game_log_folder(self) -> None:
+        folder = self._get_settings().game_log_dir
+        self._reveal(Path(folder).expanduser() if folder else DEFAULT_LOG_DIR)
 
     @staticmethod
     def _reveal(folder: Path) -> None:

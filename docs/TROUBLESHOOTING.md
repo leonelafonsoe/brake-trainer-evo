@@ -82,17 +82,23 @@ The line under the sector bar usually tells you why nothing is being learned:
 | --- | --- | --- |
 | Warm-up lap · not learning | The first lap after the pits (and after starting the app) is skipped | Keep driving, or set "Ignore laps after leaving the pits" to Off |
 | Learning paused | Learning is off | Press the resume button on the overlay |
-| S3 won't count · lap invalidated | The game invalidated the lap in that sector | Nothing; the next clean sector counts |
-| S3 won't count · off track | The game recorded an off-track in that sector | If it triggers too often set "Skip sector if tyres off track" and "...once the lap is invalid" to Off |
+| S3 won't count · lap invalidated | The game invalidated the lap for a cut in that sector | Nothing; the next clean sector counts |
+| S3 won't count · off track | The game reported a cut in that sector | If it triggers too often set "Skip sector if tyres off track" and "...once the lap is invalid" to Off |
 | No braking points yet | Nothing learned for this track and car | Drive 2-3 clean laps after the warm-up lap |
 
 **A second off-track moment in the same lap is not dropped**
 Once the game has invalidated a lap its "lap valid" flag stays down, so it cannot show a later
-mistake. The game's per-excursion signal — the "race cut" pair it writes when a wheel goes off — is
-what catches those, along with the live count of tyres off the track where the game publishes it. If a
-later sector is still saved after a moment the game flagged, turn on verbose logging and share the
-log: it records every track-limit signal the game reported, with position and sector. See
+mistake. The per-cut event the game writes to its log is what catches those, and the app follows
+that log (Settings -> App -> *Follow the game's log for cuts*). If the log cannot be found the app
+says so and only the lap flag is left. If a later sector is still saved after a moment the game
+flagged, turn on verbose logging and share the log: it records every track-limit signal with its
+position, sector and the sector the cut was attributed to. See
 [TELEMETRY.md](TELEMETRY.md#track-limits).
+
+**A cut is dropped one sector too late (or too early)**
+The game only reports a cut after its 500 m give-back window, so the app reads the sector back from
+the report by that distance. If your build uses a different window, tune Settings -> Sectors ->
+*Cut give-back window*: larger reads further back, `0` uses the sector the report arrives in.
 
 **Corners are missing or doubled**
 Braking points closer than "Same-corner distance" (40 m) count as one corner. Tune it in Settings
@@ -127,11 +133,12 @@ The app always writes a rotating log (about 1 MB per file, 3 older ones kept):
 
 `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`
 
-Settings -> Diagnostics -> **Open log folder** opens it. **Verbose (debug) logging** adds a line
-every time the game's track-limit signals change (the race-cut pair, the live count of tyres off the
-track, the lap flag and the timing invalid flag), with the position and sector, and records which
-telemetry regions the SDK attached to. That is the detail a report about a kept or dropped sector
-needs, so the fastest way to report a track-limits problem is:
+Settings -> Diagnostics -> **Open app log folder** opens it. **Verbose (debug) logging** adds a line
+every time the game's track-limit signals change (the race-cut pair and the live tyre count, where the
+game publishes them, the lap flag and the timing invalid flag) and each time the app reads a cut from
+the game's log, with the position, the sector it was reported in and the sector the cut was attributed
+to. It also records which telemetry regions the SDK attached to. That is the detail a report about a
+kept or dropped sector needs, so the fastest way to report a track-limits problem is:
 
 1. Turn on "Verbose (debug) logging" (Settings -> Diagnostics), apply, and reproduce the problem
    for a lap or two.
@@ -144,5 +151,7 @@ so the log stays small in normal use.
 
 - Reset settings: delete `%APPDATA%\BrakeTrainerEvo\settings.json`
 - Reset learned data: Settings -> Data, or delete the files in `%APPDATA%\BrakeTrainerEvo\data\`
+- The game's own log, which the app reads for cuts, lives in `Saved Games\ACE\Logs` (**Open the
+  game's log folder** in Diagnostics, or set the path under Settings -> App -> *Game log folder*).
 
 See [DATA.md](DATA.md) for what the files contain.

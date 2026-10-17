@@ -75,13 +75,17 @@ _LEAD_SPAN_M = 150.0  # the cue warns this far before a braking point
 # Flags shown on the overlay for the sector in progress (in priority order).
 _PASS_FLAGS = ("lap invalidated", "off track")
 
+# The lap flag and the log's cut notification describe the same event a moment apart; a second
+# report within this long is folded into the first.
+_DUPLICATE_REPORT_S = 2.0
+
 # Shown when the game invalidates a lap that the app saw no off-track for (no race cut, no tyres
-# off the track): the game judged it from something it does not expose per violation, so the sector
-# it happened in cannot be identified.
+# off the track, no cut in its log): the game judged it from something it does not expose per
+# violation, so the sector it happened in cannot be identified.
 _CUT_WARNING = (
-    "The game invalidated the lap, but it reported no off-track for it (no race cut and no tyres "
-    "off the track). The app can then only drop the sector where the lap flag dropped, not the "
-    "sector the cut happened in."
+    "The game invalidated the lap, but it reported no off-track for it (no cut in its log, no race "
+    "cut and no tyres off the track). The app can then only drop the sector where the lap flag "
+    "dropped, not the sector the cut happened in."
 )
 
 
@@ -194,6 +198,9 @@ class BrakeEngine:
         self._tyres_over = False  # the tyre count is over the limit right now (for the message)
         self._cut_active = False  # the game's race-cut signal is up right now
         self._cut_gained = 0  # the last race-cut gain it reported, for spotting a new cut
+        self._cut_reported_at = 0.0  # when the game last reported a cut, to fold duplicate signals
+        self._lap_runs: dict[int, tuple[SectorRun, list[SectorRun]]] = {}  # stored run, and the
+        # list it replaced, so a cut the game reports late can be taken back cleanly
         self._prev_tyres_out = 0  # the previous sample's count, for the verbose log
         self._prev_cut_active = False  # the previous sample's race-cut state, for the verbose log
         self._prev_cut_gained = 0
@@ -363,6 +370,8 @@ class BrakeEngine:
         self._tyres_over = False
         self._cut_active = False
         self._cut_gained = 0
+        self._cut_reported_at = 0.0
+        self._lap_runs = {}
         self._prev_tyres_out = 0
         self._prev_cut_active = False
         self._prev_cut_gained = 0
@@ -459,19 +468,22 @@ class BrakeEngine:
     def _check_track_limits(self, s: Sample, pos: float) -> None:
         """Track limits and other infractions, from the game's telemetry.
 
-        Three of the game's own signals, all in the frames the app already reads:
+        The game's own signals, in the frames the app already reads:
 
-        * the race-cut pair (time gained and the distance left to give it back) is filled in for
-          every off-track, so it flags the sector each one happened in — including a second one in
-          a lap the game has already invalidated;
-        * ``number_of_tyres_out`` is a live count, where the game publishes it, with the same
-          effect;
         * ``is_valid_lap`` is a *one-shot* state: it drops when the game invalidates the lap and
-          stays down until the lap ends, so on its own it can only mark the sector where it dropped.
+          stays down until the lap ends, so on its own it can only mark one cut per lap. The game
+          reports the cut only after its give-back window, so the sector is taken from behind the
+          flag (``cut_give_back_m``);
+        * the race-cut pair (time gained and the distance left to give it back) is filled in for
+          every off-track, where the game publishes it;
+        * ``number_of_tyres_out`` is a live count, where the game publishes it.
 
-        An infraction the game judges from something it does not expose (a cut it invalidates with
-        no race cut and no tyres off the track) cannot be pinned to a sector; that is said out loud
-        (a warning) rather than guessed at.
+        A second cut in an already-invalid lap comes from the game's log (see
+        :meth:`report_infraction`), which the app follows for exactly that event.
+
+        An infraction the game judges from something it does not expose (no cut in its log, no race
+        cut and no tyres off the track) cannot be pinned to a sector; that is said out loud (a
+        warning) rather than guessed at.
         """
         if log.isEnabledFor(logging.DEBUG):  # verbose mode: trace the signals as they change
             self._trace_track_limits(s, pos)
@@ -513,17 +525,96 @@ class BrakeEngine:
             self._flag("off track")
 
     def _check_lap_flag(self, s: Sample, pos: float) -> None:
-        """The one-shot lap flag: drop the sector where the game first invalidated the lap."""
+        """The one-shot lap flag: drop the sector the infraction happened in.
+
+        The flag drops when the game has finished judging a cut, which is its give-back window
+        (``cut_give_back_m``) after the cut, so the sector it happened in is behind the flag.
+        """
         if not self._settings.skip_invalid_sectors or s.lap_valid or self._lap_valid is False:
             return
-        self._flag("lap invalidated")
+        where = pos if s.in_pit else self._infraction_pos(pos)
+        took_back = self._attribute("lap invalidated", where)
+        self._cut_reported_at = s.t
         if self._lap_valid:  # a fresh drop, not the state the app found at start-up
             self._on_message(
-                f"The game invalidated the lap at {pos:.0%} of the lap: this sector will not count"
+                f"The game invalidated the lap at {where:.0%} of the lap: {self._note(took_back)}"
             )
             if not self._lap_saw_off and not self._lap_warned:
                 self._lap_warned = True
                 self._on_warning(_CUT_WARNING)
+
+    def report_infraction(self, reason: str) -> None:
+        """The game's log reported a cut; drop the sector it happened in.
+
+        Called from the log tail (same thread as :meth:`update`). One report per cut, including a
+        second one in a lap the lap flag has already invalidated, which that flag cannot show.
+        """
+        s = self._last
+        if s is None or self._pass is None or not self._settings.skip_invalid_sectors:
+            return
+        if s.t - self._cut_reported_at < _DUPLICATE_REPORT_S:
+            return  # the lap flag already stood for this same cut
+        pos = min(max(s.pos, 0.0), 0.99999)
+        where = pos if s.in_pit else self._infraction_pos(pos)
+        self._lap_saw_off = True
+        self._cut_reported_at = s.t
+        took_back = self._attribute("off track", where)
+        log.debug(
+            "limits: %s, reported at %.1f%% (S%d), attributed %s at %.1f%% (S%d), run %s",
+            reason,
+            pos * 100.0,
+            self._sector + 1,
+            f"{self._settings.cut_give_back_m:.0f} m back",
+            where * 100.0,
+            self._sector_of(where) + 1,
+            "taken back" if took_back else "not stored",
+        )
+        self._on_message(f"{reason} at {where:.0%} of the lap: {self._note(took_back)}")
+
+    @staticmethod
+    def _note(took_back: bool) -> str:
+        return "its stored run was taken back" if took_back else "this sector will not count"
+
+    def _infraction_pos(self, pos: float) -> float:
+        """The lap position a report arriving at ``pos`` is really about.
+
+        The game only reports a cut once the driver has failed to give the time back within its
+        give-back window, so the cut happened ``cut_give_back_m`` of track behind the report.
+        """
+        back = self._settings.cut_give_back_m / max(self._length_m, 1.0)
+        return (pos - back) % 1.0
+
+    def _attribute(self, reason: str, where: float) -> bool:
+        """Make the sector at ``where`` not count; True if a stored run was taken back.
+
+        The sector may still be in progress (the pass is flagged) or already closed this lap (its
+        stored run is removed, since the game reported the cut too late to stop it being saved).
+        A closed sector is shown as not counted either way, even when it had no run to take back.
+        """
+        idx = self._sector_of(where)
+        if idx == self._sector:
+            self._flag(reason)
+            return False
+        if 0 <= idx < len(self._status):
+            self._status[idx] = SectorStatus.PENDING
+        return self._drop_run(idx)
+
+    def _drop_run(self, idx: int) -> bool:
+        """Take back the run this lap stored for sector ``idx``; True if there was one to take.
+
+        The whole previous list is restored, not just the new run removed: keeping the top runs
+        already discarded the one it displaced.
+        """
+        entry = self._lap_runs.pop(idx, None)
+        if entry is None or self._data is None:
+            return False
+        run, previous = entry
+        self._data.sectors[idx] = previous
+        if self._last_closed is not None and self._last_closed[1] is run:
+            self._last_closed = None
+        self._rebuild_zones()
+        self._store.save(self._data)
+        return True
 
     def _trace_track_limits(self, s: Sample, pos: float) -> None:
         """Verbose log of the game's track-limit signals, only when one of them changes.
@@ -566,12 +657,17 @@ class BrakeEngine:
             )
             self._prev_timing_invalid = s.timing_invalid
         if s.lap_valid != self._lap_valid:
+            where = self._infraction_pos(pos)
             log.debug(
-                "limits: lap_valid %s -> %s at %.1f%% of the lap (S%d)",
+                "limits: lap_valid %s -> %s at %.1f%% of the lap (S%d); cut attributed %.0f m back "
+                "at %.1f%% (S%d)",
                 self._lap_valid,
                 s.lap_valid,
                 pos * 100.0,
                 self._sector + 1,
+                self._settings.cut_give_back_m,
+                where * 100.0,
+                self._sector_of(where) + 1,
             )
 
     def _sector_of(self, pos: float) -> int:
@@ -630,6 +726,7 @@ class BrakeEngine:
     def _close_sector(self, t: float) -> None:
         run, idx, data = self._pass, self._sector, self._data
         self._last_closed = None
+        self._lap_runs.pop(idx, None)  # this run is being replaced; only what we store now counts
         if run is None or data is None:
             return
         learning = self._settings.learning_enabled
@@ -665,9 +762,11 @@ class BrakeEngine:
             self._status[idx] = SectorStatus.SLOWER
 
         if learning:
+            previous = list(data.sectors[idx])  # so a late cut report can put it back
             data.sectors[idx] = kept
             if accepted:
                 self._last_closed = (idx, stored)
+                self._lap_runs[idx] = (stored, previous)
                 self._rebuild_zones()
                 self._store.save(data)
         # with learning off the colours still show how the sector compared, but nothing is stored

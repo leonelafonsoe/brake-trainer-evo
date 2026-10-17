@@ -191,13 +191,21 @@ def _fast_lap_results(store, **lap_kwargs):
     return {r.sector: r for r in results}, best_before, best_after
 
 
-def test_sector_where_the_lap_was_invalidated_is_not_saved(store):
-    # lap invalidated half-way through sector 3 (index 2: 0.4..0.6)
-    by_sector, before, after = _fast_lap_results(store, invalid_from=0.5)
+def test_the_lap_flag_is_read_back_to_the_sector_the_cut_happened_in(store):
+    # The game reports a cut only after its give-back window (500 m, 0.1 of this 5000 m lap), so a
+    # flag that drops just past the S2 line is really about a cut half-way through S2 (0.4..0.6).
+    by_sector, before, after = _fast_lap_results(store, invalid_from=0.52)
     assert by_sector[2].duration is None and "invalidated" in by_sector[2].note
     assert after[2] == before[2]  # the faster-but-invalid sector was not stored
     assert by_sector[1].accepted and after[1] < before[1]  # the sector before is kept
     assert by_sector[3].accepted and after[3] < before[3]  # later sectors were driven cleanly
+
+
+def test_a_flag_that_drops_after_the_cut_sector_closed_takes_its_run_back(store):
+    # The cut is in S2; by the time the game reports it the car is in S3 and S2 has been saved.
+    by_sector, before, after = _fast_lap_results(store, invalid_from=0.65)
+    assert after[2] == before[2]  # S2's faster run was taken back
+    assert by_sector[3].accepted and after[3] < before[3]  # clean S3 kept
 
 
 def test_sector_with_all_tyres_off_track_is_not_saved(store):

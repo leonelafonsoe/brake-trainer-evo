@@ -46,6 +46,7 @@ or the tray icon. **Apply** saves and takes effect immediately. Settings are sto
 | Skip sector if lap invalidated | `skip_invalid_sectors` | on | on / off | A sector where the game invalidates your lap (track limits, cuts) is not saved. |
 | Skip sector if tyres off track | `max_tyres_out` | 4 | off (0), or 1 - 4 | The game's live count of tyres off the track, where it publishes it. A sector is not saved if this many were off at any moment, also twice in the same lap. Off leaves it to the game's race cut and the lap flag. |
 | ...once the lap is invalid | `max_tyres_out_after_invalid` | 2 | off (0), or 1 - 4 | The game's lap flag only drops once, so the race cut and the tyre count carry the later mistakes. For the rest of an invalidated lap a sector is not saved if this many tyres go off the track in it. |
+| Cut give-back window | `cut_give_back_m` | 500 m | 0 - 2000 m | The game judges a cut by the time it gains and reports it only after you have failed to give that time back within this distance, so the sector it happened in is this far behind the report. 500 m is the game's own window; 0 uses the position the report arrives at. |
 | Fastest runs kept per sector | `top_runs` | 3 | 1 - 10 | Cue points are the median of these runs. 1 = copy your single best run. |
 | Own runs before leaving reference | `own_runs_to_replace_ref` | 2 | 1 - 10 | With a new car, borrowed points are used until you have this many runs. |
 | Preferred reference car | `reference_car` | empty | text | Part of a car name. Empty = the car with the most data on that track. |
@@ -65,6 +66,8 @@ or the tray icon. **Apply** saves and takes effect immediately. Settings are sto
 | --- | --- | --- | --- | --- |
 | Close when the game exits | `close_with_game` | on | on / off | Quit automatically (after saving) when the game exits. |
 | Game process name contains | `game_process` | assettocorsaevo | text | Part of the game's process name, used to detect that it is running or has closed. |
+| Follow the game's log for cuts | `use_game_log` | on | on / off | The game's shared memory can only show the first cut of a lap (its "lap valid" flag drops once). The game's log records one event per cut, which the app uses to drop a second cut's sector too. |
+| Game log folder | `game_log_dir` | empty | text | Where the game writes its logs. Empty = the usual place under Saved Games (<profile>/Saved Games/ACE/Logs). |
 | Telemetry rate | `telemetry_hz` | 60 Hz | 5 - 60 Hz | How often telemetry is read. Higher is more precise; 60 is plenty. |
 
 ## Diagnostics

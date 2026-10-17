@@ -32,12 +32,13 @@ _GFX_RACE_CUT_BYTES = 12  # ...then race_cut_current_delta (float32)
 
 # Said once at start-up, so the app's limits with track limits are never a silent surprise.
 TRACK_LIMITS_NOTE = (
-    "Track limits come from the game's telemetry only (its log is not read). 'is_valid_lap' is a "
-    "one-shot flag: it marks only the first invalidation of a lap. The game's own per-excursion "
-    "signal is the race-cut pair it fills in every time a wheel goes off (time gained and the "
-    "distance left to give it back), so each off-track drops the sector it happened in, including "
-    "a second one in a lap the game already invalidated. The live count of tyres off the track is "
-    "used as well where the game publishes it."
+    "Track limits come from the game: its log is followed for the cut it reports after its "
+    "give-back window, and 'is_valid_lap' (a one-shot flag that marks only the first cut of a lap) "
+    "is kept as a fallback. A cut is judged by the time it gains and reported once the driver has "
+    "failed to give that time back, so the report lands behind the cut; the sector it really "
+    "happened in is taken from the give-back distance (Settings > 'Cut give-back window'). The "
+    "game's race-cut pair and its live count of tyres off the track drop the sector as well, where "
+    "the game publishes them."
 )
 
 

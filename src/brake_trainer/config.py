@@ -26,6 +26,7 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "top_runs": (1, 10),
     "max_tyres_out": (0, 4),
     "max_tyres_out_after_invalid": (0, 4),
+    "cut_give_back_m": (0.0, 2000.0),
     "warmup_laps": (0, 5),
     "own_runs_to_replace_ref": (1, 10),
     "lead_s": (0.3, 5.0),
@@ -66,6 +67,10 @@ class Settings:
     # Once the game has invalidated the lap its flag stays down and cannot report a second mistake,
     # so a lower tyre count stands in for it in the remaining sectors of that lap (0 = off).
     max_tyres_out_after_invalid: int = 2
+    # The game judges a cut and only reports it after its give-back window has passed, so the
+    # sector a report is about is this far behind the position the report arrives at (0 = trust the
+    # report's own position).
+    cut_give_back_m: float = 500.0
     own_runs_to_replace_ref: int = 2
     reference_car: str = ""  # "" = automatic
     # --- cues ---
@@ -83,6 +88,8 @@ class Settings:
     telemetry_hz: float = 60.0
     game_process: str = "assettocorsaevo"
     close_with_game: bool = True
+    use_game_log: bool = True  # follow the game's log for the cuts it reports after the fact
+    game_log_dir: str = ""  # "" = the game's default folder under Saved Games
     debug_logging: bool = False  # verbose log for troubleshooting (see docs/TROUBLESHOOTING.md)
     # --- overlay ---
     overlay_always_on_top: bool = True

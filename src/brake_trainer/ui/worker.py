@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
 from ..audio import AudioPlayer
 from ..config import Settings, SettingsHolder
 from ..engine import BrakeEngine
+from ..gamelog import DEFAULT_LOG_DIR, GameLogTail
 from ..models import Sample, ViewState
 from ..storage import DataEdit, TrackStore
 from ..telemetry import TRACK_LIMITS_NOTE, ExitReason, TelemetryReader
@@ -79,13 +81,32 @@ class EngineWorker(QThread):
             on_restart=self._engine.reset_tracking,
         )
         ticker = asyncio.create_task(self._ticker())
+        tail = self._start_log_tail()
         try:
             reason = await reader.run(self._stop)
         finally:
             ticker.cancel()
+            if tail is not None:
+                tail.cancel()
             self._engine.flush()
         if reason is ExitReason.GAME_CLOSED:
             self.game_closed.emit()
+
+    def _start_log_tail(self) -> asyncio.Task[None] | None:
+        """Follow the game's log for the cuts it reports after the fact, if enabled."""
+        settings = self._holder.value
+        if not settings.use_game_log or self._stop is None:
+            return None
+        directory = (
+            Path(settings.game_log_dir).expanduser() if settings.game_log_dir else DEFAULT_LOG_DIR
+        )
+        tail = GameLogTail(directory, self._on_cut, self._log_message)
+        return asyncio.create_task(tail.run(self._stop))
+
+    def _on_cut(self, reason: str) -> None:
+        """A cut the game wrote to its log: the engine drops the sector it happened in."""
+        self._engine.report_infraction(reason)
+        self._emit()
 
     def _log_message(self, text: str) -> None:
         log.info(text)
