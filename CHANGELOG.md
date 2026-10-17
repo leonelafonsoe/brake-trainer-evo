@@ -26,7 +26,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   in a delayed read were folded into the first and lost, a late cut was dropped one sector too far on,
   and a cut read after its lap had ended greyed the wrong lap's sector. The verbose log now shows the
   read lag and the lap per cut, and names a cut it folded away because the lap flag had already
-  caught it, so every notice in the game's log can be accounted for.
+  caught it - even when the same batch carries later cuts - so every notice in the game's log can be
+  accounted for.
 - A cut the log reports for a lap the sector bar has already moved past is named on the status line
   ("S6 of the last lap won't count · cut") for a few seconds: there is no colour left on the bar to
   grey, and the stored run it takes back leaves no trace there either.

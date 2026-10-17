@@ -213,6 +213,7 @@ class BrakeEngine:
         self._cut_active = False  # the game's race-cut signal is up right now
         self._cut_gained = 0  # the last race-cut gain it reported, for spotting a new cut
         self._cut_reported_at = 0.0  # when the game last reported a cut, to fold duplicate signals
+        self._flag_cut_at = 0.0  # when the lap flag dropped, so its notice is not counted twice
         self._history: deque[tuple[float, float, bool, int]] = deque()  # (t, pos, in_pit, lap)
         # recently seen, so a cut the log reports late is still attributed from where the car was
         self._lap_runs: dict[tuple[int, int], tuple[SectorRun, list[SectorRun]]] = {}  # per lap and
@@ -400,6 +401,7 @@ class BrakeEngine:
         self._cut_active = False
         self._cut_gained = 0
         self._cut_reported_at = 0.0
+        self._flag_cut_at = 0.0
         self._history.clear()
         self._lap_runs = {}
         self._prev_tyres_out = 0
@@ -567,7 +569,12 @@ class BrakeEngine:
         took_back = self._attribute("lap invalidated", where, self._infraction_lap(pos, s.in_pit))
         duplicate = abs(s.t - self._cut_reported_at) < _DUPLICATE_REPORT_S
         self._cut_reported_at = s.t
-        if not fresh or duplicate:
+        if not fresh:
+            return
+        # The game writes its notice for this same cut a moment later. Remember when, so the notice
+        # is folded into this drop: a batch can carry later cuts too, and they must not hide it.
+        self._flag_cut_at = s.t
+        if duplicate:
             return
         self._on_message(
             f"The game invalidated the lap at {where:.0%} of the lap: "
@@ -595,7 +602,7 @@ class BrakeEngine:
         s = self._last
         if s is None or self._pass is None or not self._settings.skip_invalid_sectors:
             return
-        if abs(at - self._cut_reported_at) < _DUPLICATE_REPORT_S:
+        if abs(at - self._flag_cut_at) < _DUPLICATE_REPORT_S:
             # The lap flag caught this cut live, so only one sector is dropped for it. Say so, or a
             # reader counting the game's notices against the app's drops comes up one short.
             log.debug(
@@ -604,6 +611,10 @@ class BrakeEngine:
                 reason,
                 at,
             )
+            self._flag_cut_at = 0.0
+            return
+        if abs(at - self._cut_reported_at) < _DUPLICATE_REPORT_S:
+            log.debug("limits: %s written at %.3f was already read: not counted twice", reason, at)
             return
         self._cut_reported_at = at
         found = self._pos_at(at)
