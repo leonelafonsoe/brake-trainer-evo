@@ -71,6 +71,24 @@ judged only by its time, so braking late can win time in one sector and lose it 
 the late braking point is still saved. Putting the lines on straights avoids both. The warm-up
 lap is free to use for this because nothing is learned on it anyway.
 
+The survey looks for corners two ways. Braking points are the obvious one, but a corner taken flat
+has no braking point at all - Curva Grande at Monza is the example that exposed it - and lines were
+being dropped straight through it. So the survey also watches the steering the car is carrying
+(`steering_percent`, from the same graphics frame the app already reads) and counts a stretch of
+sustained steering as a corner even when no braking point was seen. The SDK does not document the
+scale that value arrives on, so the survey does not use a fixed number either: it compares each
+sample with the range the wheel moved through on the lap itself, where a straight sits near one end
+of that range and a corner sits well up it, whatever the units turn out to be. (The verbose log
+prints the range it saw, which is how the scale was pinned down.) Each line is then placed at the
+position that leaves the longest shortest sector, subject to a hard margin from every corner, so the
+app gives up a little length before it will ever cut through a corner. Asking for more
+sectors than the straights can hold pads the extra lines and says in the log which lower count fits
+("set 'Sectors per lap' to 5"), rather than silently slicing corners. The survey can last more than
+one warm-up lap (*Warm-up laps*), and the placement is made once at the end of it: a bigger sample of
+braking points and steering gives a better answer. After that the lines are left alone, because a
+stored run is timed *between* two of them - moving a line would silently re-file every sector - so
+placing them again means deleting the track's entry and driving another warm-up lap.
+
 ### The reference car is the one with the most data
 A new car borrows braking points from another car on the same track. Choosing the *fastest* car
 would hand a slow car the latest braking points; the one with the most data is the most reliable.
@@ -80,15 +98,42 @@ from getting properly placed lines). They are used only until the new car has 2 
 sector and are never saved into its file.
 
 ### Validity checks use the game's own flags
-`is_valid_lap` and the number of tyres off track come from the game, so track-limit rules match
-what the sim enforces. The sector where the lap *became* invalid is dropped; later sectors are kept
-because they can be driven cleanly.
+The game's own signals decide what counts, so track-limit rules match what the sim enforces. A
+sector a cut happened in is dropped, whatever the lap flag says.
 
-The catch is that the flag only *drops once* per lap: after that it says nothing about a second
-mistake. Counting only that drop would save a later sector with a cut in it, and a cut is usually
-faster, so it would become the "best" run and drag the braking points with it. So once the lap is
-invalid a lower tyres-off-track limit (2) stands in for the flag in the remaining sectors. Its cost is
-limited to laps that are already invalid, where losing a sector costs little.
+The catch is that the "lap valid" flag only *drops once* per lap: after that it says nothing about a
+second mistake. Counting only that drop would save a later sector with a mistake in it, and a cut is
+usually faster, so it would become the "best" run and drag the braking points with it.
+
+The game's *per-excursion* signal is the cut it reports in its log, one HUD notification per cut
+(`Adding notification UINotificationType_SessionPenalty`, build 0.5+). It is the per-violation
+trigger, so a sector is dropped for every cut the game records, including a second one in an
+already-invalid lap. The live race-cut pair and the count of tyres off the track are used as well
+where the game publishes them (all four tyres while the lap is valid; for the rest of an invalid lap
+the lower "...once the lap is invalid" count, default 2).
+
+A cut is judged by the time it gains, and the game only reports it at the end of its give-back
+window. The report therefore arrives at or after the cut, and the sector it is about is the one the
+give-back distance behind it (`cut_give_back_m`, `0` by default). Measured on track the game reports
+a cut around the corner it happened in - a Monza cut in the Ascari chicane is reported around the
+corner's exit - so the position the report arrives at is taken as it is; a non-zero window is still
+read back that far for older data that expects it. Because the cut sector may already have been
+saved, its run is then taken back, restoring the list it replaced. The cost of a wrong drop is
+confined to a sector, and clean sectors in between are still kept.
+
+The game buffers its log (a few KB, flushed when full), so in quiet running a line can sit unwritten
+for a minute or more, and a single read can bring a whole lap's cuts. Each line's own timestamp is
+therefore what the engine attributes from: it looks the car's position, and the lap, up from a short
+history of recent samples (five minutes) instead of using the position at read time. Without that, a
+cut read late would be dropped one sector too far on. A cut can even land after the lap it belongs to
+has ended. Its sector is still the one it is taken out of - the run that lap saved is taken back -
+never the sector of the same number in the lap being driven now, and when the sector bar has already
+moved on to the next lap the status line says which sector of which lap it was.
+
+If the game's log cannot be found the app says so and falls back to the lap flag alone (one cut per
+lap). When the lap flag drops with no other signal at all, the app logs a warning that names the
+limitation - except when the log is being followed, where every cut is in it anyway. See
+[TELEMETRY.md](TELEMETRY.md).
 
 ### Pausing learning
 In a race you want the marks to stay as they are. Paused mode keeps cues and sector colours
@@ -125,8 +170,11 @@ reader is tested against a fake capture object.
 
 - A braking zone within ~150 m of the start/finish line can still wobble between the last and
   first sector (the line cannot move without changing the lap logic).
-- The game may flag a lap a moment after the mistake; if that crosses a sector line, the next
-  sector is dropped instead.
+- A cut reported right at the end of a lap can be attributed to the last sector of the previous lap,
+  which is right, but if a run was already rewritten by the new lap the take-back may miss it.
+- An off-track the game judges from something it does not expose (no cut in its log, no race cut and
+  no tyres reported off) cannot be pinned to a sector; the app logs a warning when the lap flag drops
+  for one.
 - Cues are position-based. A different racing line, or a damaged or very different setup, shifts
   the real braking point.
 - Possible future work: learning per corner instead of per sector, custom WAV sounds, importing

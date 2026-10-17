@@ -180,7 +180,10 @@ def test_sector_straddling_a_pause_is_not_stored(store):
 
 def _fast_lap_results(store, **lap_kwargs):
     results = []
-    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
+    # The lookback is pinned (a 500 m report is 0.1 of this 5000 m lap): these tests exercise the
+    # read-back, not the shipped default, which is far smaller.
+    settings = Settings(n_sectors=5, warmup_laps=0, cut_give_back_m=500.0)
+    engine = BrakeEngine(settings, store, on_sector=results.append)
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
@@ -191,13 +194,21 @@ def _fast_lap_results(store, **lap_kwargs):
     return {r.sector: r for r in results}, best_before, best_after
 
 
-def test_sector_where_the_lap_was_invalidated_is_not_saved(store):
-    # lap invalidated half-way through sector 3 (index 2: 0.4..0.6)
-    by_sector, before, after = _fast_lap_results(store, invalid_from=0.5)
+def test_the_lap_flag_is_read_back_to_the_sector_the_cut_happened_in(store):
+    # The game reports a cut only after its give-back window (500 m, 0.1 of this 5000 m lap), so a
+    # flag that drops just past the S2 line is really about a cut half-way through S2 (0.4..0.6).
+    by_sector, before, after = _fast_lap_results(store, invalid_from=0.52)
     assert by_sector[2].duration is None and "invalidated" in by_sector[2].note
     assert after[2] == before[2]  # the faster-but-invalid sector was not stored
     assert by_sector[1].accepted and after[1] < before[1]  # the sector before is kept
     assert by_sector[3].accepted and after[3] < before[3]  # later sectors were driven cleanly
+
+
+def test_a_flag_that_drops_after_the_cut_sector_closed_takes_its_run_back(store):
+    # The cut is in S2; by the time the game reports it the car is in S3 and S2 has been saved.
+    by_sector, before, after = _fast_lap_results(store, invalid_from=0.65)
+    assert after[2] == before[2]  # S2's faster run was taken back
+    assert by_sector[3].accepted and after[3] < before[3]  # clean S3 kept
 
 
 def test_sector_with_all_tyres_off_track_is_not_saved(store):
@@ -273,6 +284,75 @@ def test_snapped_sector_lines_stay_out_of_braking_zones():
     assert len(lines) == 4 and lines == sorted(lines)
     assert not any(_inside_a_braking_zone(p, zones) for p in lines)
     assert snap_boundaries(5, [], LENGTH) == [0.2, 0.4, 0.6, 0.8]  # nothing known: equal splits
+
+
+def test_sector_lines_sit_in_the_middle_of_the_long_straights():
+    from brake_trainer.engine import snap_boundaries
+
+    zones = [0.25, 0.75]  # one long straight between two corners
+    lines = snap_boundaries(3, zones, LENGTH)
+    assert len(lines) == 2
+    assert any(abs(p - 0.50) < 0.02 for p in lines)  # the straight gets its line mid-way along
+    assert not any(_inside_a_braking_zone(p, zones) for p in lines)
+
+
+def test_a_corner_taken_without_braking_is_kept_whole():
+    from brake_trainer.engine import _CORNER_CLEAR_M, snap_boundaries
+
+    margins = _CORNER_CLEAR_M / LENGTH
+    turns = [(0.47, 0.55)]  # a long corner with no braking point, like Curva Grande
+    lines = snap_boundaries(4, [0.05, 0.95], LENGTH, turns)
+    assert len(lines) == 3
+    assert not any(0.47 - margins <= p <= 0.55 + margins for p in lines)
+
+
+def test_sector_lines_hold_still_when_a_corner_moves_a_little():
+    from brake_trainer.engine import snap_boundaries
+
+    turns = [(0.40, 0.44)]
+    before = snap_boundaries(5, [0.20, 0.45, 0.80], LENGTH, turns)
+    assert snap_boundaries(5, [0.20, 0.4501, 0.80], LENGTH, turns) == before
+
+
+def test_a_track_with_no_room_reports_how_many_sectors_fit():
+    from brake_trainer.engine import clean_sector_count
+
+    crowd = [i / 40 for i in range(0, 40, 2)]  # corners every 250 m: no straights to speak of
+    assert clean_sector_count(crowd, [], LENGTH, 3) == 3  # never below the user's minimum
+
+
+def test_the_survey_says_when_fewer_sectors_fit_the_straights(store):
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=8, warmup_laps=1), store, on_message=messages.append)
+    Driver(engine).lap([i / 12 for i in range(12)], stop=1.003)
+    assert any("fit fully on this track" in m for m in messages)
+
+
+def test_a_flat_corner_surveyed_from_the_steering_gets_no_line(store):
+    from brake_trainer.engine import _CORNER_CLEAR_M
+
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=4, warmup_laps=1), store, on_message=messages.append)
+    flat = (0.38, 0.44)  # taken flat, so only the steering gives it away
+    Driver(engine).lap([0.20, 0.60], stop=1.003, turn=flat)
+    lines = list(engine.snapshot().boundaries[1:-1])
+    margin = _CORNER_CLEAR_M / LENGTH
+    assert not any(flat[0] - margin <= p <= flat[1] + margin for p in lines)
+    assert any("corner taken without braking" in m for m in messages)
+
+
+def test_a_flat_corner_is_found_whatever_scale_the_steering_arrives_on(store):
+    """The SDK's steering scale is undocumented; the survey measures it against the lap itself."""
+    from brake_trainer.engine import _CORNER_CLEAR_M
+
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=4, warmup_laps=1), store, on_message=messages.append)
+    flat = (0.38, 0.44)
+    Driver(engine).lap([0.20, 0.60], stop=1.003, turn=flat, turn_level=0.004)  # e.g. signed -1..1
+    lines = list(engine.snapshot().boundaries[1:-1])
+    margin = _CORNER_CLEAR_M / LENGTH
+    assert not any(flat[0] - margin <= p <= flat[1] + margin for p in lines)
+    assert any("corner taken without braking" in m for m in messages)
 
 
 def test_sector_lines_are_surveyed_on_the_warm_up_lap_and_reused(store):
@@ -353,11 +433,12 @@ def test_snapshot_flags_old_equal_split_data(store):
     assert engine.snapshot().equal_lines is True
 
 
-def _two_excursion_results(store, **settings):
-    """A faster lap with the game invalidating it in sector 2 and a cut in sector 4."""
+def _two_excursion_results(store, off_tyres: int = 4, **settings):
+    """A faster lap with the game invalidating it in sector 2 and tyres off track in sector 4."""
     results = []
-    config = Settings(n_sectors=5, warmup_laps=0, **settings)
-    engine = BrakeEngine(config, store, on_sector=results.append)
+    engine = BrakeEngine(
+        Settings(n_sectors=5, warmup_laps=0, **settings), store, on_sector=results.append
+    )
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
@@ -366,32 +447,179 @@ def _two_excursion_results(store, **settings):
         CORNERS,
         speed_fn=lambda p: 215,
         stop=1.003,
-        invalid_from=0.3,
-        off_track=(0.65, 0.66),
-        off_tyres=settings.pop("cut_tyres", 3),
+        invalid_from=0.3,  # the lap flag drops in S2
+        off_track=(0.65, 0.66),  # a mistake in S4, after the flag is already down
+        off_tyres=off_tyres,
     )
     return {r.sector: r for r in results}
 
 
-def test_every_sector_with_a_mistake_is_dropped_not_just_the_first(store):
-    by_sector = _two_excursion_results(store)  # S2: lap invalidated, S4: three tyres off
+def test_a_second_mistake_in_a_later_sector_is_dropped_too(store):
+    # S2: the game invalidates the lap; S4: all four tyres off. The live tyre count catches the
+    # second one, which the one-shot lap flag cannot.
+    by_sector = _two_excursion_results(store)
     assert "invalidated" in by_sector[1].note
     assert by_sector[3].duration is None and "off track" in by_sector[3].note
     for clean in (0, 2, 4):  # the sectors without a mistake are kept
         assert by_sector[clean].accepted
 
 
-def test_a_cut_on_a_still_valid_lap_needs_the_strict_tyre_limit(store):
+def test_a_smaller_excursion_is_dropped_once_the_lap_is_invalid(store):
+    # The flag has already dropped, so a two-tyre cut in a later sector is caught by the lower
+    # "...once the lap is invalid" limit instead.
+    by_sector = _two_excursion_results(store, off_tyres=2)
+    assert by_sector[3].duration is None and "off track" in by_sector[3].note
+    assert by_sector[4].accepted  # a clean sector after the mistake is still kept
+
+
+def test_the_same_excursion_is_kept_while_the_lap_is_still_valid(store):
+    # No flag has dropped, so only the strict limit (all four tyres) applies.
     results = []
     engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
     results.clear()
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, off_track=(0.65, 0.66), off_tyres=3)
-    assert {r.sector: r for r in results}[3].accepted  # lap valid: only 4 tyres out would drop it
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, off_track=(0.65, 0.66), off_tyres=2)
+    assert {r.sector: r for r in results}[3].accepted
 
 
 def test_the_after_invalid_limit_can_be_switched_off(store):
-    by_sector = _two_excursion_results(store, max_tyres_out_after_invalid=0)
-    assert by_sector[3].accepted  # the old behaviour: only the first is caught
+    by_sector = _two_excursion_results(store, off_tyres=3, max_tyres_out_after_invalid=0)
+    assert by_sector[3].accepted  # only the strict limit applies after the lap is invalid
+
+
+def test_the_tyre_check_can_be_switched_off(store):
+    results = []
+    engine = BrakeEngine(
+        Settings(n_sectors=5, warmup_laps=0, max_tyres_out=0, max_tyres_out_after_invalid=0),
+        store,
+        on_sector=results.append,
+    )
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    results.clear()
+    driver.lap(
+        CORNERS,
+        speed_fn=lambda p: 215,
+        stop=1.003,
+        invalid_from=0.3,  # the lap is invalid, but both tyre checks are Off
+        off_track=(0.65, 0.66),
+        off_tyres=4,
+    )
+    assert {r.sector: r for r in results}[3].accepted
+
+
+def test_a_second_off_is_caught_by_the_games_race_cut_signal(store):
+    # The one-shot lap flag drops in S2. The race-cut pair the game fills in for a second
+    # off-track in S4 lets that sector be dropped too, with no tyres-out event involved.
+    results = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_sector=results.append)
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    results.clear()
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, invalid_from=0.3, cut=(0.65, 0.70))
+    by_sector = {r.sector: r for r in results}
+    assert "invalidated" in by_sector[1].note
+    assert by_sector[3].duration is None and "off track" in by_sector[3].note
+    for clean in (0, 2, 4):  # the sectors without an off-track are kept
+        assert by_sector[clean].accepted
+
+
+def test_one_race_cut_is_flagged_once(store):
+    # The deadline counts down for the rest of the off-track; that must not flag the sector again.
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_message=messages.append)
+    driver = Driver(engine)
+    driver.feed(0.10, 150.0, 0.0)
+    for p in (0.11, 0.12, 0.13, 0.14):
+        driver.feed(p, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=120)
+    for p in (0.15, 0.16):
+        driver.feed(p, 150.0, 0.0)  # cut cleared
+    assert sum("Off the track" in m for m in messages) == 1
+    assert engine.snapshot().pass_flag == "off track"
+
+
+def test_a_later_race_cut_is_flagged_again(store):
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store, on_message=messages.append)
+    driver = Driver(engine)
+    driver.feed(0.10, 150.0, 0.0)
+    driver.feed(0.30, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=120)
+    driver.feed(0.31, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=100)
+    driver.feed(0.32, 150.0, 0.0)  # cleared
+    driver.feed(0.60, 150.0, 0.0, cut_gained_ms=180, cut_deadline_m=90)  # a second, later cut
+    assert sum("Off the track" in m for m in messages) == 2
+
+
+def _warnings_engine(store):
+    # With the game log read (the default) a cut is always pinned to its own sector, so the
+    # fallback warning only exists for when there is no per-cut source: the log is switched off.
+    warnings: list[str] = []
+    engine = BrakeEngine(
+        Settings(n_sectors=5, warmup_laps=0, use_game_log=False), store, on_warning=warnings.append
+    )
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    return driver, warnings
+
+
+def test_a_cut_is_reported_as_not_visible_in_memory(store):
+    # The game invalidates the lap, but it reported no off-track event: a cut it judged from
+    # something it does not expose.
+    driver, warnings = _warnings_engine(store)
+    driver.lap(CORNERS, invalid_from=0.5, stop=1.003)
+    assert len(warnings) == 1 and "no race cut" in warnings[0]
+
+
+def test_no_cut_warning_when_four_tyres_were_seen_first(store):
+    driver, warnings = _warnings_engine(store)
+    driver.lap(
+        CORNERS,
+        invalid_from=0.5,
+        off_track=(0.45, 0.46),  # four tyres off before the lap flag drops
+        off_tyres=4,
+        stop=1.003,
+    )
+    assert warnings == []
+
+
+def test_no_cut_warning_for_a_lap_already_invalid_when_the_app_starts(store):
+    # The first sample can land on a lap the app never saw being invalidated: not a cut it saw.
+    warnings: list[str] = []
+    engine = BrakeEngine(
+        Settings(n_sectors=5, warmup_laps=0, use_game_log=False), store, on_warning=warnings.append
+    )
+    driver = Driver(engine)
+    driver.feed(0.55, 150.0, 0.0, valid=False)
+    driver.feed(0.56, 150.0, 0.0, valid=False)
+    assert warnings == []
+    assert engine.snapshot().pass_flag == "lap invalidated"
+
+
+def test_snapshot_reports_why_the_sector_will_not_count(store):
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store)
+    Driver(engine).feed(0.65, 150.0, 0.0, tyres_out=4)
+    assert engine.snapshot().pass_flag == "off track"
+
+
+def test_verbose_logging_traces_the_track_limit_signals(store, caplog):
+    import logging
+
+    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store)
+    driver = Driver(engine)
+    with caplog.at_level(logging.DEBUG, logger="brake_trainer.engine"):
+        driver.feed(0.10, 150.0, 0.0)
+        driver.feed(0.11, 150.0, 0.0, tyres_out=4)
+        driver.feed(0.12, 150.0, 0.0, tyres_out=0)
+        driver.feed(0.13, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=120)
+        driver.feed(0.14, 150.0, 0.0)
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "tyres_out 0 -> 4" in text
+    assert "tyres_out 4 -> 0" in text
+    assert "race_cut up" in text and "gained=250 ms" in text
+    assert "race_cut clear" in text
+    assert "lap_valid None -> True" in text

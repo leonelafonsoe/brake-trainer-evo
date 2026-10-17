@@ -29,6 +29,7 @@ def frame(**over):
             "car_model": "Ferrari 296 GTB",
             "is_in_pit_lane": False,
             "is_valid_lap": False,
+            "steering_percent": 37.0,
         },
         physics={"brake": 0.7, "speed_kmh": 120.0, "number_of_tyres_out": 2},
         static={"track": "Monza", "track_length_m": 5793.0},
@@ -44,6 +45,26 @@ def test_sample_from_frame():
     assert (s.track, s.car, s.pos) == ("Monza", "Ferrari 296 GTB", 0.42)
     assert (s.brake, s.length_m) == (0.7, 5793.0)
     assert (s.lap_valid, s.tyres_out) == (False, 2)
+    assert s.steer == 0.37  # the graphics block carries the steering, -1..1
+    assert (s.cut_gained_ms, s.cut_deadline_m, s.cut_delta_s) == (0, 0, 0.0)  # no raw graphics
+
+
+def test_sample_reads_the_race_cut_fields_from_the_raw_graphics_block():
+    raw = bytearray(4096)
+    struct.pack_into("<i", raw, 2464, 320)  # race_cut_gained_time_ms
+    struct.pack_into("<i", raw, 2468, 150)  # distance_to_deadline
+    struct.pack_into("<f", raw, 2472, -0.42)  # race_cut_current_delta
+    s = sample_from_frame(frame(graphics_raw=bytes(raw).hex()))
+    assert s is not None
+    assert (s.cut_gained_ms, s.cut_deadline_m) == (320, 150)
+    assert abs(s.cut_delta_s + 0.42) < 1e-6
+
+
+def test_sample_ignores_a_short_or_corrupt_raw_graphics_block():
+    short = sample_from_frame(frame(graphics_raw="00"))  # too short
+    corrupt = sample_from_frame(frame(graphics_raw="zz" * 12))  # 24 chars, not hex
+    assert short is not None and short.cut_gained_ms == 0
+    assert corrupt is not None and corrupt.cut_gained_ms == 0
 
 
 @pytest.mark.parametrize(

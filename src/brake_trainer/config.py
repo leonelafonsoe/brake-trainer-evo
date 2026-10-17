@@ -26,6 +26,7 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "top_runs": (1, 10),
     "max_tyres_out": (0, 4),
     "max_tyres_out_after_invalid": (0, 4),
+    "cut_give_back_m": (0.0, 2000.0),
     "warmup_laps": (0, 5),
     "own_runs_to_replace_ref": (1, 10),
     "lead_s": (0.3, 5.0),
@@ -62,10 +63,14 @@ class Settings:
     snap_sector_boundaries: bool = True  # put sector lines on straights, away from corners
     warmup_laps: int = 1  # laps ignored after leaving the pits (cold tyres and brakes)
     skip_invalid_sectors: bool = True  # sector not counted if the lap was invalidated in it
-    max_tyres_out: int = 4  # ...or this many tyres were off track (0 = ignore)
-    # Once the game has invalidated the lap its flag cannot show a second mistake, so a lower
-    # tyre count is used to catch further excursions in the later sectors of that lap.
+    max_tyres_out: int = 4  # tyres off the track that drop a sector (0 = ignore)
+    # Once the game has invalidated the lap its flag stays down and cannot report a second mistake,
+    # so a lower tyre count stands in for it in the remaining sectors of that lap (0 = off).
     max_tyres_out_after_invalid: int = 2
+    # The game judges a cut and only reports it after its give-back window has passed. Its report
+    # names the corner it happened in, so the position it arrives at is used as-is (0 = trust it).
+    # A non-zero window reads the report this far back along the lap for old data that expects it.
+    cut_give_back_m: float = 0.0
     own_runs_to_replace_ref: int = 2
     reference_car: str = ""  # "" = automatic
     # --- cues ---
@@ -83,6 +88,9 @@ class Settings:
     telemetry_hz: float = 60.0
     game_process: str = "assettocorsaevo"
     close_with_game: bool = True
+    use_game_log: bool = True  # follow the game's log for the cuts it reports after the fact
+    game_log_dir: str = ""  # "" = the game's default folder under Saved Games
+    debug_logging: bool = False  # verbose log for troubleshooting (see docs/TROUBLESHOOTING.md)
     # --- overlay ---
     overlay_always_on_top: bool = True
     overlay_opacity: float = 1.0

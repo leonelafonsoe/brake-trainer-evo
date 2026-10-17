@@ -34,6 +34,13 @@ def test_brake_off_stays_below_brake_on():
     assert st.brake_off < st.brake_on
 
 
+def test_verbose_logging_is_off_by_default_and_round_trips(tmp_path):
+    assert Settings().debug_logging is False
+    path = tmp_path / "s.json"
+    save_settings(Settings(debug_logging=True), path)
+    assert load_settings(path).debug_logging is True
+
+
 def _data(car: str, runs: int, t: float = 30.0) -> TrackData:
     d = TrackData.empty("Monza", car, 3)
     for i in range(runs):

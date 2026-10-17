@@ -39,9 +39,14 @@ part of it:
 
 Sector lines are not simply equal splits. A corner that sits on a line would be cut between two
 sectors, and its braking point would flip between them from lap to lap. Instead, the warm-up lap
-surveys where your braking zones are and the lines are moved to the middle of the nearest
-straight (up to about a third of a sector away). The lines are stored with the track data and
-shared with other cars, so a borrowed reference stays aligned.
+surveys where you brake *and* where you steer - so a corner taken flat with no braking point (Curva
+Grande at Monza) is not missed - and each line is put in the middle of the longest straight, at the
+spot that leaves the sectors as even as they can be. A line is never placed within 60 m of a corner,
+so a corner is only cut once the track has nowhere straighter left; and when you ask for more sectors
+than the straights can hold, the app says which count fits. The lines are stored with the track data
+and shared with other cars, so a borrowed reference stays aligned. They are placed once, at the end of
+the warm-up, and then left alone: a stored run is timed between two lines, so to place them again
+delete the track's entry and drive another warm-up lap.
 
 **Data from older versions** (before 0.3.5) keeps the equal splits it was learned with, so a corner can
 still be cut by a line. The overlay then shows "equal sector lines" in its quiet summary, and
@@ -76,16 +81,30 @@ A sector pass is not saved when:
 - **Warm-up**: it is part of a warm-up lap (see above).
 - **Pit lane**: you were in the pit lane, or reset to the pits, during it.
 - **Partial**: you reset or teleported mid-sector, or drove less than 90% of it.
-- **Invalid lap**: the game invalidated your lap *while you were in that sector* (track limits,
-  cuts). Earlier sectors on the same lap are kept. A sector you *enter* after the lap was
-  already invalid is kept too, as long as you stay on the track in it (see the next point).
-- **Off track**: all four tyres were off the track at some moment (Settings: "Skip sector if
-  tyres off track"). **Once the game has invalidated the lap**, its flag stays down and cannot
-  report a second mistake, so for the rest of that lap a lower limit applies: two tyres off is
-  enough to drop a sector ("...once the lap is invalid", default 2). So if you go off in several
-  sectors of one lap, each of them is dropped (the first one through the game's flag, the later
-  ones through the tyres), and the clean sectors in between are kept.
+- **Invalid lap**: the game invalidated your lap for a cut that happened in it (track limits). The
+  game's "lap valid" flag drops once and stays down, so on its own it can only mark the first cut of
+  a lap. A sector you *enter* after the lap was already invalid is kept, as long as you stay on the
+  track in it (see the next point).
+- **Off track**: the game reported a cut that happened while you were in that sector. This uses the
+  per-cut event the game writes to its log (one per cut, and the only signal that shows a second cut
+  in a lap it has already invalidated), and, where the game publishes them, the "race cut" pair and
+  the live count of tyres off the track (Settings: "Skip sector if tyres off track", and "...once the
+  lap is invalid"; while the lap is still valid the tyre count takes all four tyres, the game's own
+  rule). The game reports a cut around the corner it happened in, so the position in the report is
+  taken as-is (the give-back read-back distance is `0` by default; older data can still ask for a
+  distance back). If that sector was already saved, its run is taken back.
+  The game buffers its log, so a cut can be read a minute after it was written, or after the lap it
+  belongs to has ended, and several can arrive at once. Each line carries its own time, so every cut
+  still lands in the sector - and the lap - it happened in, never in the sector of the same number in
+  the lap being driven now. When its lap is already over the status line says so ("S6 of the last lap
+  won't count · cut"), and the run that lap had saved for that sector is taken back.
 - **Paused**: learning was paused at any point during it.
+
+The signals above are the game's own. When the game invalidates a lap for an infraction it does not
+expose (no cut in its log, no race cut and no tyres reported off), the app says so in its log and can
+only drop the sector where the flag dropped. That warning is for the case where there is no log to
+read: with the game log being followed, every cut is in it, so the app uses it instead. See
+[TELEMETRY.md](TELEMETRY.md).
 
 The reason is shown on the overlay ("S3 won't count · lap invalidated") and in the log.
 

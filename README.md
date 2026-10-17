@@ -143,7 +143,8 @@ src/brake_trainer/
   storage.py       per track + car persistence
   telemetry.py     acevo-sdk adapter, restart watchdog, game-exit detection
   audio.py         generated beeps (no audio files)
-  app.py           wiring, tray icon, logging
+  logsetup.py      logging: rotating file + console, verbose mode
+  app.py           wiring, tray icon
   ui/              overlay, settings window, status line, icon, worker thread, theme
 tests/             pytest: engine scenarios, storage, config, telemetry, status line, docs
 scripts/           build_exe.py, make_icon.py, gen_settings_doc.py, release_notes.py, bump_version.py
@@ -176,6 +177,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
   a truth.
 - A braking zone very close to the start/finish line can wobble between the last and first
   sector. More in [Design notes](docs/DESIGN.md#known-limitations-and-ideas).
+- Track limits follow the game. It reports each cut around the corner it happened in, so the position
+  in the report is used as it is (`Cut give-back window`, `0` by default) and the run is taken back if
+  that sector was already saved. The game buffers its log (a few KB, flushed when full), so a cut can
+  be read a minute later,
+  or after the lap it belongs to has ended, and several can arrive at once; each line's own time is
+  what the app attributes from, so every one still lands in its own sector of its own lap, and one
+  for a lap that is over is named on the status line. An infraction it judges from something it does
+  not expose cannot be pinned to a sector, and the app says so in its log. More in
+  [Telemetry notes](docs/TELEMETRY.md#track-limits).
 - Windows only (it uses the game's shared memory, `tasklist` and `winsound`).
 
 ## Credits

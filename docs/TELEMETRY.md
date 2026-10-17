@@ -3,8 +3,9 @@
 How the app gets its data from Assetto Corsa EVO, and the quirks to know about.
 
 The game publishes telemetry through shared memory. The app reads it with
-[`acevo-sdk`](https://github.com/glebulon/acevo-sdk) (MIT licensed, early alpha). It only reads;
-it never writes to the game or its files.
+[`acevo-sdk`](https://github.com/glebulon/acevo-sdk) (MIT licensed, early alpha). It only reads:
+that telemetry, and the game's own log file for the cuts the telemetry cannot show. It never writes
+to the game or its files.
 
 ## Fields used
 
@@ -16,14 +17,61 @@ it never writes to the game or its files.
 | Track / car name | `static.track`, `graphics.car_model` | Keys for the stored data |
 | Track length | `static.track_length_m`, or `graphics.lap_length_km` | Metres from positions |
 | In the pit lane | `graphics.is_in_pit_lane` | Not learning in the pits; warm-up reset |
-| Lap still valid | `graphics.is_valid_lap` | Skipping invalidated sectors |
-| Tyres off track | `physics.number_of_tyres_out` | Skipping off-track sectors |
+| Steering (-1..1) | `graphics.steering_percent`, scaled | Finding a corner taken flat, for sector-line placement (compared against the lap's own steering range, since the scale is undocumented) |
+| Lap still valid | `graphics.is_valid_lap` | Skipping the first sector the game invalidates |
+| Race cut (off-track) | `graphics.race_cut_gained_time_ms`, `graphics.distance_to_deadline` (raw graphics block) | Skipping the sector where an off-track happened |
+| Tyres off track | `physics.number_of_tyres_out` | Skipping any sector with enough tyres off |
+| Cuts reported after the fact | newest file in `Saved Games\ACE\Logs` | Skipping the sector each cut happened in |
 | Timestamp | frame timestamp | Sector times |
 
 **Position source.** The SDK also returns a position estimated from the physics data
 (`normalized_position_source: physics_tyre_z`). That one is dead-reckoned and can jump, so the app
 uses the game's own value from the graphics block. Frames without a track or car name (menus,
 loading) are ignored.
+
+## Track limits
+
+Track limits follow the game, using three of its own signals:
+
+- **The game's log** (build 0.5+) records one HUD notification per cut:
+  `Adding notification UINotificationType_SessionPenalty`. It is the only *per-excursion* signal the
+  game publishes — the shared memory cannot show a second cut in a lap it has already invalidated.
+  The app follows the newest file in `Saved Games\ACE\Logs` (Settings: *Game log folder*) and drops
+  the sector each cut happened in.
+- **`graphics.is_valid_lap`** is the game's verdict on the lap. It is a *state*: it drops when the
+  game invalidates the lap and stays down until the lap ends, so on its own it marks only the first
+  cut of a lap. Kept as a fallback for a build whose log the app cannot read.
+- **`graphics.race_cut_*`** (the *race-cut pair*: time gained and distance left to give it back) and
+  **`physics.number_of_tyres_out`** (a live count) drop the sector while the off-track is under way,
+  where the game publishes them. While the lap is valid "enough" is all four tyres (the game's own
+  rule); once the lap is invalid a lower count (Settings: *...once the lap is invalid*, default 2)
+  applies for the rest of that lap.
+
+**Why a report may still be read back.** The game judges a cut by the time it gains: it gives the
+driver a window to give that time back, and only reports the cut once the window has passed. On-track
+data (Monza) shows the report naming the corner it happened in - a cut in the Ascari chicane comes
+back around the corner's exit - so the position in the report is used as it is (`cut_give_back_m`
+defaults to `0`). A non-zero window still reads the report that far back along the lap, for data that
+expects it. If the sector a cut lands in was already saved, its run is taken back
+(`S3: its stored run was taken back`); if it is still in progress, the pass is flagged
+(`S3 will not count`).
+
+**Read from the line's own time.** The game buffers this log (a few KB, flushed when full), so a line
+can reach the file a minute after it was written - or after the lap it belongs to has ended - and one
+read can bring a whole lap's cuts at once. Every line carries its own timestamp, so the app attributes
+each cut from the car's position *at that time* — not from wherever the car is when the line is
+finally read. The sampled history it looks that up in records the lap too, so a cut is dropped in the
+lap it happened in and never in the sector of the same number in the lap being driven now. When its
+lap is over the colours for it are gone from the sector bar, so the status line names it instead
+("S6 of the last lap won't count · cut"). The debug log shows the read lag and the lap per cut
+(`... written at ... (read 12.3 s later, 1 lap back), car at 49.7% (S3) ...`).
+
+The old tyre-count log format (`Limits: car ... tyres out changed`) is still recognised for older
+builds, with the player's car taken from the log's connection lines. An infraction the game judges
+from something it does not expose (no cut in its log, no race cut and no tyres reported off) cannot
+be pinned to a sector. With the log being read, every cut is in it, so the app stays quiet and notes
+the fallback only in its debug log; with the log switched off it warns, and can only drop the sector
+where the flag dropped.
 
 ## Behaviours worth knowing
 
@@ -44,8 +92,14 @@ loading) are ignored.
 ## Caveats
 
 - The game is in Early Access and the SDK is alpha: fields can change between updates. All SDK
-  access is in `telemetry.py`, so a change should only touch that file.
-- I have not verified how the game counts `number_of_tyres_out` on kerbs. If sectors stop
-  counting unexpectedly, set "Skip sector if tyres off track" to Off.
+  access is in `telemetry.py` and all log parsing in `gamelog.py`, so a change should only touch
+  those files.
+- The game does not always publish the live tyre count: in testing `number_of_tyres_out` stayed 0
+  while the game invalidated laps, and the race-cut pair was never filled in either. The game's log
+  is what reports each cut; the other two are kept as fallbacks for a build that does publish them.
+  If sectors stop counting unexpectedly, turn on verbose logging and check the log, and turn the
+  tyre checks off in Settings.
+- If the app cannot find the game log it says so and falls back to the lap flag alone (one cut per
+  lap). Point it at the right folder in Settings: *Game log folder*.
 - Whether telemetry readers are acceptable in online sessions is the game's and server's call;
   check the game's terms and anti-cheat policy before using any tool online.

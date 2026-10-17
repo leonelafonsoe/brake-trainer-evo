@@ -4,6 +4,78 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+- Sector lines are now placed in the middle of the longest straights, so a corner is never split
+  across two sectors. On the warm-up lap the app surveys the corners twice: from the braking points
+  (as before) and from the steering the car is carrying, which catches a corner taken flat with no
+  braking point at all - Curva Grande at Monza was invisible to the survey and had lines dropped
+  through it. Every line is then put at the spot that leaves the longest shortest sector, and never
+  closer than 60 m to a corner, so length is given up before a corner is ever cut; a line only splits
+  a corner once the track has nowhere straighter left. The lines are placed once, at the end of the
+  warm-up, and left alone after that - a stored run is timed between two lines, so they only move
+  when the track's entry is deleted and a fresh warm-up places them again. When the sector count is
+  higher than the straights can hold, the app says which count does fit ("set 'Sectors per lap' to 5")
+  instead of slicing through corners. Measured at Monza: 5 sectors gives lines at 1086/1723/3099/4446 m
+  (Rettifilo | Curva Grande | Roggia + Lesmos | Ascari | back straight + Parabolica), and a cut in
+  Ascari and a wide at its exit now both land in the Ascari sector.
+- Fix: the steering survey above did not fire on the first build that shipped it - it compared the
+  SDK's steering value against a fixed threshold, but the scale that value arrives on is undocumented
+  and is not the one assumed, so no corner was ever found and a line was still placed through Curva
+  Grande. The survey now measures each lap's steering against the range the wheel moved through on
+  that same lap, which is scale-free; the verbose log prints the range it saw.
+- The cut give-back read-back distance now defaults to `0` (trust the position the game reports),
+  matching what was measured on track: the game reports a cut around the corner it happened in, not
+  far down the road. The setting is no longer in Settings -> Sectors; the value is still stored in
+  the config for older data, and a non-zero value still reads a report back that far. Every cut
+  message still names the sector it dropped ("S4 will not count") on the lap being driven as well as
+  on an earlier one.
+- Fix: every off-track moment is dropped from the sector it happened in, including a second one in a
+  lap the game has already invalidated. The game reports each cut in its log, once per cut
+  (`Adding notification UINotificationType_SessionPenalty`); that notification is now the signal the
+  app follows, and it is the only source that shows every cut — the "lap valid" flag drops once per
+  lap. The live "race cut" pair and the count of tyres off the track still drop a sector where a build
+  publishes them. New settings: "Follow the game's log for cuts" and "Game log folder".
+- Fix: the game buffers its log (a few KB, flushed when full), so a cut can reach the app a minute
+  after it was written - or after the lap it belongs to has ended - and one read can bring a whole
+  lap's cuts at once. Each line's own time is now what a cut is attributed from - the car's position
+  *then*, and the lap that time falls in, taken from a short history of recent samples - instead of
+  the position when the line was read. That keeps every cut in the sector it happened in when several
+  arrive together, and keeps a late one out of the lap being driven: the run its own lap saved is
+  taken back, and the sector of the same number in the current lap is left alone. Before, later cuts
+  in a delayed read were folded into the first and lost, a late cut was dropped one sector too far on,
+  and a cut read after its lap had ended greyed the wrong lap's sector. The verbose log now shows the
+  read lag and the lap per cut, and names a cut it folded away because the lap flag had already
+  caught it - even when the same batch carries later cuts - so every notice in the game's log can be
+  accounted for.
+- A cut the log reports for a lap the sector bar has already moved past is named on the status line
+  ("S6 of the last lap won't count · cut") for a few seconds: there is no colour left on the bar to
+  grey, and the stored run it takes back leaves no trace there either.
+- The "the game reported no off-track for this invalidation" warning is only shown when the game log
+  is not being followed: with the log on, every cut is in it (a few seconds later), so the fallback is
+  noted in the debug log instead of warning about a limitation that does not apply.
+- Fix: a cut report can arrive after the sector it is about. When it does, the app still drops the
+  right sector: it reads the sector back from the report by the configured give-back distance and
+  takes back the run if that sector was already saved, restoring the list it replaced. The clean
+  sectors in between are kept.
+- The live count of tyres off the track is used as well, where the game publishes it (all four while
+  the lap is valid; the lower "...once the lap is invalid" count afterwards). In testing the game did
+  not publish it at all, so the log notification is what does the work.
+- Verbose (debug) logging for troubleshooting: a new Settings -> Diagnostics tab turns it on (also
+  `--debug` on the command line or `BRAKE_TRAINER_DEBUG=1`), and logs the game's track-limit signals at
+  every change (the race-cut pair and the live tyre count, where the game publishes them, the lap flag
+  and the timing invalid flag) and every cut read from the game's log, with the position, the sector
+  it was reported in and the sector it was attributed to, plus the telemetry regions the SDK attached
+  to. "Open log folder" opens the log for sharing. Off by default.
+
+## 0.3.11 - 2026-10-15
+
+- Track limits now use the game's own events: the app follows the game's log (`Saved Games\ACE\Logs`),
+  where every violation (all four tyres out, 2 m or more beyond the line, the rule that invalidates a
+  lap) is reported. Every sector with a violation is dropped, also a second one in the same lap, which
+  the lap-invalid flag cannot show. A sector that closed within a second of a violation is taken back.
+  New settings: use the game's log (on) and its folder.
+- The "...once the lap is invalid" tyre limit added in 0.3.10 is off by default now: it went beyond the
+  game's own rule. (If you ran 0.3.10, your saved settings keep the old value 2; set it to Off.)
+
 ## 0.3.10 - 2026-10-14
 
 - Fix: after the game invalidated a lap, a second off-track moment in a later sector of the same lap
