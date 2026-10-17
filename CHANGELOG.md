@@ -17,6 +17,11 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   instead of slicing through corners. Measured at Monza: 5 sectors gives lines at 1086/1723/3099/4446 m
   (Rettifilo | Curva Grande | Roggia + Lesmos | Ascari | back straight + Parabolica), and a cut in
   Ascari and a wide at its exit now both land in the Ascari sector.
+- Fix: the steering survey above did not fire on the first build that shipped it - it compared the
+  SDK's steering value against a fixed threshold, but the scale that value arrives on is undocumented
+  and is not the one assumed, so no corner was ever found and a line was still placed through Curva
+  Grande. The survey now measures each lap's steering against the range the wheel moved through on
+  that same lap, which is scale-free; the verbose log prints the range it saw.
 - The cut give-back read-back distance now defaults to `0` (trust the position the game reports),
   matching what was measured on track: the game reports a cut around the corner it happened in, not
   far down the road. The setting is no longer in Settings -> Sectors; the value is still stored in

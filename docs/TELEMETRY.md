@@ -17,7 +17,7 @@ to the game or its files.
 | Track / car name | `static.track`, `graphics.car_model` | Keys for the stored data |
 | Track length | `static.track_length_m`, or `graphics.lap_length_km` | Metres from positions |
 | In the pit lane | `graphics.is_in_pit_lane` | Not learning in the pits; warm-up reset |
-| Steering (-1..1) | `graphics.steering_percent`, scaled | Finding a corner taken flat, for sector-line placement |
+| Steering (-1..1) | `graphics.steering_percent`, scaled | Finding a corner taken flat, for sector-line placement (compared against the lap's own steering range, since the scale is undocumented) |
 | Lap still valid | `graphics.is_valid_lap` | Skipping the first sector the game invalidates |
 | Race cut (off-track) | `graphics.race_cut_gained_time_ms`, `graphics.distance_to_deadline` (raw graphics block) | Skipping the sector where an off-track happened |
 | Tyres off track | `physics.number_of_tyres_out` | Skipping any sector with enough tyres off |

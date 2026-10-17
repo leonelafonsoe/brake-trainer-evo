@@ -76,7 +76,10 @@ _MIN_SECTOR_M = 500.0  # a sector shorter than this is not a useful thing to coa
 _GRID_STEPS = 400  # places to look for a spot for a sector line, spread over the lap
 _GRID_MIN_STEP_M = 5.0  # ...but never look closer together than this
 _RELINE_MARGIN_M = 25.0  # move existing sector lines only when they improve by this much
-_TURN_STEER = 0.15  # |steering| above this counts as being in a corner
+# The steering the SDK publishes has no documented scale, so a corner is spotted from how far
+# the driver turned against the range they used on the lap: a straight stays near the flat end of
+# that range whatever the units, a corner sits this far up it.
+_TURN_STEER = 0.15  # steering this far up the lap's own range counts as being in a corner
 _TURN_MIN_M = 40.0  # ...for at least this long, so kerbs and corrections don't count
 
 # Flags shown on the overlay for the sector in progress (in priority order).
@@ -322,6 +325,8 @@ class BrakeEngine:
         self._survey_turns: list[tuple[float, float]] = []  # corners driven, not braked for
         self._survey_cov = 0.0
         self._turn_from: float | None = None
+        # The steering range seen on the survey lap, so a corner counts whatever scale the SDK uses.
+        self._steer_lo, self._steer_hi = float("inf"), 0.0
         self._lap_valid: bool | None = None  # None until the first sample tells us
         self._lap_no = 0  # counted up at every line crossing, so a late cut knows its own lap
         self._status_lap = 0  # the lap whose colours _status holds: the last one, until S1 ends
@@ -412,6 +417,7 @@ class BrakeEngine:
             self._survey.clear()
             self._survey_turns.clear()
             self._turn_from = None
+            self._steer_lo, self._steer_hi = float("inf"), 0.0
             self._survey_cov = 0.0
         elif delta > 0 and self._needs_survey:
             self._survey_cov += delta
@@ -967,6 +973,7 @@ class BrakeEngine:
         assert data is not None
         self._survey, self._survey_turns, self._survey_cov = [], [], 0.0
         self._turn_from, self._needs_survey = None, False
+        self._steer_lo, self._steer_hi = float("inf"), 0.0
         fresh = data.boundaries is None and not data.total_runs()
         if fresh and self._ref is not None and self._ref.boundaries:
             data.boundaries = list(self._ref.boundaries)  # share the other car's lines
@@ -987,8 +994,17 @@ class BrakeEngine:
         self._place_lines()
 
     def _survey_steering(self, pos: float, steer: float) -> None:
-        """Note where the driver turns: a corner taken without braking is still a corner."""
-        if abs(steer) < _TURN_STEER:
+        """Note where the driver turns: a corner taken without braking is still a corner.
+
+        The SDK's steering value has no documented scale, so it is measured against the range the
+        driver used on this lap rather than a fixed number: on a straight the wheel sits near one
+        end of that range, in a corner it is well up it, whatever the units turn out to be.
+        """
+        mag = abs(steer)
+        self._steer_lo, self._steer_hi = min(self._steer_lo, mag), max(self._steer_hi, mag)
+        spread = self._steer_hi - self._steer_lo
+        turning = spread > 0.0 and mag - self._steer_lo >= _TURN_STEER * spread
+        if not turning:
             if self._turn_from is not None:
                 self._close_turn(pos)
             return
@@ -1015,6 +1031,16 @@ class BrakeEngine:
         if not zones and not turns:
             return
         st = self._settings
+        if self._steer_hi <= 0.0:
+            log.debug("survey: no steering value in the telemetry; corners found from braking only")
+        else:
+            log.debug(
+                "survey: steering %.4f..%.4f, %d braking points, %d corners steered",
+                self._steer_lo,
+                self._steer_hi,
+                len(zones),
+                len(turns),
+            )
         inner = snap_boundaries(self._n, zones, self._length_m, turns)
         if len(inner) != self._n - 1:
             return

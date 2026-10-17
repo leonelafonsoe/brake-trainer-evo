@@ -75,7 +75,11 @@ The survey looks for corners two ways. Braking points are the obvious one, but a
 has no braking point at all - Curva Grande at Monza is the example that exposed it - and lines were
 being dropped straight through it. So the survey also watches the steering the car is carrying
 (`steering_percent`, from the same graphics frame the app already reads) and counts a stretch of
-sustained steering as a corner even when no braking point was seen. Each line is then placed at the
+sustained steering as a corner even when no braking point was seen. The SDK does not document the
+scale that value arrives on, so the survey does not use a fixed number either: it compares each
+sample with the range the wheel moved through on the lap itself, where a straight sits near one end
+of that range and a corner sits well up it, whatever the units turn out to be. (The verbose log
+prints the range it saw, which is how the scale was pinned down.) Each line is then placed at the
 position that leaves the longest shortest sector, subject to a hard margin from every corner, so the
 app gives up a little length before it will ever cut through a corner. Asking for more
 sectors than the straights can hold pads the extra lines and says in the log which lower count fits

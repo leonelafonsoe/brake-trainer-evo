@@ -63,6 +63,7 @@ class Driver:
         off_tyres: int = 4,
         cut: tuple[float, float] | None = None,
         turn: tuple[float, float] | None = None,
+        turn_level: float = 0.4,
     ) -> float:
         p = start
         while p < stop:
@@ -82,7 +83,7 @@ class Driver:
                 tyres_out=out,
                 cut_gained_ms=250 if down else 0,
                 cut_deadline_m=120 if down else 0,
-                steer=0.4 if turn and turn[0] <= p % 1.0 < turn[1] else 0.0,
+                steer=turn_level if turn and turn[0] <= p % 1.0 < turn[1] else 0.0,
             )
             p += speed / 3.6 * DT / LENGTH
         return p

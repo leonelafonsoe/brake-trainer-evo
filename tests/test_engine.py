@@ -341,6 +341,20 @@ def test_a_flat_corner_surveyed_from_the_steering_gets_no_line(store):
     assert any("corner taken without braking" in m for m in messages)
 
 
+def test_a_flat_corner_is_found_whatever_scale_the_steering_arrives_on(store):
+    """The SDK's steering scale is undocumented; the survey measures it against the lap itself."""
+    from brake_trainer.engine import _CORNER_CLEAR_M
+
+    messages: list[str] = []
+    engine = BrakeEngine(Settings(n_sectors=4, warmup_laps=1), store, on_message=messages.append)
+    flat = (0.38, 0.44)
+    Driver(engine).lap([0.20, 0.60], stop=1.003, turn=flat, turn_level=0.004)  # e.g. signed -1..1
+    lines = list(engine.snapshot().boundaries[1:-1])
+    margin = _CORNER_CLEAR_M / LENGTH
+    assert not any(flat[0] - margin <= p <= flat[1] + margin for p in lines)
+    assert any("corner taken without braking" in m for m in messages)
+
+
 def test_sector_lines_are_surveyed_on_the_warm_up_lap_and_reused(store):
     corners = [0.20, 0.50, 0.80]  # 0.20 and 0.80 sit on the equal-split lines
     engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=1), store)
