@@ -43,6 +43,10 @@ class Sample:
     t: float  # seconds (frame timestamp)
     lap_valid: bool = True  # the game's "lap is still valid" flag
     tyres_out: int = 0  # tyres currently off the track
+    cut_gained_ms: int = 0  # graphics race-cut: ms gained by the last off-track cut
+    cut_deadline_m: int = 0  # graphics race-cut: distance left to give that time back
+    cut_delta_s: float = 0.0  # graphics race-cut: delta vs the cleanly-driven reference
+    timing_invalid: bool = False  # graphics timing state: the current lap marked invalid
 
 
 @dataclass(slots=True)
@@ -68,7 +72,13 @@ class TrackData:
     car: str
     n_sectors: int
     sectors: list[list[SectorRun]]  # per sector, fastest run first
-    boundaries: list[float] | None = None  # the n-1 inner sector lines; None = equal splits
+    boundaries: list[float] | None = None  # the game's n-1 inner sector lines; None = not learned
+    # Where braking started on the passes that only the sector lines kept from counting - driven
+    # while the lines were still being found, or after they had changed under the car. Their times
+    # are worthless, their braking points are not: they are positions on the track, and on a new
+    # track they are all there is until a sector has been timed. One list per pass, so a pass counts
+    # once towards the half the runs a corner needs; the runs that count out-vote them as they come.
+    early_onsets: list[list[float]] = field(default_factory=list)
 
     @classmethod
     def empty(cls, track: str, car: str, n_sectors: int) -> TrackData:
@@ -91,6 +101,7 @@ class TrackData:
             "n_sectors": self.n_sectors,
             "boundaries": self.boundaries,
             "sectors": [[r.to_dict() for r in runs] for runs in self.sectors],
+            "early_onsets": [[float(p) for p in chunk] for chunk in self.early_onsets],
         }
 
     @classmethod
@@ -105,7 +116,25 @@ class TrackData:
             values = [float(b) for b in raw_bounds]
             if all(0.0 < b < 1.0 for b in values) and values == sorted(values):
                 bounds = values
-        return cls(str(raw["track"]), str(raw["car"]), n, sectors, bounds)
+        return cls(
+            str(raw["track"]),
+            str(raw["car"]),
+            n,
+            sectors,
+            bounds,
+            cls._early_onsets(raw.get("early_onsets")),
+        )
+
+    @staticmethod
+    def _early_onsets(raw: Any) -> list[list[float]]:
+        if not isinstance(raw, list):
+            return []
+        keep = [
+            [float(p) for p in chunk if isinstance(p, int | float)]
+            for chunk in raw
+            if isinstance(chunk, list)
+        ]
+        return [chunk for chunk in keep if chunk]
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,13 +148,36 @@ class SectorResult:
     note: str
     braking_events: int = 0
     status: SectorStatus = SectorStatus.PENDING
+    previous_best: float | None = None  # the sector's best before this run, if it was beaten
+
+    @property
+    def delta(self) -> float | None:
+        """Seconds this run was off the sector's best kept time (negative = a new best).
+
+        A new best has nothing slower to be compared with, so it is measured against the best it
+        replaced; the first run of a sector has neither and shows no delta.
+        """
+        if self.duration is None:
+            return None
+        if self.status is SectorStatus.BEST:
+            if self.previous_best is None:
+                return None
+            return self.duration - self.previous_best
+        if self.best is None:
+            return None
+        return self.duration - self.best
 
     def describe(self) -> str:
         label = f"S{self.sector + 1}"
         if self.duration is None:
             return f"{label} {self.note}"
-        best = f" (best {self.best:.2f}s)" if self.best is not None else ""
-        return f"{label} {self.duration:.2f}s {self.note}{best}"
+        tail = ""
+        if self.best is not None:
+            tail = f" (best {self.best:.2f}s"
+            if self.delta is not None:
+                tail += f", {self.delta:+.2f}s"
+            tail += ")"
+        return f"{label} {self.duration:.2f}s {self.note}{tail}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,12 +202,18 @@ class Snapshot:
     best_times: tuple[float | None, ...] = ()
     reference_car: str | None = None
     reference_sectors: tuple[int, ...] = ()
-    warming_up: bool = False  # still inside the ignored warm-up laps
+    warming_up: bool = False  # still inside the ignored warm-up laps, or learning the sector lines
+    warmup_laps_left: int = 0  # of those, how many warm-up laps are left (0 = the lines are why)
     boundaries: tuple[float, ...] = ()  # sector lines, including 0.0 and 1.0
-    equal_lines: bool = False  # stored data uses equal splits (older version or survey off)
+    equal_lines: bool = False  # the game's sector lines are not learned: equal splits are in use
     last_result_age: float | None = None  # seconds since the last sector result
     pass_flag: str = ""  # why the current sector will not count ("lap invalidated", ...)
     last_result: SectorResult | None = None
+    # A cut the log reported for a lap the sector bar no longer shows (the game buffers its log, so
+    # a report can arrive a lap late). There is nothing left on the bar to grey, so the status line
+    # says it instead.
+    late_cut: str = ""
+    late_cut_age: float | None = None  # seconds since that report
 
 
 @dataclass(frozen=True, slots=True)

@@ -48,7 +48,7 @@ class SectorBar(QWidget):
     """F1-style sector indicator: three groups of segments, coloured by how each sector went.
 
     Grey = not driven yet, yellow = slower than your kept runs, green = among your fastest,
-    purple = your fastest. With more than three sectors each group is split into sub-sectors.
+    purple = your fastest.
     """
 
     _SEGMENT_GAP = 2.0

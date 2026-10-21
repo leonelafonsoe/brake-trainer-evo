@@ -19,13 +19,10 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "min_peak": (0.1, 1.0),
     "min_speed_drop": (1.0, 100.0),
     "cluster_m": (5.0, 200.0),
-    "n_sectors": (1, 24),
-    "sector_length_m": (200.0, 5000.0),
-    "min_sectors": (1, 24),
-    "max_sectors": (1, 24),
     "top_runs": (1, 10),
     "max_tyres_out": (0, 4),
     "max_tyres_out_after_invalid": (0, 4),
+    "cut_give_back_m": (0.0, 2000.0),
     "warmup_laps": (0, 5),
     "own_runs_to_replace_ref": (1, 10),
     "lead_s": (0.3, 5.0),
@@ -41,7 +38,7 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "overlay_opacity": (0.3, 1.0),
     "overlay_background": (0.0, 0.9),
 }
-_OPTIONAL_INT = {"n_sectors", "overlay_x", "overlay_y"}
+_OPTIONAL_INT = {"overlay_x", "overlay_y"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,18 +51,17 @@ class Settings:
     cluster_m: float = 40.0  # onsets closer than this are the same corner
     # --- sectors & learning ---
     learning_enabled: bool = True  # off: cues still play, nothing is saved or changed
-    n_sectors: int | None = None  # None = automatic from track length
-    sector_length_m: float = 1000.0
-    min_sectors: int = 3
-    max_sectors: int = 8
     top_runs: int = 3  # fastest runs kept per sector
-    snap_sector_boundaries: bool = True  # put sector lines on straights, away from corners
     warmup_laps: int = 1  # laps ignored after leaving the pits (cold tyres and brakes)
     skip_invalid_sectors: bool = True  # sector not counted if the lap was invalidated in it
-    max_tyres_out: int = 4  # ...or this many tyres were off track (0 = ignore)
-    # Once the game has invalidated the lap its flag cannot show a second mistake, so a lower
-    # tyre count is used to catch further excursions in the later sectors of that lap.
+    max_tyres_out: int = 4  # tyres off the track that drop a sector (0 = ignore)
+    # Once the game has invalidated the lap its flag stays down and cannot report a second mistake,
+    # so a lower tyre count stands in for it in the remaining sectors of that lap (0 = off).
     max_tyres_out_after_invalid: int = 2
+    # The game judges a cut and only reports it after its give-back window has passed. Its report
+    # names the corner it happened in, so the position it arrives at is used as-is (0 = trust it).
+    # A non-zero window reads the report this far back along the lap for old data that expects it.
+    cut_give_back_m: float = 0.0
     own_runs_to_replace_ref: int = 2
     reference_car: str = ""  # "" = automatic
     # --- cues ---
@@ -83,6 +79,9 @@ class Settings:
     telemetry_hz: float = 60.0
     game_process: str = "assettocorsaevo"
     close_with_game: bool = True
+    use_game_log: bool = True  # follow the game's log for the cuts it reports after the fact
+    game_log_dir: str = ""  # "" = the game's default folder under Saved Games
+    debug_logging: bool = False  # verbose log for troubleshooting (see docs/TROUBLESHOOTING.md)
     # --- overlay ---
     overlay_always_on_top: bool = True
     overlay_opacity: float = 1.0
@@ -105,8 +104,6 @@ class Settings:
         merged = replace(self, **changes)
         if merged.brake_off >= merged.brake_on:
             merged = replace(merged, brake_off=max(0.01, merged.brake_on - 0.05))
-        if merged.min_sectors > merged.max_sectors:
-            merged = replace(merged, max_sectors=merged.min_sectors)
         return merged
 
     @classmethod

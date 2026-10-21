@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from ..config import Settings
 from ..models import Snapshot, ViewState
 from . import theme
-from .status import status_line
+from .status import phase_label, status_line
 from .widgets import BarWidget, SectorBar
 
 _APPROACH_WINDOW_M = 400.0  # the approach bar starts filling this far from the point
@@ -208,7 +208,7 @@ class OverlayWindow(QWidget):
             self._approach.set_value(0)
             return
         if snap.next_zone_m is None:
-            self._distance.setText("learning…")
+            self._distance.setText(phase_label(snap, st))
             self._distance.setStyleSheet(style.format(c=theme.TEXT_DIM, s=14, w=600))
             self._approach.set_value(0)
             return

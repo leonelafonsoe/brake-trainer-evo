@@ -87,8 +87,9 @@ The folder build is recommended. Settings, learned data and logs live in
 ## Using it
 
 1. **Drive out of the pits.** The first lap is a **warm-up lap**: nothing is learned (cold tyres
-   and brakes make you brake early), but the app surveys the corners. The overlay says
-   "Warm-up lap · not learning".
+   and brakes make you brake early). On a track you have not driven before the app is also waiting
+   for the game's sector lines from its log, and says "Waiting for the game's sector lines" while
+   it does.
 2. **Keep driving.** From the second lap on, each finished sector is saved if it is among your
    fastest. The sector bar fills with colours and beeps start as soon as there are marks ahead.
 3. **Next time**, everything is loaded from disk and cues work from the first lap.
@@ -100,7 +101,7 @@ The folder build is recommended. Settings, learned data and logs live in
 | Top line | Track and car, with a dot: grey = waiting for the game, amber = game running, green = live |
 | NEXT BRAKE | Distance to the next learned braking point. White, then amber when the warning is due, red at the point |
 | BRAKE | Your live brake pedal, with your speed |
-| Sector bar | Three groups of segments (split into sub-sectors on longer tracks). Grey = not driven, yellow = slower than your kept runs, green = among your fastest, purple = your fastest. A white outline marks the current sector |
+| Sector bar | Three groups of segments, one per game sector. Grey = not driven, yellow = slower than your kept runs, green = among your fastest, purple = your fastest. A white outline marks the current sector |
 | Status line | What matters right now: a sector that won't count, learning paused, warm-up, the last sector result, the reference car, or a summary |
 
 <table>
@@ -143,7 +144,8 @@ src/brake_trainer/
   storage.py       per track + car persistence
   telemetry.py     acevo-sdk adapter, restart watchdog, game-exit detection
   audio.py         generated beeps (no audio files)
-  app.py           wiring, tray icon, logging
+  logsetup.py      logging: rotating file + console, verbose mode
+  app.py           wiring, tray icon
   ui/              overlay, settings window, status line, icon, worker thread, theme
 tests/             pytest: engine scenarios, storage, config, telemetry, status line, docs
 scripts/           build_exe.py, make_icon.py, gen_settings_doc.py, release_notes.py, bump_version.py
@@ -176,6 +178,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
   a truth.
 - A braking zone very close to the start/finish line can wobble between the last and first
   sector. More in [Design notes](docs/DESIGN.md#known-limitations-and-ideas).
+- Track limits follow the game. It reports each cut around the corner it happened in, so the position
+  in the report is used as it is (the stored `cut_give_back_m` is `0` by default; a non-zero value
+  reads a report that far back for older data) and the run is taken back if that sector was already
+  saved. The game buffers its log (a few KB, flushed when full), so a cut can be read a minute later,
+  or after the lap it belongs to has ended, and several can arrive at once; each line's own time is
+  what the app attributes from, so every one still lands in its own sector of its own lap, and one
+  for a lap that is over is named on the status line. An infraction it judges from something it does
+  not expose cannot be pinned to a sector, and the app says so in its log. More in
+  [Telemetry notes](docs/TELEMETRY.md#track-limits).
 - Windows only (it uses the game's shared memory, `tasklist` and `winsound`).
 
 ## Credits
