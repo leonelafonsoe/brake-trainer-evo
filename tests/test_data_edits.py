@@ -39,11 +39,11 @@ def test_delete_sector_and_entry(store):
 
 
 def test_deleting_the_entry_in_use_is_not_undone_by_the_running_engine(store):
-    engine = BrakeEngine(Settings(n_sectors=5, warmup_laps=0), store)
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
     driver = Driver(engine)
     for _ in range(3):
         driver.lap(CORNERS)
-    assert store.load("Monza", "Car A", 5).total_runs() > 0
+    assert store.load("Monza", "Car A", 3).total_runs() > 0
 
     engine.queue_edit(DeleteEntry("Monza", "Car A"))
     assert engine.apply_pending()
@@ -51,29 +51,31 @@ def test_deleting_the_entry_in_use_is_not_undone_by_the_running_engine(store):
     assert store.entries() == []  # the old in-memory copy was not saved back
 
     driver.lap(CORNERS)  # driving on starts a fresh entry
-    assert store.load("Monza", "Car A", 5).total_runs() > 0
+    assert store.load("Monza", "Car A", 3).total_runs() > 0
 
 
 def test_deleting_one_run_of_the_entry_in_use_survives_exit_and_more_laps(store):
     changes = []
     engine = BrakeEngine(
-        Settings(n_sectors=5, warmup_laps=0), store, on_data_changed=lambda: changes.append(1)
+        Settings(use_game_log=False, warmup_laps=0),
+        store,
+        on_data_changed=lambda: changes.append(1),
     )
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)
-    before = store.load("Monza", "Car A", 5)
+    before = store.load("Monza", "Car A", 3)
     victim = before.sectors[1][0]
 
     engine.queue_edit(DeleteRun("Monza", "Car A", 1, victim.t))
     assert engine.apply_pending() and changes
     expected = len(before.sectors[1]) - 1
-    assert len(store.load("Monza", "Car A", 5).sectors[1]) == expected
+    assert len(store.load("Monza", "Car A", 3).sectors[1]) == expected
 
     engine.flush()  # quitting must not bring the run back
-    assert len(store.load("Monza", "Car A", 5).sectors[1]) == expected
+    assert len(store.load("Monza", "Car A", 3).sectors[1]) == expected
     driver.lap(CORNERS)  # the entry reloads and keeps working
-    assert store.load("Monza", "Car A", 5).total_runs() > 0
+    assert store.load("Monza", "Car A", 3).total_runs() > 0
 
 
 def test_settings_window_data_tree_and_selected_edits(store, qapp):

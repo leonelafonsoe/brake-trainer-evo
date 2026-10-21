@@ -8,7 +8,7 @@ from brake_trainer.models import SectorRun, TrackData
 
 def test_settings_roundtrip(tmp_path):
     path = tmp_path / "s.json"
-    original = Settings(volume=0.3, overlay_x=120, n_sectors=4, reference_car="296")
+    original = Settings(volume=0.3, overlay_x=120, warmup_laps=2, reference_car="296")
     save_settings(original, path)
     assert load_settings(path) == original
 
@@ -32,6 +32,13 @@ def test_settings_missing_or_corrupt_file(tmp_path):
 def test_brake_off_stays_below_brake_on():
     st = Settings(brake_on=0.2, brake_off=0.5).clamped()
     assert st.brake_off < st.brake_on
+
+
+def test_verbose_logging_is_off_by_default_and_round_trips(tmp_path):
+    assert Settings().debug_logging is False
+    path = tmp_path / "s.json"
+    save_settings(Settings(debug_logging=True), path)
+    assert load_settings(path).debug_logging is True
 
 
 def _data(car: str, runs: int, t: float = 30.0) -> TrackData:

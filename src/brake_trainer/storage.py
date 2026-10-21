@@ -59,6 +59,8 @@ class TrackStore:
     def _read(path: Path) -> TrackData | None:
         try:
             return TrackData.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except FileNotFoundError:
+            return None  # no data yet: never driven, or the entry was just deleted
         except (OSError, ValueError, KeyError, TypeError) as exc:
             log.debug("Skipping unreadable data file %s (%s)", path.name, exc)
             return None
@@ -105,6 +107,28 @@ class TrackStore:
         return max(
             candidates, key=lambda d: (d.sectors_with_data(), d.total_runs(), -d.best_total())
         )
+
+    def share_lines(self, data: TrackData) -> str:
+        """Take the sector lines another entry on this track learned, if this one has none.
+
+        The game's own lines are the track's, not the car's, so one car's entry teaches the
+        others here and no car has to wait for the game's log twice. An entry with runs keeps
+        the lines it was timed on, since moving those would re-file every stored run. Returns
+        the car the lines came from, or "" if nothing was taken.
+        """
+        if data.boundaries is not None or data.total_runs():
+            return ""
+        for other in self.entries():
+            if (
+                other.track == data.track
+                and other.car != data.car
+                and other.n_sectors == data.n_sectors
+                and other.boundaries
+            ):
+                data.boundaries = list(other.boundaries)
+                self.save(data)
+                return other.car
+        return ""
 
     def apply(self, edit: DataEdit) -> bool:
         """Apply an edit to the stored files. Returns False if there was nothing to change."""

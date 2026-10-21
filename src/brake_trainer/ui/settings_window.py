@@ -6,6 +6,7 @@ import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QUrl, Signal
@@ -32,7 +33,9 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..config import Settings
+from ..gamelog import DEFAULT_LOG_DIR
 from ..models import CueKind
+from ..paths import app_dir
 from ..storage import DataEdit, DeleteEntry, DeleteRun, DeleteSector, TrackStore
 from . import theme
 
@@ -233,50 +236,6 @@ TABS: dict[str, list[Spec]] = {
             tip="Off = cues still play, but nothing is saved or changed (e.g. during a race).",
         ),
         Spec(
-            "n_sectors",
-            "Sectors per lap",
-            "optint",
-            0,
-            24,
-            1,
-            tip="0 = automatic from the track length.",
-        ),
-        Spec(
-            "sector_length_m",
-            "Automatic: sector length",
-            "float",
-            200,
-            5000,
-            100,
-            0,
-            " m",
-            tip="Automatic mode: aim for about one sector per this distance.",
-        ),
-        Spec(
-            "min_sectors",
-            "Automatic: minimum sectors",
-            "int",
-            1,
-            24,
-            1,
-            tip="Automatic mode: never use fewer sectors than this.",
-        ),
-        Spec(
-            "max_sectors",
-            "Automatic: maximum sectors",
-            "int",
-            1,
-            24,
-            1,
-            tip="Automatic mode: never use more sectors than this.",
-        ),
-        Spec(
-            "snap_sector_boundaries",
-            "Place sector lines on straights",
-            "bool",
-            tip="Surveyed on the warm-up lap, so a corner is never split between two sectors.",
-        ),
-        Spec(
             "warmup_laps",
             "Ignore laps after leaving the pits",
             "int",
@@ -284,7 +243,11 @@ TABS: dict[str, list[Spec]] = {
             5,
             1,
             special="Off",
-            tip="Cold tyres and brakes make you brake earlier, so these laps are not learned.",
+            tip=(
+                "Cold tyres and brakes make you brake earlier, so these laps are not learned. "
+                "The first laps of a new track are ignored too, while the game's sector lines are "
+                "being learned from its log."
+            ),
         ),
         Spec(
             "skip_invalid_sectors",
@@ -300,7 +263,11 @@ TABS: dict[str, list[Spec]] = {
             4,
             1,
             special="Off",
-            tip="Sector not saved if this many tyres were off the track at any moment.",
+            tip=(
+                "The game's live count of tyres off the track, where it publishes it. A sector is "
+                "not saved if this many were off at any moment, also twice in the same lap. Off "
+                "leaves it to the game's race cut and the lap flag."
+            ),
         ),
         Spec(
             "max_tyres_out_after_invalid",
@@ -311,8 +278,9 @@ TABS: dict[str, list[Spec]] = {
             1,
             special="Off",
             tip=(
-                "After the game invalidates a lap it cannot flag a second mistake, so later "
-                "sectors of that lap are skipped if this many tyres go off the track."
+                "The game's lap flag only drops once, so the race cut and the tyre count carry the "
+                "later mistakes. For the rest of an invalidated lap a sector is not saved if this "
+                "many tyres go off the track in it."
             ),
         ),
         Spec(
@@ -388,6 +356,25 @@ TABS: dict[str, list[Spec]] = {
             tip="Part of the game's process name, used to detect that it is running or has closed.",
         ),
         Spec(
+            "use_game_log",
+            "Follow the game's log",
+            "bool",
+            tip=(
+                "Read the game's log for the cuts it reports and the sector splits that mark its "
+                'own lines. Shared memory only shows the first cut of a lap (its "lap valid" flag '
+                "drops once); the log records one event per cut and every sector split."
+            ),
+        ),
+        Spec(
+            "game_log_dir",
+            "Game log folder",
+            "text",
+            tip=(
+                "Where the game writes its logs. Empty = the usual place under Saved Games "
+                "(<profile>/Saved Games/ACE/Logs)."
+            ),
+        ),
+        Spec(
             "telemetry_hz",
             "Telemetry rate",
             "float",
@@ -397,6 +384,18 @@ TABS: dict[str, list[Spec]] = {
             0,
             " Hz",
             tip="How often telemetry is read. Higher is more precise; 60 is plenty.",
+        ),
+    ],
+    "Diagnostics": [
+        Spec(
+            "debug_logging",
+            "Verbose (debug) logging",
+            "bool",
+            tip=(
+                "Write extra detail to the log, including the game's track-limit signals (the race "
+                "cut and the live tyre count) and the lap flag at every change. Turn it on, "
+                "reproduce a problem, then share the log file."
+            ),
         ),
     ],
 }
@@ -472,7 +471,8 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(self)
         self._tabs = QTabWidget()
         for title, specs in TABS.items():
-            self._tabs.addTab(self._form(specs), title)
+            page = self._diagnostics_tab(specs) if title == "Diagnostics" else self._form(specs)
+            self._tabs.addTab(page, title)
         self._tabs.addTab(self._data_tab(), "Data")
         self._tabs.addTab(self._about_tab(), "About")
         layout.addWidget(self._tabs)
@@ -507,6 +507,33 @@ class SettingsWindow(QDialog):
             widget = _make_widget(spec)
             self._widgets[spec.name] = (spec, widget)
             form.addRow(spec.label, widget)
+        return page
+
+    def _diagnostics_tab(self, specs: list[Spec]) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(16, 16, 16, 16)
+        intro = QLabel(
+            "Troubleshooting. Verbose logging adds detail about the game's track-limit signals "
+            "(every cut read from the game's log, with the sector it is attributed to, and the lap "
+            "flag). Turn it on, reproduce the problem, then share the app log: the fastest way to "
+            "explain a sector that was kept or dropped wrongly."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        layout.addWidget(self._form(specs))
+        row = QHBoxLayout()
+        for text, slot in (
+            ("Open app log folder", self._open_log_folder),
+            ("Open the game's log folder", self._open_game_log_folder),
+            ("Open data folder", self._open_folder),
+        ):
+            btn = QPushButton(text)
+            btn.clicked.connect(slot)
+            row.addWidget(btn)
+        row.addStretch(1)
+        layout.addLayout(row)
+        layout.addStretch(1)
         return page
 
     def _data_tab(self) -> QWidget:
@@ -581,7 +608,7 @@ class SettingsWindow(QDialog):
                 expanded.add(top.data(0, _EDIT_ROLE))
         self._tree.clear()
         for d in self._store.entries():
-            lines = "on straights" if d.boundaries else "equal splits"
+            lines = "game's sector lines" if d.boundaries else "equal splits"
             total = d.total_runs()
             detail = f"{d.n_sectors} sectors · {total} run" + ("" if total == 1 else "s")
             entry = QTreeWidgetItem([f"{d.track} · {d.car}", detail, lines])
@@ -634,7 +661,17 @@ class SettingsWindow(QDialog):
             self.edit_requested.emit(edit)  # applied by the worker, then the tab refreshes
 
     def _open_folder(self) -> None:
-        folder = self._store.directory
+        self._reveal(self._store.directory)
+
+    def _open_log_folder(self) -> None:
+        self._reveal(app_dir())
+
+    def _open_game_log_folder(self) -> None:
+        folder = self._get_settings().game_log_dir
+        self._reveal(Path(folder).expanduser() if folder else DEFAULT_LOG_DIR)
+
+    @staticmethod
+    def _reveal(folder: Path) -> None:
         folder.mkdir(parents=True, exist_ok=True)
         if sys.platform == "win32":
             os.startfile(folder)  # noqa: S606

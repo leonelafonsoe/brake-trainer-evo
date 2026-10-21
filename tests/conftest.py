@@ -28,11 +28,24 @@ class Driver:
         pit: bool = False,
         valid: bool = True,
         tyres_out: int = 0,
+        cut_gained_ms: int = 0,
+        cut_deadline_m: int = 0,
     ) -> None:
         self.t += DT
         self.engine.update(
             Sample(
-                self.track, self.car, LENGTH, pos % 1.0, brake, speed, pit, self.t, valid, tyres_out
+                self.track,
+                self.car,
+                LENGTH,
+                pos % 1.0,
+                brake,
+                speed,
+                pit,
+                self.t,
+                valid,
+                tyres_out,
+                cut_gained_ms,
+                cut_deadline_m,
             )
         )
 
@@ -46,6 +59,7 @@ class Driver:
         invalid_from: float | None = None,
         off_track: tuple[float, float] | None = None,
         off_tyres: int = 4,
+        cut: tuple[float, float] | None = None,
     ) -> float:
         p = start
         while p < stop:
@@ -56,9 +70,26 @@ class Driver:
                     brake, speed = 0.8, min(speed, 200 - d * 0.9)
             valid = invalid_from is None or p < invalid_from
             out = off_tyres if off_track and off_track[0] <= p < off_track[1] else 0
-            self.feed(p, speed, brake, valid=valid, tyres_out=out)
+            down = bool(cut and cut[0] <= p < cut[1])
+            self.feed(
+                p,
+                speed,
+                brake,
+                valid=valid,
+                tyres_out=out,
+                cut_gained_ms=250 if down else 0,
+                cut_deadline_m=120 if down else 0,
+            )
             p += speed / 3.6 * DT / LENGTH
         return p
+
+    def split(self, index: int, at: float | None = None) -> None:
+        """The game's log reported the end of sector ``index``.
+
+        ``at`` is when the game wrote it; the default, the car's current time, is what a log read
+        with no lag looks like. A buffered log is read later, so its lines carry an older time.
+        """
+        self.engine.report_split(index, self.t if at is None else at)
 
 
 @pytest.fixture(scope="session")
@@ -88,8 +119,10 @@ def cues():
 @pytest.fixture
 def make_engine(store, cues):
     def factory(**overrides) -> BrakeEngine:
+        # use_game_log off keeps the tests off the game's log: without a split in sight the engine
+        # would spend the first laps waiting for the game's sector lines before counting anything.
         return BrakeEngine(
-            Settings(**{"warmup_laps": 0, **overrides}),
+            Settings(**{"warmup_laps": 0, "use_game_log": False, **overrides}),
             store,
             on_cue=lambda kind: cues.append(kind),
         )
