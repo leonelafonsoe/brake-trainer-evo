@@ -16,8 +16,15 @@ LENGTH = 5000.0
 class Driver:
     """Drives an engine around a synthetic track with braking zones at given positions."""
 
-    def __init__(self, engine: BrakeEngine, track: str = "Monza", car: str = "Car A") -> None:
+    def __init__(
+        self,
+        engine: BrakeEngine,
+        track: str = "Monza",
+        car: str = "Car A",
+        length: float = LENGTH,
+    ) -> None:
         self.engine, self.track, self.car = engine, track, car
+        self.length = length
         self.t = 0.0
 
     def feed(
@@ -36,7 +43,7 @@ class Driver:
             Sample(
                 self.track,
                 self.car,
-                LENGTH,
+                self.length,
                 pos % 1.0,
                 brake,
                 speed,
@@ -65,7 +72,7 @@ class Driver:
         while p < stop:
             speed, brake = speed_fn(p % 1.0), 0.0
             for c in corners:
-                d = ((p % 1.0) - c - jitter) * LENGTH
+                d = ((p % 1.0) - c - jitter) * self.length
                 if 0 <= d < 120:
                     brake, speed = 0.8, min(speed, 200 - d * 0.9)
             valid = invalid_from is None or p < invalid_from
@@ -80,7 +87,7 @@ class Driver:
                 cut_gained_ms=250 if down else 0,
                 cut_deadline_m=120 if down else 0,
             )
-            p += speed / 3.6 * DT / LENGTH
+            p += speed / 3.6 * DT / self.length
         return p
 
     def split(self, index: int, at: float | None = None) -> None:

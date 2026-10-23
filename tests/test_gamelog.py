@@ -10,7 +10,7 @@ from pathlib import Path
 from brake_trainer.config import Settings
 from brake_trainer.engine import _RUNS_KEPT_LAPS, N_SECTORS, BrakeEngine
 from brake_trainer.gamelog import REPORTED_CUT, GameLogTail, LogState, line_time, parse_line
-from brake_trainer.models import SectorRun, SectorStatus
+from brake_trainer.models import SectorRun, SectorStatus, TrackData
 
 from .conftest import DT, LENGTH, Driver
 
@@ -227,16 +227,23 @@ async def test_tail_without_a_log_folder_just_says_so(tmp_path: Path):
 
 
 CORNERS = [0.20, 0.50, 0.80]
+# The real Monza lines from the stored Ferrari 296 GT3 entry; the game's lap is 3804 m.
+MONZA_LENGTH_M = 3804.0
+MONZA_LINES = (0.33644832163172367, 0.6567313191597194)
 
 
-def _engine(store, **settings):
-    """A warmed-up engine on a 5000 m track: a 500 m lookback is 0.1 of a lap.
+def _engine(store, boundaries=None, length=LENGTH, **settings):
+    """A warmed-up engine on a synthetic track: on the default 5000 m lap, 500 m is 0.1.
 
     The lookback is pinned to the game's 500 m window so these tests exercise the attribution even
-    if the shipped default changes; 500 m is 0.1 of this lap. The lines are the game's three: equal
-    splits (1/3 and 2/3), since no split is reported to this engine.
+    if the shipped default changes. With no ``boundaries`` the track uses equal thirds; pass the
+    real stored lines and length to reproduce a field log exactly.
     """
     settings.setdefault("cut_give_back_m", 500.0)
+    if boundaries is not None:
+        data = TrackData.empty("Monza", "Car A", N_SECTORS)
+        data.boundaries = list(boundaries)
+        store.save(data)
     results: list = []
     messages: list[str] = []
     engine = BrakeEngine(
@@ -245,7 +252,7 @@ def _engine(store, **settings):
         on_sector=results.append,
         on_message=messages.append,
     )
-    driver = Driver(engine)
+    driver = Driver(engine, length=length)
     for _ in range(4):
         driver.lap(CORNERS)
     results.clear()
@@ -272,9 +279,10 @@ def test_a_cut_reported_in_a_later_sector_is_taken_back_to_where_it_happened(sto
 
 def test_a_report_just_past_a_sector_line_drops_the_sector_before_it(store):
     # The real Monza case from the field logs: the game reports at 36.3% and 68.3% of the lap, a
-    # few metres after the 33.6% and 65.7% lines. Those are the ends of the 500 m give-back windows
-    # for cuts at about 23% and 55%, in S1 and S2. The report positions alone would drop S2 and S3.
-    engine, driver, _, messages = _engine(store)  # 500 m of a 5000 m lap = 10% back
+    # few metres after the stored 33.64% and 65.67% lines. Those are the ends of the 500 m
+    # give-back windows (13.1% of the 3804 m lap) for cuts at about 23.2% and 55.2%, in S1 and S2.
+    # The report positions alone would drop S2 and S3.
+    engine, driver, _, messages = _engine(store, boundaries=MONZA_LINES, length=MONZA_LENGTH_M)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.363)
     engine.report_infraction("the game reported a cut", driver.t)
     assert (engine._lap_no, 0) in engine._invalid_sectors  # S1, where the cut was
