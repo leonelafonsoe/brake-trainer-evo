@@ -1135,7 +1135,8 @@ class BrakeEngine:
         if data.boundaries is not None:
             # Already learned: the lines stay where they are. The game's own split still says where
             # its line really is, so compare it with the learned one (verbose log only).
-            self._audit_split(index, lap, at, found)
+            if log.isEnabledFor(logging.DEBUG):
+                self._audit_split(index, lap, at, found)
             return
         if data.total_runs():
             # A stored run is timed between two lines, so moving them would silently re-file every
