@@ -62,6 +62,12 @@ moved - to learn them again, delete the entries on that track in Settings -> Dat
 build does not write splits, the app settles for equal splits after three laps and says so - and the
 laps driven while waiting are timed on them at that point, since they become the lines.
 
+The line's own timestamp is when the car crossed it. The car's position at that instant is
+**interpolated between the two telemetry frames either side**, not taken from the nearest one: at
+racing speed a frame is about a metre, and using the nearest frame would place every line that much
+early or late. Sector times close the same way, on the interpolated crossing, so a sector is not long
+by up to one frame.
+
 The log is buffered by the game, so the read that brings the splits often lands well after the car
 crossed the line. The sector you are in when they are read began on one of the stand-in equal lines,
 which sits in a different place from the game's own; the samples still have the crossing, so the pass

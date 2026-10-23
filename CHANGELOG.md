@@ -4,6 +4,14 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+- Sector lines and sector times are no longer quantised to the telemetry frame. A game-log split is
+  placed at the car's **interpolated** position at the split's own timestamp (the previous code used
+  the last frame before it), and a sector now closes at the interpolated crossing instead of at the
+  first frame after the line. At 60 Hz and racing speed that removed up to a frame - about a metre,
+  or 10-20 ms per sector - and it was always biased the same way, so the lines sat slightly early.
+  Verbose logging now also audits every later split against the learned line
+  (`splits: audit index 0 ... the app's line was crossed 3.7 ms / 0.2 m after the game's`), which is
+  how a line placement can be checked from an app log plus the matching game log.
 - Track limits now invalidate exactly the sectors the game judged. Every signal is recorded against a
   `(lap, sector)`, so a cut seen live by the race-cut pair or the lap flag and again in the log (or
   re-read after a restart) drops one sector and says so once, while two cuts in different sectors of

@@ -62,7 +62,7 @@ or the tray icon. **Apply** saves and takes effect immediately. Settings are sto
 | Game process name contains | `game_process` | assettocorsaevo | text | Part of the game's process name, used to detect that it is running or has closed. |
 | Follow the game's log | `use_game_log` | on | on / off | Read the game's log for the cuts it reports and the sector splits that mark its own lines. Shared memory only shows the first cut of a lap (its "lap valid" flag drops once); the log records one event per cut and every sector split. |
 | Game log folder | `game_log_dir` | empty | text | Where the game writes its logs. Empty = the usual place under Saved Games (<profile>/Saved Games/ACE/Logs). |
-| Telemetry rate | `telemetry_hz` | 60 Hz | 5 - 60 Hz | How often telemetry is read. Higher is more precise; 60 is plenty. |
+| Telemetry rate | `telemetry_hz` | 60 Hz | 5 - 60 Hz | How often telemetry is read. Higher makes live data a little smoother; 60 is plenty. Sector lines are interpolated between samples, so a higher rate does not move them. |
 
 ## Diagnostics
 

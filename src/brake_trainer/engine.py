@@ -152,6 +152,27 @@ def full_bounds(n: int, inner: Sequence[float] | None) -> list[float]:
     return [0.0, *inner, 1.0]
 
 
+@dataclass(frozen=True, slots=True)
+class _HistoryPoint:
+    """One sampled car state, kept so a game-log event can be placed at its own time."""
+
+    t: float
+    pos: float
+    speed_kmh: float
+    in_pit: bool
+    lap: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CarAt:
+    """The car at an arbitrary time, interpolated between two samples."""
+
+    pos: float
+    speed_kmh: float
+    in_pit: bool
+    lap: int
+
+
 @dataclass(slots=True)
 class _Pass:
     """A sector pass in progress."""
@@ -237,7 +258,7 @@ class BrakeEngine:
         self._cut_active = False  # the game's race-cut signal is up right now
         self._cut_gained = 0  # the last race-cut gain it reported, for spotting a new cut
         self._cut_deadline = 0  # its give-back distance, which grows again when a new cut starts
-        self._history: deque[tuple[float, float, bool, int]] = deque()  # (t, pos, in_pit, lap)
+        self._history: deque[_HistoryPoint] = deque()
         # recently seen, so a cut the log reports late is still attributed from where the car was
         self._lap_runs: dict[tuple[int, int], tuple[SectorRun, list[SectorRun]]] = {}  # per lap and
         # sector: the run it stored, and the list it replaced, so a cut the game reports a lap late
@@ -254,6 +275,7 @@ class BrakeEngine:
         self._laps_done = 0  # laps completed since leaving the pits / session start
         self._status: list[SectorStatus] = []
         self._prev_pos: float | None = None
+        self._prev_t: float | None = None
         self._sector = 0
         self._pass: _Pass | None = None
         self._last_closed: tuple[int, SectorRun] | None = None
@@ -309,21 +331,27 @@ class BrakeEngine:
         pos = min(max(s.pos, 0.0), 0.99999)
         sector = self._sector_of(pos)
 
-        self._history.append((s.t, pos, s.in_pit, self._lap_no))
-        while self._history and self._history[0][0] < s.t - _HISTORY_S:
+        self._history.append(_HistoryPoint(s.t, pos, s.speed_kmh, s.in_pit, self._lap_no))
+        while self._history and self._history[0].t < s.t - _HISTORY_S:
             self._history.popleft()
 
         delta, jump = 0.0, False
-        if self._prev_pos is not None:
-            delta = ((pos - self._prev_pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
+        prev_pos, prev_t = self._prev_pos, self._prev_t
+        if prev_pos is not None:
+            delta = ((pos - prev_pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
             jump = abs(delta) > 0.05
-        self._prev_pos = pos
+        self._prev_pos, self._prev_t = pos, s.t
         if self._pass is None or jump:  # start, reset or teleport
             self._restart_pass(sector, s.t, pos)
         elif sector != self._sector:
             if sector == (self._sector + 1) % self._n:  # crossed into the next sector
-                self._close_sector(s.t)
-                self._sector, self._pass = sector, _Pass(s.t, clean=True, start_pos=pos)
+                crossed = self._line_crossing(prev_t, prev_pos, s.t, pos, self._bounds[sector])
+                self._close_sector(crossed)
+                start = self._bounds[sector]
+                self._sector = sector
+                self._pass = _Pass(
+                    crossed, clean=True, start_pos=start, coverage=(pos - start) % 1.0
+                )
                 if sector == 0:
                     if not s.in_pit:
                         self._laps_done += 1  # crossed the line: one more lap completed
@@ -414,6 +442,7 @@ class BrakeEngine:
 
     def _clear_tracking(self) -> None:
         self._prev_pos = None
+        self._prev_t = None
         self._lap_valid = None
         self._lap_no = 0
         self._status_lap = 0
@@ -748,7 +777,7 @@ class BrakeEngine:
         s = self._last
         if s is None or self._pass is None or not self._settings.skip_invalid_sectors:
             return
-        found = self._pos_at(at)
+        found = self._at_time(at)
         if found is None:
             log.debug(
                 "limits: %s written at %.3f is older than the kept history (%.0f s): not used",
@@ -757,7 +786,7 @@ class BrakeEngine:
                 _HISTORY_S,
             )
             return
-        pos, in_pit, lap = found
+        pos, in_pit, lap = found.pos, found.in_pit, found.lap
         if lap == self._lap_no:  # a cut of the lap being driven: not a bare lap-flag drop
             self._lap_saw_off = True
         where = pos if in_pit else self._infraction_pos(pos)
@@ -830,19 +859,40 @@ class BrakeEngine:
             return ""
         return " in the previous lap" if back == 1 else " in an earlier lap"
 
-    def _pos_at(self, at: float) -> tuple[float, bool, int] | None:
-        """The car when the game wrote a report at ``at``: (position, in the pits, lap).
+    def _at_time(self, at: float) -> _CarAt | None:
+        """The car at ``at``: position and speed interpolated between the samples around it.
 
-        None when ``at`` is older than the kept history - guessing from the current position would
-        drop the wrong sector, which is worse than saying nothing.
+        The game buffers its log, so an event line can be read long after it was written; the car's
+        state at the line's own time is what places a cut or a sector line. Taking the last sample
+        at or before ``at`` would quantise that to the telemetry interval - about a metre at racing
+        speed - and bias every line to the earlier sample. Interpolating removes both.
+
+        ``None`` when ``at`` is older than the kept history: guessing from the current position
+        would drop the wrong sector, which is worse than saying nothing.
         """
         s = self._last
         if s is not None and at >= s.t:
-            return min(max(s.pos, 0.0), 0.99999), s.in_pit, self._lap_no
-        for ts, pos, in_pit, lap in reversed(self._history):
-            if ts <= at:
-                return pos, in_pit, lap
-        return None
+            return _CarAt(min(max(s.pos, 0.0), 0.99999), s.speed_kmh, s.in_pit, self._lap_no)
+        before: _HistoryPoint | None = None
+        after: _HistoryPoint | None = None
+        for point in reversed(self._history):
+            if point.t <= at:
+                before = point
+                break
+            after = point
+        if before is None:
+            return None
+        if after is None or after.lap != before.lap:
+            # No pair on one lap to interpolate across: the earlier sample is the safe choice.
+            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
+        span = after.t - before.t
+        if span <= 0.0:
+            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
+        share = (at - before.t) / span
+        delta = ((after.pos - before.pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
+        pos = (before.pos + delta * share) % 1.0
+        speed = before.speed_kmh + (after.speed_kmh - before.speed_kmh) * share
+        return _CarAt(min(max(pos, 0.0), 0.99999), speed, before.in_pit, before.lap)
 
     def _prune_lap_runs(self) -> None:
         """Forget the stored-run records of laps too old for a late cut to still reach.
@@ -1058,20 +1108,13 @@ class BrakeEngine:
         data = self._data
         if data is None or index not in (0, 1):
             return
-        if data.boundaries is not None:
-            return  # already learned: the lines stay where they are
-        if data.total_runs():
-            # A stored run is timed between two lines, so moving them would silently re-file every
-            # sector. Learning only ever happens on a fresh entry, before any run is saved;
-            # deleting the track's data is what learns the lines again.
-            return
         if not self._settings.use_game_log:
             return
-        found = self._pos_at(at)
+        found = self._at_time(at)
         if found is None:
             log.debug("splits: index %d written at %.3f is older than the kept history", index, at)
             return
-        pos, in_pit, lap = found
+        pos, in_pit, lap = found.pos, found.in_pit, found.lap
         if in_pit or not _split_position_ok(index, pos):
             log.debug(
                 "splits: index %d at %.1f%% of the lap is not a sector line (in pit=%s, lap %d)",
@@ -1080,6 +1123,16 @@ class BrakeEngine:
                 in_pit,
                 lap,
             )
+            return
+        if data.boundaries is not None:
+            # Already learned: the lines stay where they are. The game's own split still says where
+            # its line really is, so compare it with the learned one (verbose log only).
+            self._audit_split(index, lap, at, found)
+            return
+        if data.total_runs():
+            # A stored run is timed between two lines, so moving them would silently re-file every
+            # sector. Learning only ever happens on a fresh entry, before any run is saved;
+            # deleting the track's data is what learns the lines again.
             return
         known = self._splits.get(index)
         if known is not None and known[2] > at:
@@ -1103,6 +1156,43 @@ class BrakeEngine:
             )
             return
         self._learn_lines(first[0], second[0])
+
+    def _audit_split(self, index: int, lap: int, at: float, car: _CarAt) -> None:
+        """Compare the game's line with the line the app learned, from the same split.
+
+        On a later lap the game's split timestamp says when the car really crossed the line; the
+        app's line says where the car was when that timestamp was first seen. If the two agree, the
+        car reaches the learned position at the same moment. The difference is therefore the
+        placement error: in seconds directly, and in metres from the speed at the line. A value
+        within one telemetry frame is expected; a persistent larger one means the line, the clocks
+        or the log's timestamp need a closer look. Verbose log only.
+        """
+        data = self._data
+        if data is None or data.boundaries is None:
+            return
+        line = data.boundaries[index]
+        app_t = self._crossing_time(lap, line)
+        if app_t is None:
+            log.debug(
+                "splits: audit index %d (lap %d): no crossing of the learned line in the history",
+                index,
+                lap,
+            )
+            return
+        delta_ms = (app_t - at) * 1000.0
+        metres = (app_t - at) * car.speed_kmh / 3.6
+        side = "after" if delta_ms >= 0 else "before"
+        log.debug(
+            "splits: audit index %d at %.1f%% (lap %d, %.0f km/h): the app's line was crossed "
+            "%.1f ms / %.1f m %s the game's",
+            index,
+            line * 100.0,
+            lap,
+            car.speed_kmh,
+            abs(delta_ms),
+            abs(metres),
+            side,
+        )
 
     def _learn_lines(self, first: float, second: float) -> None:
         """Adopt the game's two sector lines (both found on one lap) and use them from here on."""
@@ -1259,6 +1349,27 @@ class BrakeEngine:
                 return True
         return False
 
+    @staticmethod
+    def _line_crossing(
+        t0: float | None, p0: float | None, t1: float, p1: float, line: float
+    ) -> float:
+        """When the car crossed ``line`` between two samples.
+
+        ``line`` is 0.0 for the start/finish line, which the car crosses at the lap wrap (position
+        drops from near 1 to near 0) rather than by passing ``line`` from below. Interpolating here
+        keeps a sector's start and end at the physical line instead of at the next telemetry frame,
+        which is what makes a stored sector time accurate to better than one sample.
+        """
+        if t0 is None or p0 is None or t1 <= t0:
+            return t1
+        if line <= 0.0 and p1 < p0:  # the start/finish line, between the two samples
+            span = (1.0 - p0) + p1
+            share = (1.0 - p0) / span if span > 0.0 else 1.0
+        else:
+            span = p1 - p0
+            share = (line - p0) / span if span > 0.0 else 1.0
+        return t0 + (t1 - t0) * min(max(share, 0.0), 1.0)
+
     def _crossing_time(self, lap: int, line: float) -> float | None:
         """When the car crossed ``line`` during ``lap``, interpolated between two samples.
 
@@ -1270,19 +1381,19 @@ class BrakeEngine:
             return self._lap_start(lap)
         if line >= 1.0:
             return self._lap_start(lap + 1)
-        previous: tuple[float, float, int] | None = None  # t, pos, lap
-        for t, pos, _in_pit, n in self._history:
+        previous: _HistoryPoint | None = None
+        for point in self._history:
             if (
-                n == lap
+                point.lap == lap
                 and previous is not None
-                and previous[2] == lap
-                and previous[1] < line <= pos
+                and previous.lap == lap
+                and previous.pos < line <= point.pos
             ):
-                span = pos - previous[1]
+                span = point.pos - previous.pos
                 if span > 0.0:
-                    return previous[0] + (t - previous[0]) * ((line - previous[1]) / span)
-                return t
-            previous = (t, pos, n)
+                    return previous.t + (point.t - previous.t) * ((line - previous.pos) / span)
+                return point.t
+            previous = point
         return None
 
     def _lap_start(self, lap: int) -> float | None:
@@ -1294,17 +1405,17 @@ class BrakeEngine:
         it, so a lap whose start it no longer holds is not timed from a guess.
         """
         history = self._history
-        first = next((i for i, entry in enumerate(history) if entry[3] == lap), None)
+        first = next((i for i, entry in enumerate(history) if entry.lap == lap), None)
         if first is None:
             return None
         for j in (first, first - 1, first - 2):
             if j < 1:
                 continue
             high, low = history[j - 1], history[j]
-            if high[1] > 0.5 and low[1] < 0.05:  # the start/finish line between these two
-                span = (1.0 - high[1]) + low[1]
+            if high.pos > 0.5 and low.pos < 0.05:  # the start/finish line between these two
+                span = (1.0 - high.pos) + low.pos
                 if span > 0.0:
-                    return high[0] + (low[0] - high[0]) * ((1.0 - high[1]) / span)
+                    return high.t + (low.t - high.t) * ((1.0 - high.pos) / span)
         return None
 
     def _restart_pass(self, sector: int, t: float, pos: float) -> None:

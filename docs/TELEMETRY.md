@@ -41,8 +41,10 @@ lines come from the game's log: each split is written as
 
 `index` is the sector that just ended (0, then 1, then 2 for the start/finish line, which teaches
 nothing). The line's own timestamp is when the car crossed it, so the app takes the car's position at
-that time - the same history a late cut is attributed from. An out-lap writes the same `Received
-split` line, and teaches the lines just as well: they belong to the track, not to the lap. What is
+that time - the same history a late cut is attributed from. The position is interpolated between the
+two telemetry frames around the timestamp; taking the nearest frame would place the line up to a
+frame (about a metre at racing speed) early or late. An out-lap writes the same `Received split`
+line, and teaches the lines just as well: they belong to the track, not to the lap. What is
 left has to come from one lap - which a reset or a teleport in between breaks - and land where a
 sector line plausibly sits (the first in the first 60% of the lap, the second in the last 60%, 5%
 clear of both ends).
@@ -55,6 +57,24 @@ crossed the lines, so they are timed once the lines are known (see below) - and 
 is moved onto the game's line the same way. The lines are then saved with the track data
 (`boundaries`), borrowed by the other cars on that track, and never moved again - deleting the entry is
 what learns them again.
+
+### Checking where a line ended up
+
+The game's split is also the reference for the learned line: its timestamp is when the car crossed
+it. With verbose logging on, every later split writes one line to the app log:
+
+```
+splits: audit index 0 at 32.1% (lap 4, 214 km/h): the app's line was crossed 3.7 ms / 0.2 m after the game's
+```
+
+`after` means the learned position is slightly further round the lap than the game's line, `before`
+the other way. The expected value is well under one telemetry frame; at 60 Hz that frame is about a
+metre at 200 km/h. A value that stays much larger points at a clock difference between the game log
+and the telemetry, or at a log line written after the car had already crossed the line.
+
+The game's log alone cannot answer this: it has the split *times* but not the car's position on the
+track. The position comes from telemetry, so an app log with verbose logging and the matching game
+log are what make the check possible.
 
 ## Track limits
 
@@ -112,7 +132,11 @@ where the flag dropped.
 - **Watchdog.** If capture stops for any other reason, the app logs
   `Telemetry stopped (<reason>); restarting`, waits two seconds and starts a new capture. The
   sector in progress is discarded so a gap cannot produce a wrong sector time.
-- **Rate.** 60 Hz by default (5-60 in Settings). Sector times are accurate to about one sample.
+- **Rate.** 60 Hz by default (5-60 in Settings). Sector times are accurate to better than one sample:
+  a line crossing is interpolated between the two frames around it, so the remaining sampling error
+  is well under a millimetre in normal running. A higher rate smooths live data but does not move
+  the line; reading faster than the game updates shared memory also adds duplicate frames rather
+  than new information.
 - **Game exit.** While waiting for the game, the app runs `tasklist` every 3 seconds and looks for a
   process whose name contains `assettocorsaevo` (case-insensitive). Once it finds the game it opens a
   Windows handle to that process and checks it every poll, so the exit is noticed within a fraction of

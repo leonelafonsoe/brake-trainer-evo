@@ -146,6 +146,15 @@ track's. If it lasts more than three laps, the app settles for equal splits and 
 driven meanwhile are timed on them then) - check *Follow the game's log* and *Game log folder*
 in Settings -> App.
 
+**The sector lines look slightly early or late**
+The app places each line at the car's position when the game's own split was written, interpolated
+between the telemetry frames either side; it should be well under a metre out at 60 Hz. To check it
+on track, turn on verbose logging and look for `splits: audit ...` lines: each later split compares
+the learned line with the game's (`the app's line was crossed 2.1 ms / 0.1 m after the game's`).
+`after` means it is slightly further round the lap, `before` slightly short. A value that stays at
+metres is worth reporting: share the app log and the matching game log. The game log on its own has
+the split times but not the car's position, so it cannot show where a line was placed.
+
 **"not counted · the lines were learned mid-sector"**
 A new track and car starts on stand-in equal splits, because the game's own lines can only be read from
 its log (no other part of the game exposes them). The log is buffered, so the read that brings them can

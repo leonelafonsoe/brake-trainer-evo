@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine, build_zones
 from brake_trainer.models import CueKind, SectorRun
 
-from .conftest import LENGTH, Driver
+from .conftest import DT, LENGTH, Driver
 
 CORNERS = [0.20, 0.50, 0.80]
 
@@ -324,6 +326,81 @@ def test_the_games_splits_set_the_sector_lines(store):
     assert list(snap.boundaries) == [0.0, 0.25, 0.60, 1.0]
     assert not snap.warming_up
     assert store.load("Monza", "Car A", N_SECTORS).boundaries == [0.25, 0.60]  # persisted
+
+
+def test_a_split_is_placed_at_its_own_time_not_the_sample_before_it(store):
+    # The game writes the split between two telemetry frames. The line is where the car was at the
+    # line's timestamp, not where it was at the previous frame: at racing speed the difference is
+    # about a metre, which is enough to see on track.
+    engine = BrakeEngine(Settings(warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.20, 300.0, 0.0)
+    first = driver.t
+    driver.feed(0.22, 300.0, 0.0)
+    driver.split(0, at=(first + driver.t) / 2)
+
+    driver.feed(0.58, 300.0, 0.0)
+    second = driver.t
+    driver.feed(0.60, 300.0, 0.0)
+    driver.split(1, at=(second + driver.t) / 2)
+
+    bounds = engine.snapshot().boundaries
+    assert abs(bounds[1] - 0.21) < 1e-9  # halfway between 0.20 and 0.22
+    assert abs(bounds[2] - 0.59) < 1e-9
+
+
+def test_a_sector_closes_at_the_line_not_at_the_next_sample(store):
+    # Crossing a line between two frames must start the new sector at the crossing, otherwise every
+    # sector time is long by up to one frame and the sector bar changes a frame late.
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.32, 200.0, 0.0)  # the pass starts here, at t = DT
+    driver.feed(0.36, 200.0, 0.0)  # 1/3 is crossed a third of the way through this frame
+
+    snap = engine.snapshot()
+    assert snap.sector == 1
+    assert abs(snap.sector_elapsed - (2 / 3) * DT) < 1e-9
+
+
+def test_a_cut_between_samples_is_attributed_from_the_interpolated_position(store):
+    # The line at 1/3 falls between these two frames. Interpolating puts the cut at 0.34 (S2); the
+    # previous frame's position, 0.32, would blame S1.
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0, cut_give_back_m=0.0), store)
+    driver = Driver(engine)
+    driver.feed(0.32, 200.0, 0.0)
+    first = driver.t
+    driver.feed(0.36, 200.0, 0.0)
+    engine.report_infraction("off track", (first + driver.t) / 2)
+
+    snap = engine.snapshot()
+    assert snap.sector == 1
+    assert snap.pass_flag == "off track"  # S2, where 0.34 is
+
+
+def test_the_split_audit_measures_the_learned_line_against_the_games(store, caplog):
+    # Once the lines are known, every later split is the game saying exactly when it crossed its
+    # own line. Comparing that with the app's learned position is the check for a misplaced line.
+    engine = BrakeEngine(Settings(warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.10, 300.0, 0.0)
+    driver.feed(0.20, 300.0, 0.0)
+    driver.split(0)
+    driver.feed(0.50, 300.0, 0.0)
+    driver.feed(0.60, 300.0, 0.0)
+    driver.split(1)
+    assert list(engine.snapshot().boundaries[1:-1]) == [0.20, 0.60]
+
+    driver.lap(CORNERS, start=0.0001, stop=1.001)  # one full lap, so the next samples are a new lap
+    driver.feed(0.18, 200.0, 0.0)
+    first = driver.t
+    driver.feed(0.22, 200.0, 0.0)
+    # The game's split says its line is at 0.21; the app learned 0.20.
+    game_at = first + (0.21 - 0.18) / (0.22 - 0.18) * (driver.t - first)
+    with caplog.at_level(logging.DEBUG, logger="brake_trainer.engine"):
+        engine.report_split(0, game_at)
+
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "audit index 0" in text and "before the game's" in text
 
 
 def test_the_sector_that_began_on_the_line_counts_once_the_lines_are_learned(store):
