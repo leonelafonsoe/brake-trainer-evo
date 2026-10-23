@@ -105,12 +105,13 @@ position, sector and the sector the cut was attributed to. See
 [TELEMETRY.md](TELEMETRY.md#track-limits).
 
 **A cut is dropped one sector too late (or too early)**
-The game reports a cut around the corner it happened in, so the position in the report is used as it
-is and no setting is needed (the stored `cut_give_back_m` is `0` by default). If your build reports cuts from
-further back, the stored config value `cut_give_back_m` can be set to read a report that far back
-(larger reads further back; `0` uses the sector the report arrives in). The verbose log prints, per
-cut, the car's position when the report was written, the position attributed and the sector of each,
-so the right value can be read off a single run.
+The game gives the driver 500 m to give a cut's gained time back and only reports the cut once that
+window has passed, so the report lands about 500 m past the cut. The app reads it back that far
+(`cut_give_back_m`, default `500`), which keeps a cut at a corner entry in the sector where it
+happened instead of the next one. If your build reports at the cut itself, set the stored config
+value to `0`; a build with a different window can store that distance instead (larger reads further
+back). The verbose log prints, per cut, the car's position when the report was written, the position
+attributed and the sector of each, so the right value can be read off a single run.
 
 The game buffers its log (a few KB, flushed when full), so a cut can be read a minute after it was
 written - or after the lap it was in has ended - and a whole lap's cuts can arrive at once. The app

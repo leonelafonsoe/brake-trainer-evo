@@ -29,6 +29,17 @@ def test_settings_missing_or_corrupt_file(tmp_path):
     assert load_settings(bad) == Settings()
 
 
+def test_old_settings_get_the_games_give_back_window_once():
+    # Version 1 stored the old default of 0, which put a cut in the sector the report landed in.
+    # It must be moved to the game's 500 m window, but a deliberate 0 written since must stay 0.
+    old = Settings.from_dict({"cut_give_back_m": 0.0})
+    assert old.cut_give_back_m == 500.0
+    assert old.settings_version == 2
+
+    current = Settings.from_dict({"settings_version": 2, "cut_give_back_m": 0.0})
+    assert current.cut_give_back_m == 0.0
+
+
 def test_brake_off_stays_below_brake_on():
     st = Settings(brake_on=0.2, brake_off=0.5).clamped()
     assert st.brake_off < st.brake_on

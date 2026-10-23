@@ -4,6 +4,14 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+- Fix: a cut was dropped in the sector where the game's report landed, not the one where it
+  happened. The game gives the driver 500 m to hand back the time a cut gained and writes the
+  report (and drops `is_valid_lap`) only after that window, so a cut at the Ascari entry was
+  reported at the exit, just past the S2/S3 line, and S3 was dropped instead of S2; a cut before
+  Lesmo did the same to S2. Reports are now read back by the game's 500 m window
+  (`cut_give_back_m`, default `500`). A settings file from an older version, which stored the old
+  `0` default, is migrated once; a deliberate `0` in a current file still trusts the report
+  position.
 - Pin `acevo-sdk` below 0.2.0. That release only releases captured frames after it sees a clean lap
   boundary, so the live overlay stayed on "Game running — not in a session" until a lap was
   completed. The app needs every frame; lift the pin when the SDK offers a live-frame path again.
@@ -21,8 +29,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   which is how a line placement can be checked from an app log plus the matching game log.
 - Fix: a cut read between the first sample after the start/finish line (which still carries the old
   lap number) and the next was attributed to S1 of the lap that had just ended, greying that sector
-  and taking back its stored run. It now belongs to S1 of the new lap (with the default give-back of
-  0; a non-zero window reads it back into S3 of the lap that just ended).
+  and taking back its stored run. It now belongs to the lap its own time falls in: at the line that
+  is S1 of the new lap, and a give-back window reads it back into S3 of the lap that just ended.
 - Fix: a buffered split read that arrived after the car had already crossed the game's line kept the
   pass in progress on the start/finish line, storing a first sector that spanned the lap line to the
   read position - too long by the distance already driven. It is now timed from the game's own line,

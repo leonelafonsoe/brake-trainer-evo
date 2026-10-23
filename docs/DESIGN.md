@@ -140,14 +140,14 @@ already-invalid lap. The live race-cut pair and the count of tyres off the track
 where the game publishes them (all four tyres while the lap is valid; for the rest of an invalid lap
 the lower "...once the lap is invalid" count, default 2).
 
-A cut is judged by the time it gains, and the game only reports it at the end of its give-back
-window. The report therefore arrives at or after the cut, and the sector it is about is the one the
-give-back distance behind it (`cut_give_back_m`, `0` by default). Measured on track the game reports
-a cut around the corner it happened in - a Monza cut in the Ascari chicane is reported around the
-corner's exit - so the position the report arrives at is taken as it is; a non-zero window is still
-read back that far for older data that expects it. Because the cut sector may already have been
-saved, its run is then taken back, restoring the list it replaced. The cost of a wrong drop is
-confined to a sector, and clean sectors in between are still kept.
+A cut is judged by the time it gains, and the game gives the driver 500 m to give that time back
+before it reports the cut. The report therefore arrives about 500 m after the cut, so the sector it
+is about is that distance behind it (`cut_give_back_m`, `500` by default). At Monza, a cut at the
+Ascari entry is reported at the exit, just past the S2/S3 line; reading the report back places it in
+S2, where the cut happened, instead of dropping S3. A build that reports at the cut itself can set
+the stored distance to `0`. Because the cut sector may already have been saved, its run is then
+taken back, restoring the list it replaced. The cost of a wrong drop is confined to a sector, and
+clean sectors in between are still kept.
 
 The game buffers its log (a few KB, flushed when full), so in quiet running a line can sit unwritten
 for a minute or more, and a single read can bring a whole lap's cuts. Each line's own timestamp is

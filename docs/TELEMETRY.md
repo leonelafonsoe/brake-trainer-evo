@@ -84,6 +84,8 @@ Track limits follow the game, using its own signals:
 - **The game's log** (build 0.5+) records one HUD notification per cut:
   `Adding notification UINotificationType_SessionPenalty`. It is the only *per-excursion* signal the
   game publishes — the shared memory cannot show a second cut in a lap it has already invalidated.
+  The warning line that follows it (`false {PENALTY_CLEARED_KEY}` in the current build) describes
+  the notification's HUD text; it is not a second event.
   The app follows the newest file in `Saved Games\ACE\Logs` (Settings: *Game log folder*) and drops
   the sector each cut happened in.
 - **`graphics.is_valid_lap`** is the game's verdict on the lap. It is a *state*: it drops when the
@@ -100,12 +102,13 @@ the log. Each invalidation is recorded against a `(lap, sector)`, so the first s
 acts and the others are folded into it — one cut drops one sector and is announced once — while two
 cuts in different sectors of the same lap each drop their own.
 
-**Why a report may still be read back.** The game judges a cut by the time it gains: it gives the
-driver a window to give that time back, and only reports the cut once the window has passed. On-track
-data (Monza) shows the report naming the corner it happened in - a cut in the Ascari chicane comes
-back around the corner's exit - so the position in the report is used as it is (`cut_give_back_m`
-defaults to `0`). A non-zero window still reads the report that far back along the lap, for data that
-expects it. If the sector a cut lands in was already saved, its run is taken back
+**Read back by the give-back window.** The game judges a cut by the time it gains and gives the
+driver **500 m** to give that time back. It writes the report (and drops `is_valid_lap`) only once
+that distance has passed, so the report is about 500 m beyond the cut. The app reads every report
+back that far along the lap (`cut_give_back_m`, default `500`), which is the sector the cut happened
+in. At Monza, a cut at the Ascari entry is written at the exit, just past the S2/S3 line; reading it
+back keeps it in S2 instead of dropping S3. If a build reports at the cut itself, the stored value
+can be set to `0`. If the sector a cut lands in was already saved, its run is taken back
 (`S3 had its stored run taken back`); if it is still in progress, the sector is marked as not counting
 (`S3 won't count · off track`).
 

@@ -18,6 +18,9 @@ from brake_trainer.ui.settings_window import TABS, Spec  # noqa: E402
 
 OUT = ROOT / "docs" / "SETTINGS.md"
 
+# Stored with the settings but not something the driver sets.
+_INTERNAL = {"settings_version"}
+
 _INTRO = """# Settings reference
 
 *Generated from the settings window by `scripts/gen_settings_doc.py`. Do not edit by hand.*
@@ -70,7 +73,7 @@ def render() -> str:
                 default += spec.suffix
             tip = spec.tip.replace("|", "\\|") or "-"
             parts.append(f"| {spec.label} | `{spec.name}` | {default} | {_range(spec)} | {tip} |")
-    hidden = [f.name for f in fields(Settings) if f.name not in shown]
+    hidden = [f.name for f in fields(Settings) if f.name not in shown and f.name not in _INTERNAL]
     parts.append("\n## Stored but not shown in the window\n")
     for name in hidden:
         parts.append(f"- `{name}` (default {_fmt(getattr(defaults, name))})")

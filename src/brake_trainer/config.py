@@ -12,6 +12,14 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
+# Bumped when a stored setting needs to change meaning; see Settings.from_dict.
+SETTINGS_VERSION = 2
+
+# The game judges a cut by the time it gains and gives the driver this much track to give it back.
+# It writes the report (and drops `is_valid_lap`) only once that window has passed, so a report is
+# this far past the cut and has to be read back to the sector the cut happened in.
+GAME_GIVE_BACK_M = 500.0
+
 # (min, max) per numeric field; values outside are clamped on load / apply.
 _LIMITS: dict[str, tuple[float, float]] = {
     "brake_on": (0.05, 0.95),
@@ -58,10 +66,11 @@ class Settings:
     # Once the game has invalidated the lap its flag stays down and cannot report a second mistake,
     # so a lower tyre count stands in for it in the remaining sectors of that lap (0 = off).
     max_tyres_out_after_invalid: int = 2
-    # The game judges a cut and only reports it after its give-back window has passed. Its report
-    # names the corner it happened in, so the position it arrives at is used as-is (0 = trust it).
-    # A non-zero window reads the report this far back along the lap for old data that expects it.
-    cut_give_back_m: float = 0.0
+    # How far back along the lap a cut report is read: the game's give-back window (500 m), because
+    # it writes the report only after the driver has had that distance to give the time back.
+    # `0` trusts a build that reports at the cut itself; a build with a different window can store
+    # its own distance, and the verbose log prints the position attributed for each report.
+    cut_give_back_m: float = GAME_GIVE_BACK_M
     own_runs_to_replace_ref: int = 2
     reference_car: str = ""  # "" = automatic
     # --- cues ---
@@ -89,6 +98,7 @@ class Settings:
     overlay_click_through: bool = False
     overlay_x: int | None = None
     overlay_y: int | None = None
+    settings_version: int = SETTINGS_VERSION  # stored so an old file is migrated only once
 
     def clamped(self) -> Settings:
         changes: dict[str, Any] = {}
@@ -108,9 +118,19 @@ class Settings:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> Settings:
-        """Build from untrusted data: unknown keys and wrong types fall back to defaults."""
+        """Build from untrusted data: unknown keys and wrong types fall back to defaults.
+
+        Version 1 stored ``cut_give_back_m`` at its old default of ``0``, meaning "trust the
+        report position". That was wrong for the game's 500 m give-back window, so an old file is
+        moved to the new default once; once saved with ``settings_version`` 2, a deliberate ``0``
+        is left alone.
+        """
         defaults = cls()
         values: dict[str, Any] = {}
+        try:
+            raw_version = int(raw.get("settings_version", 1))
+        except (TypeError, ValueError):
+            raw_version = 1
         for f in fields(cls):
             if f.name not in raw:
                 continue
@@ -129,7 +149,10 @@ class Settings:
                     values[f.name] = float(value)
             elif isinstance(default, str) and isinstance(value, str):
                 values[f.name] = value
-        return cls(**values).clamped()
+        settings = cls(**values).clamped()
+        if raw_version < 2 and settings.cut_give_back_m == 0.0:
+            settings = replace(settings, cut_give_back_m=GAME_GIVE_BACK_M)
+        return replace(settings, settings_version=SETTINGS_VERSION)
 
     def to_dict(self) -> dict[str, Any]:
         return {f.name: getattr(self, f.name) for f in fields(self)}

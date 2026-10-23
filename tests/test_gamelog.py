@@ -56,6 +56,16 @@ def test_the_games_cut_notification_is_reported():
     assert parse_line("[x] some other line", LogState()) is None
 
 
+def test_the_penalty_type_warning_is_not_a_second_cut():
+    # The current build follows every SessionPenalty notification with
+    # `false {PENALTY_CLEARED_KEY}`. That line says which HUD text the notification carries, not
+    # that no cut happened: the notification is the cut verdict, and the warning adds nothing.
+    state = LogState()
+    assert parse_line(NOTIFICATION, state)
+    cleared = "[2026-10-23 01:34:55.051] [gameface] [warning] false {PENALTY_CLEARED_KEY} #296 "
+    assert parse_line(cleared, state) is None
+
+
 def test_the_games_sector_splits_are_reported():
     event = parse_line(SPLIT, LogState())
     assert event is not None and event.split == 1 and event.cut == ""
@@ -188,9 +198,9 @@ CORNERS = [0.20, 0.50, 0.80]
 def _engine(store, **settings):
     """A warmed-up engine on a 5000 m track: a 500 m lookback is 0.1 of a lap.
 
-    The lookback is pinned here so these tests exercise the attribution, not the shipped default of
-    0, which would keep several of the cuts inside the sector the report lands in. The lines are the
-    game's three: equal splits (1/3 and 2/3), since no split is reported to this engine.
+    The lookback is pinned to the game's 500 m window so these tests exercise the attribution even
+    if the shipped default changes; 500 m is 0.1 of this lap. The lines are the game's three: equal
+    splits (1/3 and 2/3), since no split is reported to this engine.
     """
     settings.setdefault("cut_give_back_m", 500.0)
     results: list = []
@@ -224,6 +234,25 @@ def test_a_cut_reported_in_a_later_sector_is_taken_back_to_where_it_happened(sto
     assert stored_times(store, 0) == before
     assert any("taken back" in m for m in messages)
     assert engine.snapshot().pass_flag != "off track"  # S2, the sector it was reported in, is clean
+
+
+def test_a_report_just_past_a_sector_line_drops_the_sector_before_it(store):
+    # The real Monza case from the field logs: the game reports at 36.3% and 68.3% of the lap, a
+    # few metres after the 33.6% and 65.7% lines. Those are the ends of the 500 m give-back windows
+    # for cuts at about 23% and 55%, in S1 and S2. The report positions alone would drop S2 and S3.
+    engine, driver, _, messages = _engine(store)  # 500 m of a 5000 m lap = 10% back
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.363)
+    engine.report_infraction("the game reported a cut", driver.t)
+    assert (engine._lap_no, 0) in engine._invalid_sectors  # S1, where the cut was
+    assert (engine._lap_no, 1) not in engine._invalid_sectors  # not S2, where the report landed
+    assert any("S1 had its stored run taken back" in m for m in messages)
+
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.364, stop=0.683)
+    engine.report_infraction("the game reported a cut", driver.t)
+    assert (engine._lap_no, 1) in engine._invalid_sectors  # S2, where the second cut was
+    assert (engine._lap_no, 2) not in engine._invalid_sectors  # not S3
+    assert any("S2 had its stored run taken back" in m for m in messages)
+    assert engine.snapshot().sector == 2 and engine.snapshot().pass_flag == ""
 
 
 def test_a_cut_reported_while_still_in_its_sector_drops_that_sector(store):
@@ -337,25 +366,27 @@ def test_a_cut_from_before_the_kept_history_is_skipped_rather_than_guessed(store
     assert not any("reported a cut" in m for m in messages)
 
 
-def test_the_shipped_default_takes_the_reported_position_as_it_is(store):
-    # The game reports a cut at the corner it happened in, so no lookback is applied by default:
-    # a report made inside a sector drops that sector.
-    assert Settings().cut_give_back_m == 0.0
+def test_the_shipped_default_reads_a_report_back_by_the_games_give_back_window(store):
+    # The game writes the report only after the 500 m it gives the driver to hand the time back, so
+    # the default must read it back that far: a report just past the 2/3 line belongs to S2.
+    assert Settings().cut_give_back_m == 500.0
     engine, driver, _, messages = _engine(store, cut_give_back_m=Settings().cut_give_back_m)
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.55)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.70)  # 500 m past the line is in S2
     engine.report_infraction("the game reported a cut", driver.t)
-    assert engine.snapshot().pass_flag == "off track"
-    assert any("S2 won't count" in m for m in messages)
+    assert engine.snapshot().sector == 2
+    assert engine.snapshot().pass_flag == ""  # S3, where the report landed, is clean
+    assert any("S2 had its stored run taken back" in m for m in messages)
 
 
-def test_a_give_back_window_still_steps_a_report_back_when_one_is_set(store):
-    # The window is still honoured for data that asks for it: a cut reported just past a line then
-    # belongs to the sector it was read back into.
-    engine, driver, _, messages = _engine(store, cut_give_back_m=500.0)
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.70)  # 500 m is 0.1 of this 5000 m track
+def test_a_stored_give_back_window_is_used_instead_of_the_default(store):
+    # A build with a different window can store its own distance: 250 m is 0.05 of this 5000 m
+    # track, so a report at 0.35 belongs to S1, not the S2 the report lands in.
+    engine, driver, _, messages = _engine(store, cut_give_back_m=250.0)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.35)
     engine.report_infraction("the game reported a cut", driver.t)
-    assert engine.snapshot().sector == 2  # the driver is in S3 ...
-    assert any("S2 had its stored run taken back" in m for m in messages)  # ... read in S2
+    assert engine.snapshot().sector == 1  # the driver is in S2 ...
+    assert engine.snapshot().pass_flag == ""  # ... which was not dropped
+    assert any("S1 had its stored run taken back" in m for m in messages)
 
 
 def test_a_zero_give_back_window_trusts_the_reported_position(store):
