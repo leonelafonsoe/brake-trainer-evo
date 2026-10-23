@@ -37,6 +37,9 @@ _LINES_WAIT_LAPS = 3
 # layouts share (in practice the start/finish line). This is how close its start has to be to one:
 # a few metres of lap, far inside the gap between an equal split and the game's own line.
 _LINE_MATCH = 0.001
+# A position change this large in one frame is a reset or a teleport, not driving: the pass in
+# progress restarts there, and an event inside that frame is placed at the earlier sample.
+_JUMP_LAP = 0.05
 
 
 def build_zones(
@@ -339,7 +342,7 @@ class BrakeEngine:
         prev_pos, prev_t = self._prev_pos, self._prev_t
         if prev_pos is not None:
             delta = ((pos - prev_pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
-            jump = abs(delta) > 0.05
+            jump = abs(delta) > _JUMP_LAP
         self._prev_pos, self._prev_t = pos, s.t
         if self._pass is None or jump:  # start, reset or teleport
             self._restart_pass(sector, s.t, pos)
@@ -869,7 +872,8 @@ class BrakeEngine:
 
         A pair that straddles the start/finish line is not interpolated across either: both samples
         carry the old lap number, so the position would be in the new lap while the label stayed on
-        the old one. The earlier sample is the safe choice there too.
+        the old one. The earlier sample is the safe choice there too, as it is for a pair spanning a
+        reset or teleport: interpolating across one would invent a position the car never had.
 
         ``None`` when ``at`` is older than the kept history: guessing from the current position
         would drop the wrong sector, which is worse than saying nothing.
@@ -894,6 +898,10 @@ class BrakeEngine:
             return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
         share = (at - before.t) / span
         delta = ((after.pos - before.pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
+        if abs(delta) > _JUMP_LAP:
+            # A reset or teleport between the samples: interpolating would invent a position the
+            # car never had, so the earlier sample is where the event happened.
+            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
         if delta > 0.0 and before.pos + delta * share >= 1.0:
             # The kept history wraps the start/finish line within one lap number: interpolating
             # would put the position in the new lap under the old lap's label.

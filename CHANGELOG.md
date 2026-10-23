@@ -12,7 +12,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   the last frame before it), and a sector now closes at the interpolated crossing instead of at the
   first frame after the line. At 60 Hz and racing speed that removed up to a frame - about a metre,
   or 10-20 ms per sector - and it was always biased the same way, so the lines sat slightly early.
-  Verbose logging now also audits every later split against the learned line
+  A line whose timestamp falls in a frame that spans the start/finish line or a reset/teleport falls
+  back to the earlier sample, so it is never placed where the car did not drive. Verbose logging now
+  also audits every later split against the learned line
   (`splits: audit index 0 ... the app's line was crossed 3.7 ms / 0.2 m after the game's`), which is
   how a line placement can be checked from an app log plus the matching game log.
 - Track limits now invalidate exactly the sectors the game judged. Every signal is recorded against a

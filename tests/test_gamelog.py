@@ -430,6 +430,21 @@ def test_a_cut_reported_in_the_frame_that_wraps_the_line_stays_in_the_laps_last_
     assert not any("S1" in m and "previous lap" in m for m in messages)
 
 
+def test_a_cut_in_a_frame_that_teleports_is_placed_at_the_earlier_sample(store):
+    # 0.30 -> 0.45 in one frame is a teleport, past the engine's jump threshold: the car never drove
+    # the track between them. Interpolating the midpoint would place the cut at 0.375, in S2, while
+    # the car was still at 0.30 in S1 (equal splits: 0 .. 1/3 .. 2/3). The earlier sample is used.
+    engine, driver, _, messages = _engine(store, cut_give_back_m=0)
+    driver.feed(0.30, 200.0, 0.0)
+    t_before = driver.t
+    driver.feed(0.45, 200.0, 0.0)
+    t_after = driver.t
+    engine.report_infraction("off track", (t_before + t_after) / 2)
+
+    assert any("S1" in m and ("won't count" in m or "taken back" in m) for m in messages)
+    assert not any("S2" in m for m in messages)
+
+
 def test_a_cut_in_a_sector_that_was_not_saved_still_shows_as_not_counted(store):
     # The cut sector's time may already be slower than the best, so there is no run to take back;
     # the sector must still stop counting.
