@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from brake_trainer.config import Settings, load_settings, save_settings
+from brake_trainer.config import SETTINGS_VERSION, Settings, load_settings, save_settings
 from brake_trainer.models import SectorRun, TrackData
+
+FIXTURES = Path(__file__).with_name("fixtures") / "settings"
 
 
 def test_settings_roundtrip(tmp_path):
@@ -38,6 +41,29 @@ def test_old_settings_get_the_games_give_back_window_once():
 
     current = Settings.from_dict({"settings_version": 2, "cut_give_back_m": 0.0})
     assert current.cut_give_back_m == 0.0
+
+
+def test_the_real_0_3_11_settings_migrate_once(tmp_path):
+    # The shared 0.3.11 file has no version and the old cut_give_back_m default of 0.
+    path = tmp_path / "settings.json"
+    path.write_text(
+        (FIXTURES / "settings_0.3.11.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    st = load_settings(path)
+    assert st.cut_give_back_m == 500.0
+    assert st.settings_version == SETTINGS_VERSION
+    assert st.volume == 0.6  # the rest of the real file is kept
+    assert st.debug_logging is True
+
+    save_settings(st, path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["settings_version"] == SETTINGS_VERSION
+    assert raw["cut_give_back_m"] == 500.0
+
+    # A 0 written after the migration is a deliberate choice and must stay 0.
+    raw["cut_give_back_m"] = 0.0
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    assert load_settings(path).cut_give_back_m == 0.0
 
 
 def test_brake_off_stays_below_brake_on():

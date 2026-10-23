@@ -40,6 +40,7 @@ file, not from an assumption. Add the smallest excerpt that proves the case to `
 
 - `game_log/` for exact parser inputs: one notification block, split line or connection line.
 - `track_data/` for real stored `version: 1` JSON, to keep older files loading and round-tripping.
+- `settings/` for real settings JSON from older versions, to test one-time migrations.
 
 Rules:
 
