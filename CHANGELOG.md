@@ -4,6 +4,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+- Pin `acevo-sdk` below 0.2.0. That release only releases captured frames after it sees a clean lap
+  boundary, so the live overlay stayed on "Game running - not in a session" until a lap was
+  completed. The app needs every frame; lift the pin when the SDK offers a live-frame path again.
 - Sector lines and sector times are no longer quantised to the telemetry frame. A game-log split is
   placed at the car's **interpolated** position at the split's own timestamp (the previous code used
   the last frame before it), and a sector now closes at the interpolated crossing instead of at the
