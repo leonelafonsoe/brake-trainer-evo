@@ -12,7 +12,7 @@ from brake_trainer.engine import N_SECTORS, BrakeEngine
 from brake_trainer.gamelog import GameLogTail, LogState, line_time, parse_line
 from brake_trainer.models import SectorStatus
 
-from .conftest import Driver
+from .conftest import DT, LENGTH, Driver
 
 PLAYER = "0a1b2c3d-1111-2222-3333-444455556666"
 AI = "ffffffff-aaaa-bbbb-cccc-000011112222"
@@ -399,6 +399,35 @@ def test_two_cuts_reported_seconds_apart_in_different_sectors_both_count(store):
     status = engine.snapshot().sector_status
     assert status[0] is SectorStatus.PENDING  # S1, read back 500 m from the first report
     assert status[1] is SectorStatus.PENDING  # S2, read back from the second
+
+
+def test_a_cut_reported_in_the_frame_that_wraps_the_line_stays_in_the_laps_last_sector(store):
+    # A live cut just before the line drops S3 of the lap that is ending. The game's log line for
+    # that same cut is read a moment later, with ``at`` inside the telemetry frame that wraps the
+    # start/finish line. Both samples of that frame still carry the old lap number, so interpolating
+    # across the wrap would return a position just after 0.0 labelled with the old lap: S1 of that
+    # lap, a second sector. Backing off to the earlier sample keeps the line in S3, which the live
+    # cut already dropped, so one cut still drops one sector.
+    engine, driver, _, messages = _engine(store, cut_give_back_m=0)
+    step = 200.0 / 3.6 * DT / LENGTH
+    p = 0.0001
+    while True:
+        t0, p0 = driver.t, p % 1.0
+        p += step
+        # The lap flag falls just before the line; the sample after the wrap is clean.
+        driver.feed(p % 1.0, 200.0, 0.0, valid=p < 0.9995 or p % 1.0 < 0.5)
+        if p % 1.0 < p0:  # the start/finish line lies between these two samples
+            t1, p1 = driver.t, p % 1.0
+            break
+
+    lap = engine._lap_no  # the lap number the wrap has just moved on to
+    assert (lap - 1, 2) in engine._invalid_sectors  # the live cut's S3 of the lap that ended
+    at = (engine._line_crossing(t0, p0, t1, p1, 0.0) + t1) / 2
+    engine.report_infraction("off track", at)
+
+    assert (lap - 1, 2) in engine._invalid_sectors  # still that lap's S3
+    assert (lap - 1, 0) not in engine._invalid_sectors  # not a second sector, its S1
+    assert not any("S1" in m and "previous lap" in m for m in messages)
 
 
 def test_a_cut_in_a_sector_that_was_not_saved_still_shows_as_not_counted(store):

@@ -867,6 +867,10 @@ class BrakeEngine:
         at or before ``at`` would quantise that to the telemetry interval - about a metre at racing
         speed - and bias every line to the earlier sample. Interpolating removes both.
 
+        A pair that straddles the start/finish line is not interpolated across either: both samples
+        carry the old lap number, so the position would be in the new lap while the label stayed on
+        the old one. The earlier sample is the safe choice there too.
+
         ``None`` when ``at`` is older than the kept history: guessing from the current position
         would drop the wrong sector, which is worse than saying nothing.
         """
@@ -890,6 +894,10 @@ class BrakeEngine:
             return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
         share = (at - before.t) / span
         delta = ((after.pos - before.pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
+        if delta > 0.0 and before.pos + delta * share >= 1.0:
+            # The kept history wraps the start/finish line within one lap number: interpolating
+            # would put the position in the new lap under the old lap's label.
+            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
         pos = (before.pos + delta * share) % 1.0
         speed = before.speed_kmh + (after.speed_kmh - before.speed_kmh) * share
         return _CarAt(min(max(pos, 0.0), 0.99999), speed, before.in_pit, before.lap)
