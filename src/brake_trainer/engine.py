@@ -116,8 +116,9 @@ _LINES_REASONS = frozenset({"finding the sector lines", "the lines were learned 
 # this covers a lap or two of driving at any sane rate.
 _HISTORY_S = 300.0
 
-# How many laps back a late cut can still take its sector's stored run back from. Only the runs of
-# the last few laps are worth keeping for that.
+# How many completed laps back a late cut can still take its sector's stored run back from. A log
+# line can be read two laps late, and the give-back step then reaches one lap further back, so the
+# current lap plus this many completed laps are kept.
 _RUNS_KEPT_LAPS = 3
 
 # Shown when the game invalidates a lap that the app saw no off-track for (no race cut, no tyres
@@ -728,6 +729,13 @@ class BrakeEngine:
         where = pos if s.in_pit else self._infraction_pos(pos)
         idx = self._sector_of(where)
         lap = self._infraction_lap(pos, s.in_pit)
+        if lap < 0:
+            log.debug(
+                "limits: lap flag fell at %.1f%% (S%d) before the first tracked lap: not used",
+                where * 100.0,
+                idx + 1,
+            )
+            return
         # A pass that already will not count - a warm-up lap, the lines still being learned, or one
         # that began mid-sector - makes this drop a no-op. Say nothing rather than announce a loss
         # the driver has been told about already: the game invalidates an out-lap's opening sector
@@ -789,7 +797,17 @@ class BrakeEngine:
                 _HISTORY_S,
             )
             return
-        pos, in_pit, lap = found.pos, found.in_pit, found.lap
+        pos, in_pit = found.pos, found.in_pit
+        lap = self._infraction_lap(pos, in_pit, found.lap)
+        if lap < 0:
+            log.debug(
+                "limits: %s written at %.3f predates the first tracked lap (%.1f%% is inside "
+                "the give-back window): no sector to drop",
+                reason,
+                at,
+                pos * 100.0,
+            )
+            return
         if lap == self._lap_no:  # a cut of the lap being driven: not a bare lap-flag drop
             self._lap_saw_off = True
         where = pos if in_pit else self._infraction_pos(pos)
@@ -879,6 +897,9 @@ class BrakeEngine:
         between the two belongs to the new lap. Those are interpolated as usual and labelled with
         the later sample's lap.
 
+        ``in_pit`` is a discrete state, not a quantity: it is taken from the earlier sample and
+        deliberately not interpolated, since the car is either in the pit lane or it is not.
+
         ``None`` when ``at`` is older than the kept history: guessing from the current position
         would drop the wrong sector, which is worse than saying nothing.
         """
@@ -924,12 +945,16 @@ class BrakeEngine:
     def _prune_lap_runs(self) -> None:
         """Forget the stored-run records of laps too old for a late cut to still reach.
 
+        The oldest kept lap is ``_RUNS_KEPT_LAPS`` laps back: the current lap plus that many
+        completed laps, which is as far as a log line read two laps late plus the give-back step
+        can reach.
+
         ``_invalid_sectors`` and ``_lap_notes`` are not pruned with them: they are a few small
         entries per lap, and keeping them means a log line read again (after a restart) is still
         recognised as one already acted on, and a late cut for a sector that was already out stays
         quiet, even once the run it took back is long gone.
         """
-        oldest = self._lap_no - _RUNS_KEPT_LAPS + 1
+        oldest = self._lap_no - _RUNS_KEPT_LAPS
         for key in [k for k in self._lap_runs if k[0] < oldest]:
             del self._lap_runs[key]
 
@@ -947,17 +972,21 @@ class BrakeEngine:
         back = self._settings.cut_give_back_m / max(self._length_m, 1.0)
         return (pos - back) % 1.0
 
-    def _infraction_lap(self, pos: float, in_pit: bool) -> int:
+    def _infraction_lap(self, pos: float, in_pit: bool, lap: int | None = None) -> int:
         """The lap a cut reported at ``pos`` happened in.
 
         Same reasoning as :meth:`_infraction_pos`: a report closer to the line than the give-back
         distance is about a cut in the lap that has just ended, and taking it out of this lap's
         sector of that number would take the wrong run and grey the wrong colour.
+
+        ``lap`` is the lap the event's own time falls in, as given by :meth:`_at_time`; when it is
+        omitted, the lap being driven now is assumed.
         """
+        lap = self._lap_no if lap is None else lap
         if in_pit:
-            return self._lap_no
+            return lap
         back = self._settings.cut_give_back_m / max(self._length_m, 1.0)
-        return self._lap_no - 1 if pos - back < 0.0 else self._lap_no
+        return lap - 1 if pos - back < 0.0 else lap
 
     def _attribute(self, reason: str, where: float, lap: int) -> bool | None:
         """Make the sector of ``lap`` at ``where`` not count.
@@ -1137,6 +1166,33 @@ class BrakeEngine:
             return
         if not self._settings.use_game_log:
             return
+        if data.boundaries is not None:
+            # Already learned: the lines stay where they are. The game's own split still says where
+            # its line really is, so compare it with the learned one (verbose log only). Nothing is
+            # decided here, so the history is not touched at all unless that log is being written.
+            if log.isEnabledFor(logging.DEBUG):
+                found = self._at_time(at)
+                if found is None:
+                    log.debug(
+                        "splits: index %d written at %.3f is older than the kept history", index, at
+                    )
+                elif found.in_pit or not _split_position_ok(index, found.pos):
+                    log.debug(
+                        "splits: index %d at %.1f%% of the lap is not a sector line "
+                        "(in pit=%s, lap %d)",
+                        index,
+                        found.pos * 100.0,
+                        found.in_pit,
+                        found.lap,
+                    )
+                else:
+                    self._audit_split(index, found.lap, at, found)
+            return
+        if data.total_runs():
+            # A stored run is timed between two lines, so moving them would silently re-file every
+            # sector. Learning only ever happens on a fresh entry, before any run is saved;
+            # deleting the track's data is what learns the lines again.
+            return
         found = self._at_time(at)
         if found is None:
             log.debug("splits: index %d written at %.3f is older than the kept history", index, at)
@@ -1150,17 +1206,6 @@ class BrakeEngine:
                 in_pit,
                 lap,
             )
-            return
-        if data.boundaries is not None:
-            # Already learned: the lines stay where they are. The game's own split still says where
-            # its line really is, so compare it with the learned one (verbose log only).
-            if log.isEnabledFor(logging.DEBUG):
-                self._audit_split(index, lap, at, found)
-            return
-        if data.total_runs():
-            # A stored run is timed between two lines, so moving them would silently re-file every
-            # sector. Learning only ever happens on a fresh entry, before any run is saved;
-            # deleting the track's data is what learns the lines again.
             return
         known = self._splits.get(index)
         if known is not None and known[2] > at:

@@ -8,9 +8,9 @@ from datetime import datetime
 from pathlib import Path
 
 from brake_trainer.config import Settings
-from brake_trainer.engine import N_SECTORS, BrakeEngine
+from brake_trainer.engine import _RUNS_KEPT_LAPS, N_SECTORS, BrakeEngine
 from brake_trainer.gamelog import GameLogTail, LogState, line_time, parse_line
-from brake_trainer.models import SectorStatus
+from brake_trainer.models import SectorRun, SectorStatus
 
 from .conftest import DT, LENGTH, Driver
 
@@ -367,6 +367,59 @@ def test_a_zero_give_back_window_trusts_the_reported_position(store):
     assert snap.sector == 1 and snap.pass_flag == "off track"
 
 
+def test_a_cut_reported_before_the_first_tracked_lap_has_no_sector_to_drop(store):
+    # A fresh engine at lap 0, 5% around a 5000 m lap. The give-back window (500 m = 0.1 lap) puts
+    # the cut before the line, so the adjusted lap is -1: it predates the first tracked lap and
+    # there is no earlier sector to drop. It must not be recorded or announced as an earlier lap.
+    messages: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0, cut_give_back_m=500.0),
+        store,
+        on_message=messages.append,
+    )
+    driver = Driver(engine)
+    driver.feed(0.05, 200.0, 0.0)  # 0.05 - 0.1 < 0: the cut predates lap 0
+    engine.report_infraction("the game reported a cut", driver.t)
+
+    assert engine._invalid_sectors == set()
+    assert not any("won't count" in m or "earlier lap" in m for m in messages)
+
+
+def test_a_lap_flag_before_the_first_tracked_lap_has_no_sector_to_drop(store):
+    # The live counterpart: the flag falls at 6% of lap 0, inside the 500 m give-back window, so
+    # it computes lap -1. That must not invalidate a phantom sector or bypass the warm-up-style
+    # suppression by looking like a fresh, real drop.
+    messages: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0, cut_give_back_m=500.0),
+        store,
+        on_message=messages.append,
+    )
+    driver = Driver(engine)
+    driver.feed(0.05, 200.0, 0.0, valid=True)
+    driver.feed(0.06, 200.0, 0.0, valid=False)  # 0.06 - 0.1 < 0: lap -1
+    assert (-1, 0) not in engine._invalid_sectors
+    assert engine._invalid_sectors == set()
+    assert not any("won't count" in m for m in messages)
+
+
+def test_the_run_history_keeps_the_current_lap_and_three_completed_laps(store):
+    # A log line can be read two laps late, and the give-back step then reaches one lap further
+    # back: the run exactly _RUNS_KEPT_LAPS laps back must still be there for it, while one more
+    # lap back is pruned.
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
+    engine._lap_no = 10
+    kept = 10 - _RUNS_KEPT_LAPS
+    stale = kept - 1
+    for lap in range(stale, 11):
+        engine._lap_runs[(lap, 0)] = (SectorRun(30.0 + lap, [0.2]), [])
+    engine._prune_lap_runs()
+
+    assert (kept, 0) in engine._lap_runs
+    assert (stale, 0) not in engine._lap_runs
+    assert set(engine._lap_runs) == {(lap, 0) for lap in range(kept, 11)}
+
+
 def test_two_late_reported_cuts_drop_only_their_own_sectors(store):
     # The real case: a cut in S2 and another in S3, each reported a give-back window later. Only
     # those two sectors go; the clean first sector of the lap stays.
@@ -451,6 +504,30 @@ def test_a_cut_read_after_the_line_stays_in_the_new_laps_first_sector(store):
     assert engine.snapshot().pass_flag == "off track"
     assert not any("previous lap" in m for m in messages)
     assert stored_times(store, 0) == prior_s1  # the last lap's stored S1 run is untouched
+
+
+def test_a_cut_read_at_the_new_lap_seam_is_attributed_to_the_lap_it_ended(store):
+    # The frame that wraps the start/finish line still carries the old lap number; the next one
+    # carries the new. A cut read between them is in the new lap by time, but the give-back window
+    # puts the cut itself just before the line: S3 of the lap that has just ended, not S1 of the
+    # new one. This is the seam that regressed when _at_time started returning the new lap.
+    engine, driver, _, messages = _engine(store)  # cut_give_back_m=500: 0.1 of a 5000 m lap
+    driver.feed(0.98, 200.0, 0.0)
+    before = engine._history[-1]
+    driver.feed(0.02, 200.0, 0.0)  # the wrap: this sample is still labelled with the old lap
+    seam = engine._history[-1]
+    driver.feed(0.04, 200.0, 0.0)
+    after = engine._history[-1]
+
+    lap = engine._lap_no
+    assert before.lap == seam.lap == lap - 1 and after.lap == lap
+    assert (lap - 1, 2) not in engine._invalid_sectors
+
+    engine.report_infraction("the game reported a cut", (seam.t + after.t) / 2)
+
+    assert (lap - 1, 2) in engine._invalid_sectors  # S3 of the lap that has just ended
+    assert (lap, 0) not in engine._invalid_sectors  # not S1 of the lap being driven
+    assert any("S3" in m and "previous lap" in m for m in messages)
 
 
 def test_a_cut_in_a_frame_that_teleports_is_placed_at_the_earlier_sample(store):

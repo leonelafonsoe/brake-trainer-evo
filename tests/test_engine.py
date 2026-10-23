@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine, build_zones
 from brake_trainer.models import CueKind, Sample, SectorRun
@@ -377,7 +379,10 @@ def test_a_cut_between_samples_is_attributed_from_the_interpolated_position(stor
     assert snap.pass_flag == "off track"  # S2, where 0.34 is
 
 
-def test_the_split_audit_measures_the_learned_line_against_the_games(store, caplog):
+@pytest.mark.parametrize(("game_line", "side"), [(0.19, "after"), (0.21, "before")])
+def test_the_split_audit_measures_the_learned_line_against_the_games(
+    store, caplog, game_line, side
+):
     # Once the lines are known, every later split is the game saying exactly when it crossed its
     # own line. Comparing that with the app's learned position is the check for a misplaced line.
     engine = BrakeEngine(Settings(warmup_laps=0), store)
@@ -390,17 +395,57 @@ def test_the_split_audit_measures_the_learned_line_against_the_games(store, capl
     driver.split(1)
     assert list(engine.snapshot().boundaries[1:-1]) == [0.20, 0.60]
 
-    driver.lap(CORNERS, start=0.0001, stop=1.001)  # one full lap, so the next samples are a new lap
-    driver.feed(0.18, 200.0, 0.0)
-    first = driver.t
-    driver.feed(0.22, 200.0, 0.0)
-    # The game's split says its line is at 0.21; the app learned 0.20.
-    game_at = first + (0.21 - 0.18) / (0.22 - 0.18) * (driver.t - first)
+    # One full lap at a constant 200 km/h, then samples that bracket both the game's line and the
+    # app's 0.20 line. 0.01 of this 5000 m lap is 50 m, which is 0.9 s at 200 km/h.
+    p = driver.lap([], speed_fn=lambda p: 200.0, start=0.0001, stop=1.18)
+    samples: list[tuple[float, float]] = []
+    while p % 1.0 < 0.215:
+        driver.feed(p % 1.0, 200.0, 0.0)
+        samples.append((driver.t, p % 1.0))
+        p += 200.0 / 3.6 * DT / LENGTH
+
+    def crossing(line: float) -> float:
+        for (t0, p0), (t1, p1) in zip(samples, samples[1:], strict=False):
+            if p0 < line <= p1:
+                return t0 + (t1 - t0) * ((line - p0) / (p1 - p0))
+        raise AssertionError(f"the samples do not cross {line}")
+
     with caplog.at_level(logging.DEBUG, logger="brake_trainer.engine"):
-        engine.report_split(0, game_at)
+        engine.report_split(0, crossing(game_line))
 
     text = "\n".join(record.getMessage() for record in caplog.records)
-    assert "audit index 0" in text and "before the game's" in text
+    assert f"900.0 ms / 50.0 m {side} the game's" in text
+
+
+def test_a_split_read_at_info_does_no_history_work_once_the_lines_are_known(
+    store, caplog, monkeypatch
+):
+    # The audit is verbose-only, so with the lines already learned an INFO-level split must not
+    # even look up the car: nothing about it is going to be logged.
+    engine = BrakeEngine(Settings(warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.10, 300.0, 0.0)
+    driver.feed(0.20, 300.0, 0.0)
+    driver.split(0)
+    driver.feed(0.50, 300.0, 0.0)
+    driver.feed(0.60, 300.0, 0.0)
+    driver.split(1)
+    assert list(engine.snapshot().boundaries[1:-1]) == [0.20, 0.60]
+
+    calls: list[float] = []
+    lookup = engine._at_time
+
+    def spy(at: float):
+        calls.append(at)
+        return lookup(at)
+
+    monkeypatch.setattr(engine, "_at_time", spy)
+
+    with caplog.at_level(logging.INFO, logger="brake_trainer.engine"):
+        engine.report_split(0, driver.t)
+
+    assert calls == []
+    assert not any("splits: audit" in record.getMessage() for record in caplog.records)
 
 
 def test_the_sector_that_began_on_the_line_counts_once_the_lines_are_learned(store):
@@ -539,6 +584,11 @@ def test_line_crossing_does_not_clamp_a_line_that_is_not_between_the_samples():
     assert BrakeEngine._line_crossing(1.0, 0.20, 2.0, 0.30, 0.0) == 2.0  # no start/finish wrap
     # A line that really is between the samples is still interpolated.
     assert BrakeEngine._line_crossing(1.0, 0.20, 2.0, 0.30, 0.25) == 1.5
+    # The start/finish line is crossed by the wrap, halfway through this frame.
+    assert BrakeEngine._line_crossing(0.0, 0.98, 1.0, 0.02, 0.0) == pytest.approx(0.5)
+    # With no positive time span there is nothing to interpolate: the current sample is the answer.
+    assert BrakeEngine._line_crossing(2.0, 0.20, 1.0, 0.30, 0.25) == 1.0
+    assert BrakeEngine._line_crossing(2.0, 0.20, 2.0, 0.30, 0.25) == 2.0
 
 
 def test_laps_before_the_lines_are_known_are_not_counted(store):
@@ -663,6 +713,40 @@ def test_a_stray_split_is_not_taken_for_a_sector_line(store):
     driver.split(0)
     assert store.load("Monza", "Car A", N_SECTORS).boundaries is None
     assert engine.snapshot().warming_up
+
+
+def test_a_split_read_inside_a_teleport_frame_is_learned_at_the_earlier_sample(store):
+    # 0.30 -> 0.45 in one frame is a teleport: the car never drove the track between them, so a
+    # split written mid-frame belongs to the earlier sample. Interpolating would invent 0.375 and
+    # learn a line the car never crossed.
+    engine = BrakeEngine(Settings(warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.30, 200.0, 0.0)
+    early = driver.t
+    driver.feed(0.45, 200.0, 0.0)
+    late = driver.t
+    driver.split(0, (early + late) / 2)
+    assert engine._splits[0][0] == 0.30
+
+    driver.feed(0.60, 200.0, 0.0)
+    driver.split(1)
+    assert list(engine.snapshot().boundaries[1:-1]) == [0.30, 0.60]
+
+
+def test_at_time_on_a_sample_timestamp_snaps_to_that_sample(store):
+    # A log line can carry exactly the timestamp of a telemetry frame. At an older sample's time
+    # the car is that sample; at the latest one it is the current state. Neither needs interpolating
+    # and neither may be missed.
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.30, 200.0, 0.0)
+    older = driver.t
+    driver.feed(0.301, 200.0, 0.0)
+
+    found = engine._at_time(older)
+    assert found is not None and found.pos == 0.30
+    latest = engine._at_time(driver.t)
+    assert latest is not None and latest.pos == 0.301
 
 
 def test_one_split_alone_does_not_move_the_lines(store):
