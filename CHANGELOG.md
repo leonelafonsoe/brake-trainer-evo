@@ -5,21 +5,24 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 ## Unreleased
 
 - Pin `acevo-sdk` below 0.2.0. That release only releases captured frames after it sees a clean lap
-  boundary, so the live overlay stayed on "Game running - not in a session" until a lap was
+  boundary, so the live overlay stayed on "Game running — not in a session" until a lap was
   completed. The app needs every frame; lift the pin when the SDK offers a live-frame path again.
 - Sector lines and sector times are no longer quantised to the telemetry frame. A game-log split is
   placed at the car's **interpolated** position at the split's own timestamp (the previous code used
-  the last frame before it), and a sector now closes at the interpolated crossing instead of at the
-  first frame after the line. At 60 Hz and racing speed that removed up to a frame - about a metre,
-  or 10-20 ms per sector - and it was always biased the same way, so the lines sat slightly early.
-  A line whose timestamp falls in a frame that spans the start/finish line or a reset/teleport falls
-  back to the earlier sample, so it is never placed where the car did not drive. Verbose logging now
-  also audits every later split against the learned line
-  (`splits: audit index 0 ... the app's line was crossed 3.7 ms / 0.2 m after the game's`), which is
-  how a line placement can be checked from an app log plus the matching game log.
+  the last frame at or before it), and a sector now closes at the interpolated crossing instead of at
+  the first frame after the line. At 60 Hz and racing speed a frame is about a metre, or 10-20 ms per
+  sector: the lines sat up to a frame early because the old code used the last frame at or before the
+  split, while a sector time, measured between the first frames after its two lines, could be out by
+  up to a frame in either direction. A game-log split is only placed by interpolating between a
+  normal pair of samples: if the pair wraps the start/finish line inside one lap, or jumps more than
+  5% of a lap (a reset or teleport), the split falls back to the earlier sample rather than inventing
+  a position the car never had. Verbose logging now also audits every later split against the learned
+  line (`splits: audit index 0 ... the app's line was crossed 3.7 ms / 0.2 m after the game's`),
+  which is how a line placement can be checked from an app log plus the matching game log.
 - Fix: a cut read between the first sample after the start/finish line (which still carries the old
   lap number) and the next was attributed to S1 of the lap that had just ended, greying that sector
-  and taking back its stored run. It now belongs to S1 of the new lap.
+  and taking back its stored run. It now belongs to S1 of the new lap (with the default give-back of
+  0; a non-zero window reads it back into S3 of the lap that just ended).
 - Fix: a buffered split read that arrived after the car had already crossed the game's line kept the
   pass in progress on the start/finish line, storing a first sector that spanned the lap line to the
   read position - too long by the distance already driven. It is now timed from the game's own line,
@@ -34,11 +37,11 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   lost. The game buffers its log, so on a fresh track the lines can be read a lap or more after the
   sectors that needed them; the samples already kept for late cuts also say when the car crossed each
   line, so those sectors are timed and stored the moment the lines arrive (never for a sector the game
-  took out, and only while the crossings are still in the half hour of samples). The sector in progress
-  is moved onto the game's line the same way instead of being dropped, which is what "the lines were
-  learned mid-sector" now means only when a reset or a long pause took the crossing away. If no split
-  ever arrives, the equal splits become the permanent lines and the laps driven while waiting are timed
-  on them at that point, so the fallback does not cost those laps either.
+  took out, and only while the crossings are still in the five minutes of samples). The sector in
+  progress is moved onto the game's line the same way instead of being dropped, which is what "the
+  lines were learned mid-sector" now means only when a reset or a long pause took the crossing away.
+  If no split ever arrives, the equal splits become the permanent lines and the laps driven while
+  waiting are timed on them at that point, so the fallback does not cost those laps either.
 - The app now uses **the game's own sectors**. Every lap is scored in three, and the two inner lines
   are learned from the game's log: each timed lap writes a split as the car crosses a line
   (`Received split: ... index 0/1/2`, the end of the first, second and third sector), and the car's

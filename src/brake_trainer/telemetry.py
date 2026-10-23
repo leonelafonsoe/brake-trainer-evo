@@ -185,9 +185,7 @@ def sample_from_frame(frame: Any) -> Sample | None:
 def _default_capture_factory(hz: float) -> Any:
     from acevo import TelemetryCapture
 
-    # ``pyproject.toml`` keeps acevo-sdk below 0.2.0: that release only releases captured frames
-    # after it sees a clean lap boundary, which leaves the live overlay without samples until a lap
-    # is completed. The app needs every frame, so lift the pin only when the SDK has a live path.
+    # See the dependency pin in ``pyproject.toml``: acevo-sdk 0.2.0 starves the live overlay.
     #
     # The SDK stops capturing after 120 s standing still before the first lap (pits, online
     # lobby). Switch that off; the reader restarts capture if anything else stops it.

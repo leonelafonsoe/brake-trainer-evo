@@ -42,8 +42,9 @@ lines come from the game's log: each split is written as
 `index` is the sector that just ended (0, then 1, then 2 for the start/finish line, which teaches
 nothing). The line's own timestamp is when the car crossed it, so the app takes the car's position at
 that time - the same history a late cut is attributed from. The position is interpolated between the
-two telemetry frames around the timestamp; taking the nearest frame would place the line up to a
-frame (about a metre at racing speed) early or late. An out-lap writes the same `Received split`
+two telemetry frames around the timestamp; the previous code took the last frame at or before the
+split, so its lines were always up to a frame (about a metre at racing speed) early, while the
+nearest frame could be early or late. An out-lap writes the same `Received split`
 line, and teaches the lines just as well: they belong to the track, not to the lap. What is
 left has to come from one lap - which a reset or a teleport in between breaks - and land where a
 sector line plausibly sits (the first in the first 60% of the lap, the second in the last 60%, 5%
@@ -132,12 +133,13 @@ where the flag dropped.
 - **Watchdog.** If capture stops for any other reason, the app logs
   `Telemetry stopped (<reason>); restarting`, waits two seconds and starts a new capture. The
   sector in progress is discarded so a gap cannot produce a wrong sector time.
-- **Rate.** 60 Hz by default (5-60 in Settings). Sector times are accurate to better than one sample:
-  a line crossing is interpolated between the two frames around it rather than snapped to one. The
-  residual is the game log's millisecond timestamp resolution (a few cm at racing speed) plus, at low
-  rates, the curvature of the car's path across a sample, which stays well under the sample interval.
-  A higher rate smooths live data but the line is never snapped to it; reading faster than the game
-  updates shared memory also adds duplicate frames rather than new information.
+- **Rate.** 60 Hz by default (5-60 in Settings). Sector times can be finer than one sample: a line
+  crossing is interpolated between the two frames around it rather than snapped to one. The residual
+  is the game log's millisecond timestamp resolution (a few cm at racing speed) plus the car's speed
+  changing across a sample (and any non-linearity in the reported position), which stays well under
+  the sample interval. The app can read faster than the game publishes shared memory, though, so
+  extra samples may be duplicates: a higher read rate can smooth live data only up to the game's own
+  update rate, and cannot refine a crossing beyond it.
 - **Game exit.** While waiting for the game, the app runs `tasklist` every 3 seconds and looks for a
   process whose name contains `assettocorsaevo` (case-insensitive). Once it finds the game it opens a
   Windows handle to that process and checks it every poll, so the exit is noticed within a fraction of

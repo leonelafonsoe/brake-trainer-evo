@@ -63,10 +63,11 @@ build does not write splits, the app settles for equal splits after three laps a
 laps driven while waiting are timed on them at that point, since they become the lines.
 
 The line's own timestamp is when the car crossed it. The car's position at that instant is
-**interpolated between the two telemetry frames either side**, not taken from the nearest one: at
-racing speed a frame is about a metre, and using the nearest frame would place every line that much
-early or late. Sector times close the same way, on the interpolated crossing, so a sector is not out
-by up to one frame.
+**interpolated between the two telemetry frames either side**, not taken from the nearest one (the
+previous code took the last frame at or before the split, so every line was early): at racing speed a
+frame is about a metre, so the nearest frame would leave up to half a metre of error, on either side.
+Sector times close the same way, on the interpolated crossing, so a sector's duration is not
+quantised to a frame.
 
 The log is buffered by the game, so the read that brings the splits often lands well after the car
 crossed the line. The sector you are in when they are read began on one of the stand-in equal lines,

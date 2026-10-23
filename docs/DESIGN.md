@@ -92,13 +92,16 @@ both ends).
 
 Until both lines are known no *live* sector is counted. A run is timed *between* two lines, so a run
 timed on the equal splits and then re-filed under the game's own would be silently wrong. A fresh entry
-is therefore "waiting for the game's sector lines", exactly like a warm-up lap, and the first lap - the
-one the splits arrive on - is the one whose position they are read from. The app has to draw the sector
-bar on *some* boundaries before then, so it uses the equal splits as a stand-in. Nothing timed on those
-is kept as it closes, but the sector is remembered: when the lines arrive, the kept samples say when
-the car crossed each of them, so the sector is timed and stored after the fact (never if the game took
-it out, and only while its crossings are still in the half hour of samples). That is how a buffered log
-that brings the lines a lap late does not cost the driver that lap.
+is therefore "waiting for the game's sector lines", exactly like a warm-up lap. The lines are placed
+from the car's position at each split's own timestamp in the kept samples, not from the lap being
+driven when the buffered read lands, so a split read a lap later is still attributed to the lap the
+car actually crossed in. The app has to draw the sector bar on *some* boundaries before then, so it
+uses the equal splits as a stand-in. Nothing timed on those is kept as it closes, but the sector is
+remembered: when the lines arrive, the kept samples say when the car crossed each of them, so the
+sector is timed and stored after the fact (never if the game took it out, and only while its
+crossings are still in the five minutes of samples). That is how a buffered log that brings the lines
+a lap late does not cost the driver that lap.
+
 If no split arrives within three laps (the log is not followed, or the build does not write them) the
 app settles for equal splits for good, says so, and counts laps normally - the laps driven meanwhile
 are timed on those splits as they become the lines. Once learned, the lines are never moved: they are

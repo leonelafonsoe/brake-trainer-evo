@@ -151,9 +151,9 @@ The app places each line at the car's position when the game's own split was wri
 between the telemetry frames either side; it should be well under a metre out at 60 Hz. To check it
 on track, turn on verbose logging and look for `splits: audit ...` lines: each later split compares
 the learned line with the game's (`the app's line was crossed 2.1 ms / 0.1 m after the game's`).
-`after` means it is slightly further round the lap, `before` slightly short. A value that stays at
-metres is worth reporting: share the app log and the matching game log. The game log on its own has
-the split times but not the car's position, so it cannot show where a line was placed.
+`after` means it is slightly further round the lap, `before` slightly short. A value that stays in
+the metres is worth reporting: share the app log and the matching game log. The game log on its own
+has the split times but not the car's position, so it cannot show where a line was placed.
 
 **"not counted · the lines were learned mid-sector"**
 A new track and car starts on stand-in equal splits, because the game's own lines can only be read from
@@ -161,11 +161,11 @@ its log (no other part of the game exposes them). The log is buffered, so the re
 land with a sector already part-way through: that sector was being timed from a stand-in line, which
 sits somewhere else than the game's. Normally the samples still say when the car crossed the game's
 line, so the sector is moved onto it and counts; this note is what remains when that crossing is gone
-(a reset, or a pause longer than the half-hour of samples the app keeps). The sector you were in when
-the lines were learned, and the ones that closed before, are both recovered this way; where you braked
-in them is used either way, so the first cues appear straight away even before a sector has been
-scored. Those stand-in points count as one run each, so once a couple of laps have been timed they are
-out-voted by your own runs and stop mattering.
+(a reset, or a pause longer than the five minutes of samples the app keeps). The sector you were
+in when the lines were learned, and the ones that closed before, are both recovered this way; where
+you braked in them is used either way, so the first cues appear straight away even before a sector
+has been scored. Those stand-in points count as one run each, so once a couple of laps have been
+timed they are out-voted by your own runs and stop mattering.
 
 **The marks look wrong after changing car setup, tyres or conditions**
 Delete that entry in Settings -> Data and relearn. Your fastest 3 runs per sector stay until
