@@ -9,3 +9,7 @@ large and contain session data.
 line at Monza. The matching app log put the car at 36.3% of the lap there, so reading the report
 back by the game's 500 m window puts the cut at about 23.2%, in S1, not in S2 where it landed.
 `noise.txt` holds the lines around that block that must not produce a second event.
+
+To add a case, put the excerpt in a new `.txt` file here and add a short test in
+`tests/test_gamelog.py` using `_parse_fixture`; assert the `(cut, split)` events it must produce.
+Keep the file to the lines needed for that one behaviour.
