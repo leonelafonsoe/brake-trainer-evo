@@ -9,7 +9,7 @@ from pathlib import Path
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import _RUNS_KEPT_LAPS, N_SECTORS, BrakeEngine
-from brake_trainer.gamelog import GameLogTail, LogState, line_time, parse_line
+from brake_trainer.gamelog import REPORTED_CUT, GameLogTail, LogState, line_time, parse_line
 from brake_trainer.models import SectorRun, SectorStatus
 
 from .conftest import DT, LENGTH, Driver
@@ -34,6 +34,8 @@ SPLIT = (
     "[2026-10-16 20:41:00.000] [gameplay] [info] "
     "Received split: isStart false, isEnd false, index 1 "
 )
+# Real build 0.9.1 excerpts; see tests/fixtures/game_log/README.md.
+FIXTURES = Path(__file__).with_name("fixtures") / "game_log"
 
 
 def limits(car: str, tyres: int, inside: float) -> str:
@@ -64,6 +66,38 @@ def test_the_penalty_type_warning_is_not_a_second_cut():
     assert parse_line(NOTIFICATION, state)
     cleared = "[2026-10-23 01:34:55.051] [gameface] [warning] false {PENALTY_CLEARED_KEY} #296 "
     assert parse_line(cleared, state) is None
+
+
+def _parse_fixture(name: str) -> tuple[LogState, list[tuple[str, int]]]:
+    """Parse a real game-log excerpt, returning its state and ``(cut, split)`` events."""
+    state = LogState()
+    events: list[tuple[str, int]] = []
+    for line in (FIXTURES / name).read_text(encoding="utf-8").splitlines():
+        event = parse_line(line, state)
+        if event is not None:
+            events.append((event.cut, event.split))
+    return state, events
+
+
+def test_a_real_monza_notification_block_reports_one_cut_after_its_split():
+    _, events = _parse_fixture("notification_block.txt")
+    assert events == [("", 0), (REPORTED_CUT, -1)]
+
+
+def test_real_monza_sector_lines_report_all_three_indices():
+    _, events = _parse_fixture("splits.txt")
+    assert events == [("", 0), ("", 1), ("", 2)]
+
+
+def test_a_real_connect_line_learns_the_players_car():
+    state, events = _parse_fixture("connect.txt")
+    assert events == []
+    assert state.player_uuids == {"0123456789abcdeffedcba9876543210"}
+
+
+def test_real_lines_around_a_notification_do_not_add_a_second_event():
+    _, events = _parse_fixture("noise.txt")
+    assert events == []
 
 
 def test_the_games_sector_splits_are_reported():
