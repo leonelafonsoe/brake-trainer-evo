@@ -430,6 +430,29 @@ def test_a_cut_reported_in_the_frame_that_wraps_the_line_stays_in_the_laps_last_
     assert not any("S1" in m and "previous lap" in m for m in messages)
 
 
+def test_a_cut_read_after_the_line_stays_in_the_new_laps_first_sector(store):
+    # The first sample after the start/finish line still carries the old lap number: ``update``
+    # appends to the history before it counts the lap up. A line read between that sample and the
+    # next therefore belongs to the new lap, and its cut is S1 of the lap being driven, not S1 of
+    # the lap that ended.
+    engine, driver, _, messages = _engine(store, cut_give_back_m=0)
+    driver.feed(0.001, 200.0, 0.0)  # the frame that crosses the line: still the old lap's number
+    lap = engine._lap_no
+    before_t, before_lap = driver.t, engine._history[-1].lap
+    driver.feed(0.02, 200.0, 0.0)
+    after = engine._history[-1]
+    assert before_lap == lap - 1 and after.lap == lap  # the line fell on the earlier sample
+    prior_s1 = stored_times(store, 0)
+
+    engine.report_infraction("cut", (before_t + after.t) / 2)
+
+    assert (lap, 0) in engine._invalid_sectors
+    assert (lap - 1, 0) not in engine._invalid_sectors
+    assert engine.snapshot().pass_flag == "off track"
+    assert not any("previous lap" in m for m in messages)
+    assert stored_times(store, 0) == prior_s1  # the last lap's stored S1 run is untouched
+
+
 def test_a_cut_in_a_frame_that_teleports_is_placed_at_the_earlier_sample(store):
     # 0.30 -> 0.45 in one frame is a teleport, past the engine's jump threshold: the car never drove
     # the track between them. Interpolating the midpoint would place the cut at 0.375, in S2, while

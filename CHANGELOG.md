@@ -17,6 +17,13 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   also audits every later split against the learned line
   (`splits: audit index 0 ... the app's line was crossed 3.7 ms / 0.2 m after the game's`), which is
   how a line placement can be checked from an app log plus the matching game log.
+- Fix: a cut read between the first sample after the start/finish line (which still carries the old
+  lap number) and the next was attributed to S1 of the lap that had just ended, greying that sector
+  and taking back its stored run. It now belongs to S1 of the new lap.
+- Fix: a buffered split read that arrived after the car had already crossed the game's line kept the
+  pass in progress on the start/finish line, storing a first sector that spanned the lap line to the
+  read position - too long by the distance already driven. It is now timed from the game's own line,
+  and a crossing asked for outside the two samples falls back to the current sample, not a clamp.
 - Track limits now invalidate exactly the sectors the game judged. Every signal is recorded against a
   `(lap, sector)`, so a cut seen live by the race-cut pair or the lap flag and again in the log (or
   re-read after a restart) drops one sector and says so once, while two cuts in different sectors of

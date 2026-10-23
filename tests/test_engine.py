@@ -4,7 +4,7 @@ import logging
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine, build_zones
-from brake_trainer.models import CueKind, SectorRun
+from brake_trainer.models import CueKind, Sample, SectorRun
 
 from .conftest import DT, LENGTH, Driver
 
@@ -451,6 +451,94 @@ def test_a_sector_already_running_when_the_lines_are_learned_is_re_timed(store):
     assert re_timed.duration is not None and re_timed.accepted
     # S3 is the last 40% of the lap (0.60..1.0), not the stand-in last third
     assert abs(re_timed.duration - 0.40 * full) < 0.2
+
+
+def test_a_late_split_read_after_the_car_passed_the_new_line_re_times_from_that_line(store):
+    # The buffered read can land after the car has already crossed the game's first line: here it is
+    # at 0.32, past the game's 0.30 but before the stand-in equal split at 1/3. The pass in progress
+    # began on the start/finish line, which both layouts share, but the car has already left the
+    # sector that began there under the new lines. Keeping it would close it at the next sample
+    # (the 0.30 line is behind the car, so there is nothing left to interpolate) and store the whole
+    # lap line..0.32 as S1. It is re-timed from the game's 0.30 line instead, where the car really
+    # began the sector it is now in.
+    dt = 1 / 60
+    speed = 250.0
+    step = speed / 3.6 * dt / LENGTH
+    results: list = []
+    engine = BrakeEngine(
+        Settings(warmup_laps=0, use_game_log=True), store, on_sector=results.append
+    )
+    t, p = 0.0, 0.0001
+
+    def sample() -> tuple[float, float]:
+        """Advance one 60 Hz frame; returns (previous time, previous position)."""
+        nonlocal t, p
+        before_t, before_p = t, p % 1.0
+        t += dt
+        p += step
+        engine.update(
+            Sample("Monza", "Car A", LENGTH, p % 1.0, 0.0, speed, False, t, True, 0, 0, 0)
+        )
+        return before_t, before_p
+
+    def drive_to(target: float) -> None:
+        while p < target:
+            sample()
+
+    # Lap 0 to the buffered read on lap 1: record when the samples bracket the game's lines.
+    crossing: dict[tuple[int, float], float] = {}
+    lap = 0
+    while p < 1.0001 + 0.32:
+        before_t, before_p = sample()
+        after_p = p % 1.0
+        if after_p < before_p:  # the start/finish line: lap 0 ends and lap 1 begins
+            lap += 1
+            continue
+        for line in (0.30, 0.60):
+            if before_p < line <= after_p and (lap, line) not in crossing:
+                share = (line - before_p) / (after_p - before_p)
+                crossing[lap, line] = before_t + (t - before_t) * share
+
+    # Lap 1: past the game's first line, then the buffered log's two splits are read.
+    assert engine._sector == 0  # still on the stand-in lines: equal thirds
+    engine.report_split(0, crossing[0, 0.30])
+    engine.report_split(1, crossing[0, 0.60])
+    bounds = engine.snapshot().boundaries
+    assert abs(bounds[1] - 0.30) < 1e-9 and abs(bounds[2] - 0.60) < 1e-9
+
+    sample()  # the frame in which the unfixed code saw the sector change and closed S1
+    run = engine._pass
+    assert engine._sector == 1
+    assert run is not None and abs(run.start_pos - bounds[1]) < 1e-9
+    # The sector in progress is timed from the game's 0.30 line, not from the lap line.
+    assert abs(run.t0 - crossing[1, 0.30]) < 1e-6
+    # Nothing was stored for the S1 the car had already left: no run spanning lap line..0.32.
+    saved = store.load("Monza", "Car A", N_SECTORS)
+    assert saved is not None and saved.sectors[0] == []
+
+    # The sectors after it are timed between the game's lines, and the next lap is clean.
+    results.clear()
+    drive_to(2.0001 + 0.32)
+    timed = [(r.sector, r.duration) for r in results if r.duration is not None]
+    assert [sector for sector, _ in timed] == [1, 2, 0]
+    half = 0.30 * LENGTH / (speed / 3.6)
+    assert abs(timed[0][1] - half) < 1e-3  # the 0.30..0.60 sector
+    assert abs(timed[1][1] - 0.40 * LENGTH / (speed / 3.6)) < 1e-3  # the 0.60..1.0 sector
+    assert abs(timed[2][1] - half) < 1e-3  # the following lap's 0.0..0.30 sector
+
+
+def test_line_crossing_does_not_clamp_a_line_that_is_not_between_the_samples():
+    # The caller is meant to pass a line the car actually crossed between the samples. If it does
+    # not - the line is behind the earlier sample, or ahead of the later one, or an inner line is
+    # asked for in the frame that wraps the start/finish line - there is no crossing to place. The
+    # current sample is the no-crossing answer; clamping the share would put it at a sample where
+    # the car was on the wrong side of the line.
+    assert BrakeEngine._line_crossing(1.0, 0.32, 2.0, 0.34, 0.30) == 2.0
+    assert BrakeEngine._line_crossing(1.0, 0.10, 2.0, 0.20, 0.30) == 2.0
+    assert BrakeEngine._line_crossing(1.0, 0.98, 2.0, 0.02, 0.30) == 2.0  # the wrap, not 0.30
+    assert BrakeEngine._line_crossing(1.0, 0.20, 2.0, 0.30, 0.0) == 2.0  # no start/finish wrap
+    # A line that really is between the samples is still interpolated.
+    assert BrakeEngine._line_crossing(1.0, 0.20, 2.0, 0.30, 0.25) == 1.5
 
 
 def test_laps_before_the_lines_are_known_are_not_counted(store):

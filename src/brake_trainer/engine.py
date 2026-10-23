@@ -870,10 +870,14 @@ class BrakeEngine:
         at or before ``at`` would quantise that to the telemetry interval - about a metre at racing
         speed - and bias every line to the earlier sample. Interpolating removes both.
 
-        A pair that straddles the start/finish line is not interpolated across either: both samples
-        carry the old lap number, so the position would be in the new lap while the label stayed on
+        A pair whose samples both carry the old lap number but whose positions wrap the line is not
+        interpolated across either: the position would be in the new lap while the label stayed on
         the old one. The earlier sample is the safe choice there too, as it is for a pair spanning a
-        reset or teleport: interpolating across one would invent a position the car never had.
+        reset or teleport: interpolating across one would invent a position the car never had. A
+        pair one lap number apart is the frame just after the line instead: the first sample after
+        the crossing still carries the old number, so the line was crossed on it and every time
+        between the two belongs to the new lap. Those are interpolated as usual and labelled with
+        the later sample's lap.
 
         ``None`` when ``at`` is older than the kept history: guessing from the current position
         would drop the wrong sector, which is worse than saying nothing.
@@ -890,25 +894,32 @@ class BrakeEngine:
             after = point
         if before is None:
             return None
-        if after is None or after.lap != before.lap:
+        if after is None:
+            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
+        new_lap = after.lap == before.lap + 1
+        if after.lap != before.lap and not new_lap:
             # No pair on one lap to interpolate across: the earlier sample is the safe choice.
             return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
+        # One lap apart means the line was crossed on the earlier sample: everything between them
+        # belongs to the new lap, so that is the label even when falling back to the earlier sample.
+        lap = after.lap if new_lap else before.lap
         span = after.t - before.t
         if span <= 0.0:
-            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
+            return _CarAt(before.pos, before.speed_kmh, before.in_pit, lap)
         share = (at - before.t) / span
         delta = ((after.pos - before.pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
-        if abs(delta) > _JUMP_LAP:
-            # A reset or teleport between the samples: interpolating would invent a position the
-            # car never had, so the earlier sample is where the event happened.
-            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
+        if abs(delta) > _JUMP_LAP or (new_lap and delta < 0.0):
+            # A reset or teleport between the samples - or, on a new lap, positions that do not run
+            # forwards - means interpolating would invent a position the car never had, so the
+            # earlier sample is where the event happened.
+            return _CarAt(before.pos, before.speed_kmh, before.in_pit, lap)
         if delta > 0.0 and before.pos + delta * share >= 1.0:
             # The kept history wraps the start/finish line within one lap number: interpolating
             # would put the position in the new lap under the old lap's label.
-            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
+            return _CarAt(before.pos, before.speed_kmh, before.in_pit, lap)
         pos = (before.pos + delta * share) % 1.0
         speed = before.speed_kmh + (after.speed_kmh - before.speed_kmh) * share
-        return _CarAt(min(max(pos, 0.0), 0.99999), speed, before.in_pit, before.lap)
+        return _CarAt(min(max(pos, 0.0), 0.99999), speed, before.in_pit, lap)
 
     def _prune_lap_runs(self) -> None:
         """Forget the stored-run records of laps too old for a late cut to still reach.
@@ -1226,16 +1237,20 @@ class BrakeEngine:
         # The app was drawing on stand-in equal splits, not the game's, and they have just changed:
         # the sector in progress is only still good if it began on a line both layouts share - the
         # start/finish line, where the read lands, right after the car crossed it, since the game
-        # buffers its log. Such a sector started and ends on the game's own lines, so it is moved
-        # onto them and counts. Started anywhere else, the samples still say when the car crossed
-        # the game's line, so it is re-timed from there (see _reanchor).
+        # buffers its log - and the car is still in the sector that began there. Such a sector
+        # started and ends on the game's own lines, so it is moved onto them and counts. Started
+        # anywhere else - or already past the game's next line, because the buffered read arrived
+        # after the car crossed it - the samples still say when the car crossed the game's line, so
+        # it is re-timed from there (see _reanchor).
         run, pos, t = (
             self._pass,
             self._last.pos if self._last else 0.0,
             self._last.t if self._last else 0.0,
         )
         if run is not None:
-            if any(abs(run.start_pos - line) < _LINE_MATCH for line in self._bounds):
+            on_shared_line = any(abs(run.start_pos - line) < _LINE_MATCH for line in self._bounds)
+            still_in_it = self._sector_of(pos) == self._sector_of(run.start_pos)
+            if on_shared_line and still_in_it:
                 self._sector = self._sector_of(run.start_pos)
                 # It was flagged for being driven while the lines were unknown; they are known now.
                 self._unflag("finding the sector lines")
@@ -1376,13 +1391,23 @@ class BrakeEngine:
         drops from near 1 to near 0) rather than by passing ``line`` from below. Interpolating here
         keeps a sector's start and end at the physical line instead of at the next telemetry frame,
         which is what makes a stored sector time accurate to better than one sample.
+
+        The caller must only pass a line that really lies between the samples: ``p0 < line <= p1``
+        for an inner line, or ``p1 < p0`` for the start/finish line. When it does not - the samples
+        show no crossing at all - there is no time to interpolate, and returning the current sample
+        is the honest no-crossing fallback; clamping a share into ``[0, 1]`` would instead invent a
+        crossing at a sample where the car was on the other side of the line.
         """
         if t0 is None or p0 is None or t1 <= t0:
             return t1
-        if line <= 0.0 and p1 < p0:  # the start/finish line, between the two samples
+        if line <= 0.0:
+            if p1 >= p0:  # no wrap between the samples: the start/finish line was not crossed
+                return t1
             span = (1.0 - p0) + p1
             share = (1.0 - p0) / span if span > 0.0 else 1.0
         else:
+            if not (p0 < line <= p1):  # the line is not between the samples
+                return t1
             span = p1 - p0
             share = (line - p0) / span if span > 0.0 else 1.0
         return t0 + (t1 - t0) * min(max(share, 0.0), 1.0)
