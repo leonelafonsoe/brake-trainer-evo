@@ -385,8 +385,8 @@ TABS: dict[str, list[Spec]] = {
             " Hz",
             tip=(
                 "How often telemetry is read. Higher makes live data a little smoother; 60 is "
-                "plenty. Sector lines are interpolated between samples, so a higher rate does "
-                "not move them."
+                "plenty. Sector lines are interpolated between samples rather than snapped to "
+                "them, so a higher rate only refines the estimate."
             ),
         ),
     ],

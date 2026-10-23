@@ -65,7 +65,7 @@ laps driven while waiting are timed on them at that point, since they become the
 The line's own timestamp is when the car crossed it. The car's position at that instant is
 **interpolated between the two telemetry frames either side**, not taken from the nearest one: at
 racing speed a frame is about a metre, and using the nearest frame would place every line that much
-early or late. Sector times close the same way, on the interpolated crossing, so a sector is not long
+early or late. Sector times close the same way, on the interpolated crossing, so a sector is not out
 by up to one frame.
 
 The log is buffered by the game, so the read that brings the splits often lands well after the car
