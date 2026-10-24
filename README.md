@@ -101,7 +101,7 @@ The folder build is recommended. Settings, learned data and logs live in
 | Top line | Track and car, with a dot: grey = waiting for the game, amber = game running, green = live |
 | NEXT BRAKE | Distance to the next learned braking point. White, then amber when the warning is due, red at the point |
 | BRAKE | Your live brake pedal, with your speed |
-| Sector bar | Three groups of segments, one per game sector. Grey = not driven, yellow = slower than your kept runs, green = among your fastest, purple = your fastest. A white outline marks the current sector |
+| Sector bar | One segment per game sector, sized to that sector's real share of the lap, with a thin separator on the game's line. Grey = not driven, yellow = slower than your kept runs, green = among your fastest, purple = your fastest. A white outline marks the current sector |
 | Status line | What matters right now: a sector that won't count, learning paused, warm-up, the last sector result, the reference car, or a summary |
 
 <table>
@@ -178,10 +178,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
   a truth.
 - A braking zone very close to the start/finish line can wobble between the last and first
   sector. More in [Design notes](docs/DESIGN.md#known-limitations-and-ideas).
-- Track limits follow the game. It reports each cut around the corner it happened in, so the position
-  in the report is used as it is (the stored `cut_give_back_m` is `0` by default; a non-zero value
-  reads a report that far back for older data) and the run is taken back if that sector was already
-  saved. The game buffers its log (a few KB, flushed when full), so a cut can be read a minute later,
+- Track limits follow the game. A cut notification and the lap flag are written where the game
+  judged the cut, so the app drops the sector at that position and takes its run back if it was
+  already saved.
+  The game buffers its log (a few KB, flushed when full), so a cut can be read a minute later,
   or after the lap it belongs to has ended, and several can arrive at once; each line's own time is
   what the app attributes from, so every one still lands in its own sector of its own lap, and one
   for a lap that is over is named on the status line. An infraction it judges from something it does

@@ -62,6 +62,13 @@ moved - to learn them again, delete the entries on that track in Settings -> Dat
 build does not write splits, the app settles for equal splits after three laps and says so - and the
 laps driven while waiting are timed on them at that point, since they become the lines.
 
+The line's own timestamp is when the car crossed it. The car's position at that instant is
+**interpolated between the two telemetry frames either side**, not taken from the nearest one (the
+previous code took the last frame at or before the split, so every line was early): at racing speed a
+frame is about a metre, so the nearest frame would leave up to half a metre of error, on either side.
+Sector times close the same way, on the interpolated crossing, so a sector's duration is not
+quantised to a frame.
+
 The log is buffered by the game, so the read that brings the splits often lands well after the car
 crossed the line. The sector you are in when they are read began on one of the stand-in equal lines,
 which sits in a different place from the game's own; the samples still have the crossing, so the pass
@@ -109,12 +116,9 @@ A sector pass is not saved when:
   track in it (see the next point).
 - **Off track**: the game reported a cut that happened while you were in that sector. This uses the
   per-cut event the game writes to its log (one per cut, and the only signal that shows a second cut
-  in a lap it has already invalidated), and, where the game publishes them, the "race cut" pair and
-  the live count of tyres off the track (Settings: "Skip sector if tyres off track", and "...once the
-  lap is invalid"; while the lap is still valid the tyre count takes all four tyres, the game's own
-  rule). The game reports a cut around the corner it happened in, so the position in the report is
-  taken as-is (the give-back read-back distance is `0` by default; older data can still ask for a
-  distance back). If that sector was already saved, its run is taken back.
+  in a lap it has already invalidated), and, where the game publishes it, the live "race cut" pair.
+  The notification and the lap flag are attributed at their own position, which is where the game
+  judged the cut. If that sector was already saved, its run is taken back.
   The game buffers its log, so a cut can be read a minute after it was written, or after the lap it
   belongs to has ended, and several can arrive at once. Each line carries its own time, so every cut
   still lands in the sector - and the lap - it happened in, never in the sector of the same number in
@@ -123,8 +127,8 @@ A sector pass is not saved when:
 - **Paused**: learning was paused at any point during it.
 
 The signals above are the game's own. When the game invalidates a lap for an infraction it does not
-expose (no cut in its log, no race cut and no tyres reported off), the app says so in its log and can
-only drop the sector where the flag dropped. That warning is for the case where there is no log to
+expose (no cut in its log and no race cut), the app says so in its log and can only drop the sector
+where the flag dropped. That warning is for the case where there is no log to
 read: with the game log being followed, every cut is in it, so the app uses it instead. See
 [TELEMETRY.md](TELEMETRY.md).
 
@@ -143,7 +147,11 @@ The sector bar shows how each sector of the current lap went compared with *your
 
 The first clean run of a sector is purple, because nothing is slower yet. The previous lap's
 colours stay visible until you complete the first sector of the next lap. A white outline marks
-the sector you are in, and fills as you drive through it.
+the sector you are in, and fills as you drive through it. The segments are sized to the game's
+sectors rather than equal thirds, and they meet exactly on the game's line, which a thin separator
+marks - a gap would hide the car for a stretch around every line. On tracks with very unequal
+sectors (the Red Bull Ring's first is 26% of the lap, Spa's second ends at 72%) equal blocks would
+put the boundary hundreds of metres out.
 
 The colour is a *rank*, not a stopwatch threshold: green means the run entered your fastest
 `top_runs` runs for that sector (3 by default - Settings -> Sectors). So how far off your best a

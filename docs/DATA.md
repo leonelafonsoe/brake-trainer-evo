@@ -4,9 +4,9 @@ Everything is stored per user in `%APPDATA%\BrakeTrainerEvo\`:
 
 | Path | Content |
 | --- | --- |
-| `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)) and the overlay position |
-| `data\<track>__<car>.json` | What was learned for one track and car |
-| `brake_trainer.log` | Log (rotated, about 0.5 MB x 3) |
+| `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)), the overlay position, and the version that wrote the file |
+| `data\<track>__<car>.json` | What was learned for one track and car, with the version that wrote it |
+| `brake_trainer.log` | Log (rotated, about 0.5 MB x 3), starting with one diagnostics line: app version, build, settings/data versions, log path and verbose state |
 
 Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy for testing).
 
@@ -14,6 +14,9 @@ Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy f
 
 ```json
 {
+  "app_version": "0.3.11",
+  "build": "2983a85ac7d3",
+  "saved_at": "2026-10-24T12:00:00+00:00",
   "version": 1,
   "track": "Monza",
   "car": "Ferrari 296 GTB",
@@ -28,6 +31,15 @@ Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy f
 }
 ```
 
+- `app_version`, `build` and `saved_at`: the version, the exact code and when it was saved (UTC).
+  `build` is the source checkout's git revision (`-dirty` when it had uncommitted changes),
+  `packaged` for a frozen executable, or the value of `BRAKE_TRAINER_BUILD` when one was set. These
+  fields are for support and debugging and are ignored when the file is loaded, so files from older
+  and newer builds still load. `settings.json` carries the same three fields.
+- `version`: the learned-data format version (`1`), separate from the app version. Unlike
+  `app_version`, it decides whether the data can be read: a file written by a newer layout is
+  ignored (and replaced on the next save) rather than filed under fields this build does not know.
+  Files with an older version still load.
 - `boundaries`: the `n_sectors - 1` inner sector lines (0..1). They are the game's own sector lines,
   learned from its log (see `DESIGN.md`); `null` means they have not been learned yet, so equal splits
   are in use - that is what files from versions before 0.3.11 use and keep. Settings -> Data shows

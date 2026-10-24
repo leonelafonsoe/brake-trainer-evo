@@ -104,8 +104,8 @@ class EngineWorker(QThread):
     def _on_cut(self, reason: str, at: float) -> None:
         """A cut the game wrote to its log: the engine drops the sector it happened in.
 
-        ``at`` is when the game wrote the line, which is the time the cut was judged (its give-back
-        window after the cut itself); the engine looks the car's position up from it.
+        ``at`` is when the game wrote the line, which is when the cut was judged; the engine looks
+        the car's position up from that time.
         """
         self._engine.report_infraction(reason, at)
         self._emit()

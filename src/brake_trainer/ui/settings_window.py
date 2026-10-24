@@ -256,34 +256,6 @@ TABS: dict[str, list[Spec]] = {
             tip="A sector where the game invalidates your lap (track limits, cuts) is not saved.",
         ),
         Spec(
-            "max_tyres_out",
-            "Skip sector if tyres off track",
-            "int",
-            0,
-            4,
-            1,
-            special="Off",
-            tip=(
-                "The game's live count of tyres off the track, where it publishes it. A sector is "
-                "not saved if this many were off at any moment, also twice in the same lap. Off "
-                "leaves it to the game's race cut and the lap flag."
-            ),
-        ),
-        Spec(
-            "max_tyres_out_after_invalid",
-            "...once the lap is invalid",
-            "int",
-            0,
-            4,
-            1,
-            special="Off",
-            tip=(
-                "The game's lap flag only drops once, so the race cut and the tyre count carry the "
-                "later mistakes. For the rest of an invalidated lap a sector is not saved if this "
-                "many tyres go off the track in it."
-            ),
-        ),
-        Spec(
             "top_runs",
             "Fastest runs kept per sector",
             "int",
@@ -383,7 +355,11 @@ TABS: dict[str, list[Spec]] = {
             5,
             0,
             " Hz",
-            tip="How often telemetry is read. Higher is more precise; 60 is plenty.",
+            tip=(
+                "How often telemetry is read. Higher makes live data a little smoother; 60 is "
+                "plenty. Sector lines are interpolated between samples rather than snapped to "
+                "them, so it can refine the estimate only up to the rate the game publishes."
+            ),
         ),
     ],
     "Diagnostics": [
@@ -393,8 +369,8 @@ TABS: dict[str, list[Spec]] = {
             "bool",
             tip=(
                 "Write extra detail to the log, including the game's track-limit signals (the race "
-                "cut and the live tyre count) and the lap flag at every change. Turn it on, "
-                "reproduce a problem, then share the log file."
+                "cut and the lap flag) at every change. Turn it on, reproduce a problem, then "
+                "share the log file."
             ),
         ),
     ],

@@ -186,7 +186,9 @@ class OverlayWindow(QWidget):
         self._speed.setText(f"{snap.speed_kmh:.0f} km/h")
 
         if state.live and snap.sector_status:
-            self._sectors.set_state(snap.sector_status, snap.sector, snap.sector_progress)
+            self._sectors.set_state(
+                snap.sector_status, snap.sector, snap.sector_progress, snap.boundaries
+            )
         else:
             self._sectors.set_state((), None, 0.0)
 

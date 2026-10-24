@@ -33,6 +33,29 @@ pytest
 - Update `CHANGELOG.md` and, if behaviour changes, `docs/HOW_IT_WORKS.md`.
 - Small, focused pull requests are easier to review than large ones.
 
+## Real logs and stored data as evidence
+
+When a change depends on what the game or an older app version actually wrote, start from the real
+file, not from an assumption. Add the smallest excerpt that proves the case to `tests/fixtures/`:
+
+- `game_log/` for exact parser inputs: one notification block, split line or connection line.
+- `track_data/` for real stored `version: 1` JSON, to keep older files loading and round-tripping.
+- `settings/` for real settings JSON from older versions, to test one-time migrations.
+
+Rules:
+
+- Remove names, Steam IDs, car IDs and paths before committing; never commit a full session log.
+- Keep real lines for parser compatibility and synthetic telemetry for engine behaviour. A game log
+  has no synchronized telemetry, so it cannot replace the `Driver` scenarios in `tests/conftest.py`.
+- Record the game/app build in the fixture README. If the format changes, add a new fixture instead
+  of silently replacing the old one.
+- Treat the app log as evidence for expected messages and positions, not as test input: it is our own
+  output.
+- Prefer one small fixture per behaviour. A growing folder is fine, but do not add a case that only
+  repeats an existing one.
+
+The `README.md` in each fixture folder shows the format and where the data came from.
+
 ## What happens to your pull request
 
 1. **Checks** run on every pull request: lint, format, types and tests.
@@ -65,8 +88,9 @@ The same applies to issues: AI-written bug reports are fine if you checked that 
 
 ## Reporting a bug
 
-Please include the app version, what you were doing (track, car, session type), what you
-expected, and the relevant lines of `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`.
+Please include the app version and build (both on the log's first, `startup ...` line), what you
+were doing (track, car, session type), what you expected, and the relevant lines of
+`%APPDATA%\BrakeTrainerEvo\brake_trainer.log`.
 
 ## License of contributions
 

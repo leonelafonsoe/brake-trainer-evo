@@ -16,7 +16,8 @@ classifiers = [
     "Topic :: Games/Entertainment :: Simulation",
 ]
 requires-python = ">=3.10"
-dependencies = ["PySide6>=6.6", "acevo-sdk>=0.1.1"]
+# acevo-sdk 0.2.0 withholds frames until a clean lap boundary, which starves the live overlay.
+dependencies = ["PySide6>=6.6", "acevo-sdk>=0.1.1,<0.2.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10", "pyinstaller>=6.6"]

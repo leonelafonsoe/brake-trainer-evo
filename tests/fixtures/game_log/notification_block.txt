@@ -1,0 +1,6 @@
+[2026-10-23 01:40:33.410] [gameplay] [info] Received split: isStart false, isEnd false, index 0 
+[2026-10-23 01:40:35.562] [gameface] [info] UINotification UINotificationType_SessionPenalty 
+[2026-10-23 01:40:35.562] [gameface] [info] Adding notification UINotificationType_SessionPenalty 
+[2026-10-23 01:40:35.562] [gameface] [warning] false {PENALTY_CLEARED_KEY} #296 
+ While executing JS :30:23
+[2026-10-23 01:40:35.562] [gameface] [info] hasvalue 0 

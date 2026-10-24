@@ -92,13 +92,16 @@ both ends).
 
 Until both lines are known no *live* sector is counted. A run is timed *between* two lines, so a run
 timed on the equal splits and then re-filed under the game's own would be silently wrong. A fresh entry
-is therefore "waiting for the game's sector lines", exactly like a warm-up lap, and the first lap - the
-one the splits arrive on - is the one whose position they are read from. The app has to draw the sector
-bar on *some* boundaries before then, so it uses the equal splits as a stand-in. Nothing timed on those
-is kept as it closes, but the sector is remembered: when the lines arrive, the kept samples say when
-the car crossed each of them, so the sector is timed and stored after the fact (never if the game took
-it out, and only while its crossings are still in the half hour of samples). That is how a buffered log
-that brings the lines a lap late does not cost the driver that lap.
+is therefore "waiting for the game's sector lines", exactly like a warm-up lap. The lines are placed
+from the car's position at each split's own timestamp in the kept samples, not from the lap being
+driven when the buffered read lands, so a split read a lap later is still attributed to the lap the
+car actually crossed in. The app has to draw the sector bar on *some* boundaries before then, so it
+uses the equal splits as a stand-in. Nothing timed on those is kept as it closes, but the sector is
+remembered: when the lines arrive, the kept samples say when the car crossed each of them, so the
+sector is timed and stored after the fact (never if the game took it out, and only while its
+crossings are still in the five minutes of samples). That is how a buffered log that brings the lines
+a lap late does not cost the driver that lap.
+
 If no split arrives within three laps (the log is not followed, or the build does not write them) the
 app settles for equal splits for good, says so, and counts laps normally - the laps driven meanwhile
 are timed on those splits as they become the lines. Once learned, the lines are never moved: they are
@@ -133,16 +136,13 @@ usually faster, so it would become the "best" run and drag the braking points wi
 The game's *per-excursion* signal is the cut it reports in its log, one HUD notification per cut
 (`Adding notification UINotificationType_SessionPenalty`, build 0.5+). It is the per-violation
 trigger, so a sector is dropped for every cut the game records, including a second one in an
-already-invalid lap. The live race-cut pair and the count of tyres off the track are used as well
-where the game publishes them (all four tyres while the lap is valid; for the rest of an invalid lap
-the lower "...once the lap is invalid" count, default 2).
+already-invalid lap. The live race-cut pair is used as well where the game publishes it.
 
-A cut is judged by the time it gains, and the game only reports it at the end of its give-back
-window. The report therefore arrives at or after the cut, and the sector it is about is the one the
-give-back distance behind it (`cut_give_back_m`, `0` by default). Measured on track the game reports
-a cut around the corner it happened in - a Monza cut in the Ascari chicane is reported around the
-corner's exit - so the position the report arrives at is taken as it is; a non-zero window is still
-read back that far for older data that expects it. Because the cut sector may already have been
+The notification is written where the game judged the cut, and the lap flag drops at the same
+moment. The app therefore drops the sector at the event's own position. Field logs back this up: at
+Monza the reports sit at natural corner exits (Roggia 36–37%, Lesmo 50.6%, Ascari 67–68%, curve 10
+71–73%), not at a fixed distance behind them. In particular, curve 10's report is in S3, past the
+65.67% S2/S3 line, and must not be read back into S2. Because the cut sector may already have been
 saved, its run is then taken back, restoring the list it replaced. The cost of a wrong drop is
 confined to a sector, and clean sectors in between are still kept.
 
@@ -203,9 +203,8 @@ reader is tested against a fake capture object.
   first sector (the line cannot move without changing the lap logic).
 - A cut reported right at the end of a lap can be attributed to the last sector of the previous lap,
   which is right, but if a run was already rewritten by the new lap the take-back may miss it.
-- An off-track the game judges from something it does not expose (no cut in its log, no race cut and
-  no tyres reported off) cannot be pinned to a sector; the app logs a warning when the lap flag drops
-  for one.
+- An off-track the game judges from something it does not expose (no cut in its log and no race cut)
+  cannot be pinned to a sector; the app logs a warning when the lap flag drops for one.
 - Cues are position-based. A different racing line, or a damaged or very different setup, shifts
   the real braking point.
 - Possible future work: learning per corner instead of per sector, custom WAV sounds, importing

@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
+from pathlib import Path
 
-from brake_trainer.config import Settings, load_settings, save_settings
-from brake_trainer.models import SectorRun, TrackData
+import pytest
+
+from brake_trainer import __version__
+from brake_trainer.buildinfo import build_id
+from brake_trainer.config import SETTINGS_VERSION, Settings, load_settings, save_settings
+from brake_trainer.models import DATA_VERSION, SectorRun, TrackData
+
+FIXTURES = Path(__file__).with_name("fixtures") / "settings"
 
 
 def test_settings_roundtrip(tmp_path):
@@ -29,6 +37,43 @@ def test_settings_missing_or_corrupt_file(tmp_path):
     assert load_settings(bad) == Settings()
 
 
+def test_a_retired_setting_is_ignored_and_the_version_advances():
+    # Version 2 stored `cut_give_back_m`; version 3 trusts each event's own position instead. The
+    # key is now unknown and ignored, and the file is written back without it.
+    st = Settings.from_dict({"settings_version": 2, "cut_give_back_m": 500.0, "volume": 0.4})
+    assert st.settings_version == SETTINGS_VERSION
+    assert st.volume == 0.4
+    assert "cut_give_back_m" not in st.to_dict()
+
+
+def test_the_real_0_3_11_settings_migrate_once(tmp_path):
+    # The shared 0.3.11 file has no version and stores the retired cut setting.
+    path = tmp_path / "settings.json"
+    path.write_text(
+        (FIXTURES / "settings_0.3.11.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    st = load_settings(path)
+    assert st.settings_version == SETTINGS_VERSION
+    assert st.volume == 0.6  # the rest of the real file is kept
+    assert st.debug_logging is True
+
+    save_settings(st, path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["settings_version"] == SETTINGS_VERSION
+    assert "cut_give_back_m" not in raw  # the retired key is not written again
+
+
+def test_a_newer_settings_file_is_kept_and_warned_about(caplog):
+    # A file written by a newer build must not be rewritten with this build's version: that would
+    # make the next run migrate it again and lose whatever the newer build chose.
+    raw = {"settings_version": SETTINGS_VERSION + 1, "volume": 0.4}
+    with caplog.at_level(logging.WARNING, logger="brake_trainer.config"):
+        st = Settings.from_dict(raw)
+    assert st.settings_version == SETTINGS_VERSION + 1
+    assert st.volume == 0.4
+    assert any("newer version" in record.message for record in caplog.records)
+
+
 def test_brake_off_stays_below_brake_on():
     st = Settings(brake_on=0.2, brake_off=0.5).clamped()
     assert st.brake_off < st.brake_on
@@ -46,6 +91,42 @@ def _data(car: str, runs: int, t: float = 30.0) -> TrackData:
     for i in range(runs):
         d.sectors[0].append(SectorRun(t + i, [0.1]))
     return d
+
+
+def test_saved_files_carry_the_app_version_build_and_save_time(tmp_path, store):
+    path = tmp_path / "settings.json"
+    save_settings(Settings(volume=0.2), path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["app_version"] == __version__
+    assert raw["build"] == build_id()
+    assert raw["saved_at"].endswith("+00:00")
+    assert raw["volume"] == 0.2
+
+    store.save(_data("Car A", 1))
+    raw_data = json.loads((store.directory / "Monza__Car_A.json").read_text(encoding="utf-8"))
+    assert raw_data["app_version"] == __version__
+    assert raw_data["build"] == build_id()
+    assert raw_data["saved_at"].endswith("+00:00")
+    assert raw_data["version"] == DATA_VERSION  # the data format version is still its own field
+
+
+def test_a_newer_data_version_is_refused():
+    # The app version in a file is provenance, but the data format version gates how the runs may
+    # be read: a newer layout must not be filed under this build's boundaries.
+    raw = _data("Car A", 1).to_dict()
+    raw["version"] = DATA_VERSION + 1
+    with pytest.raises(ValueError, match="newer"):
+        TrackData.from_dict(raw)
+
+
+def test_store_ignores_a_newer_data_file(store):
+    path = store.directory / "Monza__Car_A.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = _data("Car A", 1).to_dict()
+    raw["version"] = DATA_VERSION + 1
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    assert store.load("Monza", "Car A", 3).total_runs() == 0
+    assert store.entries() == []
 
 
 def test_store_roundtrip_and_layout_mismatch(store):
