@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
-from ..models import SectorStatus, group_sizes
+from ..models import SectorStatus
 from . import theme
 
 
@@ -16,17 +16,17 @@ def sector_rects(
     n: int,
     boundaries: Sequence[float],
     width: float,
-    *,
-    segment_gap: float = 2.0,
-    group_gap: float = 8.0,
 ) -> list[tuple[float, float]]:
-    """``(left, width)`` of each sector segment, with gaps centred on the true lines.
+    """``(left, width)`` of each sector segment, in lap order, meeting on the true lines.
 
     The game's sectors are not equal thirds - at the Red Bull Ring the first ends at 26% of the
     lap and at Spa the second at 72% - so equal segments would draw a boundary where the car
-    never crosses it. Each segment spans its sector's real share of the lap instead, and the gap
-    to the next one is centred on the game's line, so the boundary sits where the car crosses it.
-    Equal shares are the fallback while the lines are unknown or unusable.
+    never crosses it. Each segment spans its sector's real share of the lap instead, so the joint
+    between two is the game's own line. They meet exactly: a gap would leave a dead zone where
+    neither sector is shown, and on a 272 px bar the old 8 px gap was 2.9% of the lap - 170 m at
+    Monza, enough for the braking point for the next corner to fall inside it. The bar draws a
+    thin separator at the joint instead. Equal shares are the fallback while the lines are
+    unknown or unusable.
     """
     if n <= 0:
         return []
@@ -34,18 +34,7 @@ def sector_rects(
     edges = [0.0]
     for share in shares:
         edges.append(edges[-1] + share * width)
-    group_ends: set[int] = set()
-    total = 0
-    for size in group_sizes(n):
-        total += size
-        group_ends.add(total)
-    rects: list[tuple[float, float]] = []
-    for i in range(n):
-        before = 0.0 if i == 0 else (group_gap if i in group_ends else segment_gap) / 2.0
-        after = 0.0 if i == n - 1 else (group_gap if i + 1 in group_ends else segment_gap) / 2.0
-        left, right = edges[i] + before, edges[i + 1] - after
-        rects.append((left, max(right - left, 0.0)))
-    return rects
+    return [(edges[i], max(edges[i + 1] - edges[i], 0.0)) for i in range(n)]
 
 
 def _sector_shares(n: int, boundaries: Sequence[float]) -> list[float]:
@@ -57,6 +46,41 @@ def _sector_shares(n: int, boundaries: Sequence[float]) -> list[float]:
         return [1.0 / n] * n
     span = boundaries[-1] - boundaries[0]
     return [(boundaries[i + 1] - boundaries[i]) / span for i in range(n)]
+
+
+def _sector_path(
+    left: float,
+    width: float,
+    height: float,
+    radius: float,
+    *,
+    round_left: bool,
+    round_right: bool,
+) -> QPainterPath:
+    """A sector segment rounded only on the bar's outer ends, square where it meets another.
+
+    Rounding an inner edge would curve the segment away from the line and make the joint look
+    wider than it is.
+    """
+    r = max(min(radius, width / 2.0, height / 2.0), 0.0)
+    left_r, right_r = (r if round_left else 0.0), (r if round_right else 0.0)
+    right, bottom = left + width, height
+    path = QPainterPath()
+    path.moveTo(left + left_r, 0.0)
+    path.lineTo(right - right_r, 0.0)
+    if right_r:
+        path.quadTo(right, 0.0, right, right_r)
+    path.lineTo(right, bottom - right_r)
+    if right_r:
+        path.quadTo(right, bottom, right - right_r, bottom)
+    path.lineTo(left + left_r, bottom)
+    if left_r:
+        path.quadTo(left, bottom, left, bottom - left_r)
+    path.lineTo(left, left_r)
+    if left_r:
+        path.quadTo(left, 0.0, left + left_r, 0.0)
+    path.closeSubpath()
+    return path
 
 
 class BarWidget(QWidget):
@@ -94,14 +118,11 @@ STATUS_COLORS = theme.STATUS_COLORS
 
 
 class SectorBar(QWidget):
-    """F1-style sector indicator: three groups of segments, coloured by how each sector went.
+    """F1-style sector indicator: one segment per game sector, coloured by how it went.
 
     Grey = not driven yet, yellow = slower than your kept runs, green = among your fastest,
-    purple = your fastest.
+    purple = your fastest. A thin separator marks each of the game's sector lines.
     """
-
-    _SEGMENT_GAP = 2.0
-    _GROUP_GAP = 8.0
 
     def __init__(self, parent: QWidget | None = None, height: int = 9) -> None:
         super().__init__(parent)
@@ -129,26 +150,43 @@ class SectorBar(QWidget):
         n = len(self._status)
         if n == 0:
             return
-        rects = sector_rects(
-            n,
-            self._boundaries,
-            self.width(),
-            segment_gap=self._SEGMENT_GAP,
-            group_gap=self._GROUP_GAP,
-        )
+        rects = sector_rects(n, self._boundaries, self.width())
         h = float(self.height())
+        radius = h / 2.5
+        paths = [
+            _sector_path(left, width, h, radius, round_left=i == 0, round_right=i == n - 1)
+            for i, (left, width) in enumerate(rects)
+        ]
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        for index, (left, seg_w) in enumerate(rects):
-            rect = QRectF(left, 0, seg_w, h)
-            painter.setPen(Qt.PenStyle.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for index, path in enumerate(paths):
             painter.setBrush(QColor(STATUS_COLORS[self._status[index]]))
-            painter.drawRoundedRect(rect, h / 2.5, h / 2.5)
-            if index == self._current:
+            painter.drawPath(path)
+
+        if self._current is not None and 0 <= self._current < n:
+            left, width = rects[self._current]
+            painter.save()
+            painter.setClipPath(paths[self._current])
+            if self._progress > 0:
                 painter.setBrush(QColor(255, 255, 255, 110))
-                fill = QRectF(left, 0, max(seg_w * self._progress, 0.0), h)
-                painter.drawRoundedRect(fill, h / 2.5, h / 2.5)
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.setPen(QColor(255, 255, 255, 230))
-                painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), h / 2.5, h / 2.5)
+                fill = QRectF(left, 0.0, max(width * self._progress, 0.0), h)
+                painter.drawRoundedRect(fill, radius, radius)
+            painter.restore()
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(QColor(255, 255, 255, 230), 1.0))
+            inset = _sector_path(
+                left + 0.5,
+                max(width - 1.0, 0.0),
+                max(h - 1.0, 0.0),
+                radius,
+                round_left=self._current == 0,
+                round_right=self._current == n - 1,
+            )
+            painter.drawPath(inset)
+
+        # A line, not a gap: the sector colours meet at the game's line, and this marks it.
+        painter.setPen(QPen(QColor(0, 0, 0, 170), 1.0))
+        for left, _ in rects[1:]:
+            painter.drawLine(QPointF(left, 0.5), QPointF(left, h - 0.5))

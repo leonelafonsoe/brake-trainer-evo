@@ -21,14 +21,6 @@ class SectorStatus(str, Enum):
     BEST = "best"  # your fastest run of this sector
 
 
-def group_sizes(n: int, groups: int = 3) -> tuple[int, ...]:
-    """Split ``n`` sectors into up to ``groups`` consecutive groups of near-equal size."""
-    if n <= 0:
-        return ()
-    groups = min(groups, n)
-    return tuple(n // groups + (1 if i < n % groups else 0) for i in range(groups))
-
-
 class CueKind(str, Enum):
     WARN = "warn"  # braking point coming up
     HERE = "here"  # braking point is right here

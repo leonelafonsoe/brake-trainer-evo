@@ -101,18 +101,6 @@ def test_settings_change_rebuilds_zones(make_engine):
     assert driver.engine.snapshot().n_sectors == N_SECTORS
 
 
-def test_group_sizes():
-    from brake_trainer.models import group_sizes
-
-    assert group_sizes(0) == ()
-    assert group_sizes(1) == (1,)
-    assert group_sizes(2) == (1, 1)
-    assert group_sizes(3) == (1, 1, 1)
-    assert group_sizes(6) == (2, 2, 2)
-    assert group_sizes(8) == (3, 3, 2)
-    assert sum(group_sizes(7)) == 7
-
-
 def test_sector_colours_follow_the_results(make_engine):
     from brake_trainer.models import SectorStatus as S
 
