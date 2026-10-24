@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
+from brake_trainer import __version__
 from brake_trainer.config import SETTINGS_VERSION, Settings, load_settings, save_settings
 from brake_trainer.models import SectorRun, TrackData
 
@@ -66,6 +68,18 @@ def test_the_real_0_3_11_settings_migrate_once(tmp_path):
     assert load_settings(path).cut_give_back_m == 0.0
 
 
+def test_a_newer_settings_file_is_kept_and_warned_about(caplog):
+    # A file written by a newer build must not be rewritten with this build's version: that would
+    # make the next run migrate it again and lose whatever the newer build chose.
+    raw = {"settings_version": SETTINGS_VERSION + 1, "cut_give_back_m": 0.0, "volume": 0.4}
+    with caplog.at_level(logging.WARNING, logger="brake_trainer.config"):
+        st = Settings.from_dict(raw)
+    assert st.settings_version == SETTINGS_VERSION + 1
+    assert st.cut_give_back_m == 0.0  # an older build does not migrate a newer file
+    assert st.volume == 0.4
+    assert any("newer version" in record.message for record in caplog.records)
+
+
 def test_brake_off_stays_below_brake_on():
     st = Settings(brake_on=0.2, brake_off=0.5).clamped()
     assert st.brake_off < st.brake_on
@@ -83,6 +97,21 @@ def _data(car: str, runs: int, t: float = 30.0) -> TrackData:
     for i in range(runs):
         d.sectors[0].append(SectorRun(t + i, [0.1]))
     return d
+
+
+def test_saved_files_carry_the_app_version_and_save_time(tmp_path, store):
+    path = tmp_path / "settings.json"
+    save_settings(Settings(volume=0.2), path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["app_version"] == __version__
+    assert raw["saved_at"].endswith("+00:00")
+    assert raw["volume"] == 0.2
+
+    store.save(_data("Car A", 1))
+    raw_data = json.loads((store.directory / "Monza__Car_A.json").read_text(encoding="utf-8"))
+    assert raw_data["app_version"] == __version__
+    assert raw_data["saved_at"].endswith("+00:00")
+    assert raw_data["version"] == 1  # the data format version is still its own field
 
 
 def test_store_roundtrip_and_layout_mismatch(store):

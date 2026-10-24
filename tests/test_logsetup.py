@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from logging.handlers import RotatingFileHandler
 
-from brake_trainer import logsetup
+from brake_trainer import __version__, logsetup
 
 
 def test_set_debug_switches_the_root_level():
@@ -32,18 +32,25 @@ def test_debug_requested_on_startup_reads_the_flag_and_the_environment(monkeypat
     assert logsetup.debug_requested_on_startup([]) is False
 
 
-def test_configure_logging_adds_its_handlers_only_once(monkeypatch, tmp_path):
+def test_configure_logging_adds_its_handlers_only_once(monkeypatch, tmp_path, caplog):
     monkeypatch.setenv("BRAKE_TRAINER_HOME", str(tmp_path))
     root = logging.getLogger()
     before = list(root.handlers)
     try:
-        logsetup.configure_logging(debug=True)
-        added = [h for h in root.handlers if h not in before]
-        logsetup.configure_logging(debug=True)  # a second call must not duplicate them
+        with caplog.at_level(logging.INFO, logger=logsetup.APP_LOGGER):
+            logsetup.configure_logging(debug=True)
+            added = [h for h in root.handlers if h not in before]
+            logsetup.configure_logging(debug=True)  # a second call must not duplicate them
         assert [h for h in root.handlers if h not in before] == added
         assert any(isinstance(h, RotatingFileHandler) for h in added)
         assert root.level == logging.DEBUG
         assert (tmp_path / "brake_trainer.log").exists()
+        banners = [
+            record.getMessage()
+            for record in caplog.records
+            if record.getMessage() == f"Brake Trainer {__version__}"
+        ]
+        assert banners == [f"Brake Trainer {__version__}"]  # once, not once per call
     finally:
         for handler in list(root.handlers):
             if handler not in before:

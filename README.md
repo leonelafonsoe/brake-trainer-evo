@@ -181,6 +181,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
 - Track limits follow the game. It gives 500 m to hand back the time a cut gained and reports the
   cut only after that window, so the app reads the report back 500 m (the stored `cut_give_back_m`)
   to the sector where the cut happened, and takes that sector's run back if it was already saved.
+  That is the game's window rather than a measured distance for every cut, so the read-back is a
+  well-founded heuristic.
   The game buffers its log (a few KB, flushed when full), so a cut can be read a minute later,
   or after the lap it belongs to has ended, and several can arrive at once; each line's own time is
   what the app attributes from, so every one still lands in its own sector of its own lap, and one

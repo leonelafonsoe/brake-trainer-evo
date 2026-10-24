@@ -84,7 +84,7 @@ The line under the sector bar usually tells you why nothing is being learned:
 | Waiting for the game's sector lines | A new track that no car has learned the lines on: the app is waiting for the game's log to report its sector splits, and counts nothing meanwhile | Drive a lap; if it lasts more than three laps see the entry above |
 | Learning paused | Learning is off | Press the resume button on the overlay |
 | S3 won't count · lap invalidated | The game invalidated the lap for a cut in that sector | Nothing; the next clean sector counts |
-| S3 won't count · off track | The game reported a cut in that sector | If it triggers too often set "Skip sector if tyres off track" and "...once the lap is invalid" to Off |
+| S3 won't count · off track | The game reported a cut in that sector | Nothing; the next clean sector counts. If it looks wrong, turn on verbose logging and share the log |
 | No braking points yet | Nothing learned for this track and car | Drive 2-3 clean laps after the warm-up lap |
 
 An out-lap is one of the warm-up laps above: the game invalidates the lap it began in (a lap started
@@ -149,9 +149,10 @@ in Settings -> App.
 
 **The sector lines look slightly early or late**
 The app places each line at the car's position when the game's own split was written, interpolated
-between the telemetry frames either side; it should be well under a metre out at 60 Hz. To check it
-on track, turn on verbose logging and look for `splits: audit ...` lines: each later split compares
-the learned line with the game's (`the app's line was crossed 2.1 ms / 0.1 m after the game's`).
+between the telemetry frames either side; at 60 Hz it is usually a few tenths of a metre out, though
+the residual depends on speed and on how linear the reported position is. To check it on track, turn
+on verbose logging and look for `splits: audit ...` lines: each later split compares the learned line
+with the game's (`the app's line was crossed 2.1 ms / 0.1 m after the game's`).
 `after` means it is slightly further round the lap, `before` slightly short. A value that stays in
 the metres is worth reporting: share the app log and the matching game log. The game log on its own
 has the split times but not the car's position, so it cannot show where a line was placed.
@@ -191,11 +192,11 @@ The app always writes a rotating log (about 1 MB per file, 3 older ones kept):
 `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`
 
 Settings -> Diagnostics -> **Open app log folder** opens it. **Verbose (debug) logging** adds a line
-every time the game's track-limit signals change (the race-cut pair and the live tyre count, where the
-game publishes them, the lap flag and the timing invalid flag) and each time the app reads a cut from
-the game's log, with the position, the sector it was reported in and the sector the cut was attributed
-to. It also records which telemetry regions the SDK attached to. That is the detail a report about a
-kept or dropped sector needs, so the fastest way to report a track-limits problem is:
+every time the game's track-limit signals change (the race-cut pair, the lap flag and the timing
+invalid flag) and each time the app reads a cut from the game's log, with the position, the sector it
+was reported in and the sector the cut was attributed to. It also records which telemetry regions the
+SDK attached to. That is the detail a report about a kept or dropped sector needs, so the fastest way
+to report a track-limits problem is:
 
 1. Turn on "Verbose (debug) logging" (Settings -> Diagnostics), apply, and reproduce the problem
    for a lap or two.

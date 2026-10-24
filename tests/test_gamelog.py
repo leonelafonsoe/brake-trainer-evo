@@ -8,9 +8,10 @@ from datetime import datetime
 from pathlib import Path
 
 from brake_trainer.config import Settings
-from brake_trainer.engine import _RUNS_KEPT_LAPS, N_SECTORS, BrakeEngine
+from brake_trainer.engine import _HISTORY_S, N_SECTORS, BrakeEngine, _LapRun
 from brake_trainer.gamelog import REPORTED_CUT, GameLogTail, LogState, line_time, parse_line
 from brake_trainer.models import SectorRun, SectorStatus, TrackData
+from brake_trainer.timeline import crossing_between
 
 from .conftest import DT, LENGTH, Driver
 
@@ -476,21 +477,20 @@ def test_a_lap_flag_before_the_first_tracked_lap_has_no_sector_to_drop(store):
     assert not any("won't count" in m for m in messages)
 
 
-def test_the_run_history_keeps_the_current_lap_and_three_completed_laps(store):
-    # A log line can be read two laps late, and the give-back step then reaches one lap further
-    # back: the run exactly _RUNS_KEPT_LAPS laps back must still be there for it, while one more
-    # lap back is pruned.
+def test_the_run_history_is_pruned_with_the_sample_history(store):
+    # A report is attributed from the samples, so a run record is only useful while the samples
+    # around its crossing are still kept: both expire on the same window.
     engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
-    engine._lap_no = 10
-    kept = 10 - _RUNS_KEPT_LAPS
-    stale = kept - 1
-    for lap in range(stale, 11):
-        engine._lap_runs[(lap, 0)] = (SectorRun(30.0 + lap, [0.2]), [])
+    driver = Driver(engine)
+    driver.feed(0.10, 200.0, 0.0)
+    now = driver.t
+    fresh = _LapRun(SectorRun(30.0, [0.2]), [], now - _HISTORY_S + 1.0)
+    stale = _LapRun(SectorRun(31.0, [0.2]), [], now - _HISTORY_S - 1.0)
+    engine._lap_runs[(1, 0)] = fresh
+    engine._lap_runs[(0, 0)] = stale
     engine._prune_lap_runs()
 
-    assert (kept, 0) in engine._lap_runs
-    assert (stale, 0) not in engine._lap_runs
-    assert set(engine._lap_runs) == {(lap, 0) for lap in range(kept, 11)}
+    assert engine._lap_runs == {(1, 0): fresh}
 
 
 def test_two_late_reported_cuts_drop_only_their_own_sectors(store):
@@ -548,7 +548,7 @@ def test_a_cut_reported_in_the_frame_that_wraps_the_line_stays_in_the_laps_last_
 
     lap = engine._lap_no  # the lap number the wrap has just moved on to
     assert (lap - 1, 2) in engine._invalid_sectors  # the live cut's S3 of the lap that ended
-    at = (engine._line_crossing(t0, p0, t1, p1, 0.0) + t1) / 2
+    at = (crossing_between(t0, p0, t1, p1, 0.0) + t1) / 2
     engine.report_infraction("off track", at)
 
     assert (lap - 1, 2) in engine._invalid_sectors  # still that lap's S3
@@ -564,9 +564,9 @@ def test_a_cut_read_after_the_line_stays_in_the_new_laps_first_sector(store):
     engine, driver, _, messages = _engine(store, cut_give_back_m=0)
     driver.feed(0.001, 200.0, 0.0)  # the frame that crosses the line: still the old lap's number
     lap = engine._lap_no
-    before_t, before_lap = driver.t, engine._history[-1].lap
+    before_t, before_lap = driver.t, engine._timeline.last.lap
     driver.feed(0.02, 200.0, 0.0)
-    after = engine._history[-1]
+    after = engine._timeline.last
     assert before_lap == lap - 1 and after.lap == lap  # the line fell on the earlier sample
     prior_s1 = stored_times(store, 0)
 
@@ -586,11 +586,11 @@ def test_a_cut_read_at_the_new_lap_seam_is_attributed_to_the_lap_it_ended(store)
     # new one. This is the seam that regressed when _at_time started returning the new lap.
     engine, driver, _, messages = _engine(store)  # cut_give_back_m=500: 0.1 of a 5000 m lap
     driver.feed(0.98, 200.0, 0.0)
-    before = engine._history[-1]
+    before = engine._timeline.last
     driver.feed(0.02, 200.0, 0.0)  # the wrap: this sample is still labelled with the old lap
-    seam = engine._history[-1]
+    seam = engine._timeline.last
     driver.feed(0.04, 200.0, 0.0)
-    after = engine._history[-1]
+    after = engine._timeline.last
 
     lap = engine._lap_no
     assert before.lap == seam.lap == lap - 1 and after.lap == lap

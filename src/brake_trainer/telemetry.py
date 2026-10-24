@@ -174,7 +174,6 @@ def sample_from_frame(frame: Any) -> Sample | None:
         in_pit=bool(gfx.get("is_in_pit_lane") or gfx.get("is_in_pit")),
         t=_frame_time(frame),
         lap_valid=bool(gfx.get("is_valid_lap", True)),
-        tyres_out=int(phys.get("number_of_tyres_out", 0) or 0),
         cut_gained_ms=gained,
         cut_deadline_m=deadline,
         cut_delta_s=delta,

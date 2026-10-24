@@ -136,18 +136,18 @@ usually faster, so it would become the "best" run and drag the braking points wi
 The game's *per-excursion* signal is the cut it reports in its log, one HUD notification per cut
 (`Adding notification UINotificationType_SessionPenalty`, build 0.5+). It is the per-violation
 trigger, so a sector is dropped for every cut the game records, including a second one in an
-already-invalid lap. The live race-cut pair and the count of tyres off the track are used as well
-where the game publishes them (all four tyres while the lap is valid; for the rest of an invalid lap
-the lower "...once the lap is invalid" count, default 2).
+already-invalid lap. The live race-cut pair is used as well where the game publishes it.
 
 A cut is judged by the time it gains, and the game gives the driver 500 m to give that time back
 before it reports the cut. The report therefore arrives about 500 m after the cut, so the sector it
-is about is that distance behind it (`cut_give_back_m`, `500` by default). At Monza, a cut at the
-Ascari entry is reported at the exit, just past the S2/S3 line; reading the report back places it in
-S2, where the cut happened, instead of dropping S3. A build that reports at the cut itself can set
-the stored distance to `0`. Because the cut sector may already have been saved, its run is then
-taken back, restoring the list it replaced. The cost of a wrong drop is confined to a sector, and
-clean sectors in between are still kept.
+is about is that distance behind it (`cut_give_back_m`, `500` by default). That is the game's window,
+not a measured distance for every cut, so it is a well-founded heuristic: a cut taken at a very
+different speed or line can sit a little either side of it. At Monza, a cut at the Ascari entry is
+reported at the exit, just past the S2/S3 line; reading the report back places it in S2, where the
+cut happened, instead of dropping S3. A build that reports at the cut itself can set the stored
+distance to `0`. Because the cut sector may already have been saved, its run is then taken back,
+restoring the list it replaced. The cost of a wrong drop is confined to a sector, and clean sectors
+in between are still kept.
 
 The game buffers its log (a few KB, flushed when full), so in quiet running a line can sit unwritten
 for a minute or more, and a single read can bring a whole lap's cuts. Each line's own timestamp is
@@ -206,9 +206,8 @@ reader is tested against a fake capture object.
   first sector (the line cannot move without changing the lap logic).
 - A cut reported right at the end of a lap can be attributed to the last sector of the previous lap,
   which is right, but if a run was already rewritten by the new lap the take-back may miss it.
-- An off-track the game judges from something it does not expose (no cut in its log, no race cut and
-  no tyres reported off) cannot be pinned to a sector; the app logs a warning when the lap flag drops
-  for one.
+- An off-track the game judges from something it does not expose (no cut in its log and no race cut)
+  cannot be pinned to a sector; the app logs a warning when the lap flag drops for one.
 - Cues are position-based. A different racing line, or a damaged or very different setup, shifts
   the real braking point.
 - Possible future work: learning per corner instead of per sector, custom WAV sounds, importing

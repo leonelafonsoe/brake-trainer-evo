@@ -3,7 +3,8 @@
 The level is INFO by default. *Verbose* logging (the "Verbose (debug) logging" setting, the
 ``--debug`` command-line flag, or ``BRAKE_TRAINER_DEBUG=1``) lowers it to DEBUG and adds, in the
 engine, a line for every change in the game's track-limit signals. That is what a report about a
-missed sector needs: the live ``number_of_tyres_out`` and ``is_valid_lap`` values as they happen.
+missed sector needs: the live race-cut pair, the lap flag and the timing invalid flag as they
+happen.
 
 This module deliberately avoids importing the UI, so it can be used (and tested) on its own.
 """
@@ -15,6 +16,7 @@ import os
 from contextlib import suppress
 from logging.handlers import RotatingFileHandler
 
+from . import __version__
 from .paths import log_path
 
 APP_LOGGER = "brake_trainer"
@@ -28,9 +30,11 @@ _BACKUPS = 3
 def configure_logging(*, debug: bool = False) -> None:
     """Install the console and rotating-file handlers once, then set the level.
 
-    Safe to call again (for example from a test): the handlers are only added the first time.
+    Safe to call again (for example from a test): the handlers are only added the first time, and
+    the version banner is only written then too.
     """
     root = logging.getLogger()
+    installed = False
     if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
         fmt = logging.Formatter(_FORMAT)
         handlers: list[logging.Handler] = [logging.StreamHandler()]
@@ -43,7 +47,10 @@ def configure_logging(*, debug: bool = False) -> None:
         for handler in handlers:
             handler.setFormatter(fmt)
             root.addHandler(handler)
+        installed = True
     set_debug(debug)
+    if installed:
+        logging.getLogger(APP_LOGGER).info("Brake Trainer %s", __version__)
 
 
 def set_debug(debug: bool) -> None:

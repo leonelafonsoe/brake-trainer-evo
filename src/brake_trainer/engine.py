@@ -20,6 +20,15 @@ from dataclasses import dataclass, field
 from .config import Settings
 from .models import CueKind, Sample, SectorResult, SectorRun, SectorStatus, Snapshot, TrackData
 from .storage import DataEdit, TrackStore
+from .timeline import (
+    JUMP_LAP,
+    CarAt,
+    HistoryPoint,
+    PositionTimeline,
+    clamp_pos,
+    crossing_between,
+    wrap_delta,
+)
 
 log = logging.getLogger(__name__)
 
@@ -37,9 +46,6 @@ _LINES_WAIT_LAPS = 3
 # layouts share (in practice the start/finish line). This is how close its start has to be to one:
 # a few metres of lap, far inside the gap between an equal split and the game's own line.
 _LINE_MATCH = 0.001
-# A position change this large in one frame is a reset or a teleport, not driving: the pass in
-# progress restarts there, and an event inside that frame is placed at the earlier sample.
-_JUMP_LAP = 0.05
 
 
 def build_zones(
@@ -116,18 +122,12 @@ _LINES_REASONS = frozenset({"finding the sector lines", "the lines were learned 
 # this covers a lap or two of driving at any sane rate.
 _HISTORY_S = 300.0
 
-# How many completed laps back a late cut can still take its sector's stored run back from. A log
-# line can be read two laps late, and the give-back step then reaches one lap further back, so the
-# current lap plus this many completed laps are kept.
-_RUNS_KEPT_LAPS = 3
-
-# Shown when the game invalidates a lap that the app saw no off-track for (no race cut, no tyres
-# off the track, no cut in its log): the game judged it from something it does not expose per
-# violation, so the sector it happened in cannot be identified.
+# Shown when the game invalidates a lap that the app saw no off-track for (no race cut and no cut
+# in its log): the game judged it from something it does not expose per violation, so the sector it
+# happened in cannot be identified.
 _CUT_WARNING = (
-    "The game invalidated the lap with no race cut, no tyres off the track and no cut in its log, "
-    "so the sector it happened in cannot be identified: only the sector where the flag dropped "
-    "will be dropped."
+    "The game invalidated the lap with no race cut and no cut in its log, so the sector it "
+    "happened in cannot be identified: only the sector where the flag dropped will be dropped."
 )
 
 
@@ -156,27 +156,6 @@ def full_bounds(n: int, inner: Sequence[float] | None) -> list[float]:
     return [0.0, *inner, 1.0]
 
 
-@dataclass(frozen=True, slots=True)
-class _HistoryPoint:
-    """One sampled car state, kept so a game-log event can be placed at its own time."""
-
-    t: float
-    pos: float
-    speed_kmh: float
-    in_pit: bool
-    lap: int
-
-
-@dataclass(frozen=True, slots=True)
-class _CarAt:
-    """The car at an arbitrary time, interpolated between two samples."""
-
-    pos: float
-    speed_kmh: float
-    in_pit: bool
-    lap: int
-
-
 @dataclass(slots=True)
 class _Pass:
     """A sector pass in progress."""
@@ -202,6 +181,20 @@ class _LostPass:
     sector: int
     end: float  # when it closed, to prune against the kept sample history
     run: _Pass
+
+
+@dataclass(slots=True)
+class _LapRun:
+    """A stored run, what it displaced, and when it closed.
+
+    Kept for a while so a cut the game reports late can be taken back cleanly without touching
+    the run a later lap stored for the same sector. ``at`` is what the retention window is pruned
+    against, so a record expires with the samples a report would be attributed from.
+    """
+
+    run: SectorRun
+    previous: list[SectorRun]
+    at: float
 
 
 @dataclass(slots=True)
@@ -258,21 +251,19 @@ class BrakeEngine:
         self._status_lap = 0  # the lap whose colours _status holds: the last one, until S1 ends
         self._lap_saw_off = False  # an off-track this lap, so a bare-cut drop is not it
         self._lap_warned = False  # the cut warning was already given for this lap
-        self._tyres_over = False  # the tyre count is over the limit right now (for the message)
         self._cut_active = False  # the game's race-cut signal is up right now
         self._cut_gained = 0  # the last race-cut gain it reported, for spotting a new cut
         self._cut_deadline = 0  # its give-back distance, which grows again when a new cut starts
-        self._history: deque[_HistoryPoint] = deque()
-        # recently seen, so a cut the log reports late is still attributed from where the car was
-        self._lap_runs: dict[tuple[int, int], tuple[SectorRun, list[SectorRun]]] = {}  # per lap and
-        # sector: the run it stored, and the list it replaced, so a cut the game reports a lap late
-        # can be taken back cleanly without touching the run a later lap stored for that sector
+        self._timeline = PositionTimeline(keep_s=_HISTORY_S)
+        # Recently seen, per lap and sector: the run, what it displaced, and when it closed. A cut
+        # the game reports a lap late can then be taken back cleanly without touching the run a
+        # later lap stored for that sector.
+        self._lap_runs: dict[tuple[int, int], _LapRun] = {}
         self._lines_lost: list[_LostPass] = []  # sectors the lines arrived too late for (yet)
         self._invalid_sectors: set[tuple[int, int]] = set()  # (lap, sector) the game invalidated
         # (lap, sector) -> why it did not count, for sectors already out for another reason. A cut
         # reported later for one of them changes nothing, so its message is not repeated.
         self._lap_notes: dict[tuple[int, int], str] = {}
-        self._prev_tyres_out = 0  # the previous sample's count, for the verbose log
         self._prev_cut_active = False  # the previous sample's race-cut state, for the verbose log
         self._prev_cut_gained = 0
         self._prev_timing_invalid = False
@@ -332,24 +323,22 @@ class BrakeEngine:
         self._ensure_session(s)
         self._last = s
 
-        pos = min(max(s.pos, 0.0), 0.99999)
+        pos = clamp_pos(s.pos)
         sector = self._sector_of(pos)
 
-        self._history.append(_HistoryPoint(s.t, pos, s.speed_kmh, s.in_pit, self._lap_no))
-        while self._history and self._history[0].t < s.t - _HISTORY_S:
-            self._history.popleft()
+        self._timeline.append(HistoryPoint(s.t, pos, s.speed_kmh, s.in_pit, self._lap_no))
 
         delta, jump = 0.0, False
         prev_pos, prev_t = self._prev_pos, self._prev_t
         if prev_pos is not None:
-            delta = ((pos - prev_pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
-            jump = abs(delta) > _JUMP_LAP
+            delta = wrap_delta(pos - prev_pos)  # signed, wrap-safe
+            jump = abs(delta) > JUMP_LAP
         self._prev_pos, self._prev_t = pos, s.t
         if self._pass is None or jump:  # start, reset or teleport
             self._restart_pass(sector, s.t, pos)
         elif sector != self._sector:
             if sector == (self._sector + 1) % self._n:  # crossed into the next sector
-                crossed = self._line_crossing(prev_t, prev_pos, s.t, pos, self._bounds[sector])
+                crossed = crossing_between(prev_t, prev_pos, s.t, pos, self._bounds[sector])
                 self._close_sector(crossed)
                 start = self._bounds[sector]
                 self._sector = sector
@@ -365,7 +354,6 @@ class BrakeEngine:
                     self._fired_here.clear()
                     self._lap_saw_off = False
                     self._lap_warned = False
-                    self._tyres_over = False
                     self._lines_watch()
             else:  # went backwards over a line
                 self._restart_pass(sector, s.t, pos)
@@ -454,16 +442,14 @@ class BrakeEngine:
         self._late_cut_t = 0.0
         self._lap_saw_off = False
         self._lap_warned = False
-        self._tyres_over = False
         self._cut_active = False
         self._cut_gained = 0
         self._cut_deadline = 0
-        self._history.clear()
+        self._timeline.clear()
         self._lap_runs = {}
         self._lines_lost.clear()
         self._invalid_sectors.clear()
         self._lap_notes.clear()
-        self._prev_tyres_out = 0
         self._prev_cut_active = False
         self._prev_cut_gained = 0
         self._prev_timing_invalid = False
@@ -615,20 +601,6 @@ class BrakeEngine:
         if self._pass is not None:
             self._pass.flagged.discard(reason)
 
-    def _tyres_out_limit(self, lap_valid: bool) -> int:
-        """Tyres off the track that drop the sector in progress (0 = never).
-
-        While the lap is valid the strict limit applies, i.e. the count the game itself invalidates
-        on. Once the game has invalidated the lap its ``is_valid_lap`` flag stays down and cannot
-        report a second mistake, so the lower "once the lap is invalid" limit stands in for it in
-        the remaining sectors of that lap.
-        """
-        st = self._settings
-        limits = [st.max_tyres_out]
-        if st.skip_invalid_sectors and not lap_valid:
-            limits.append(st.max_tyres_out_after_invalid)
-        return min((n for n in limits if n), default=0)
-
     def _check_track_limits(self, s: Sample, pos: float) -> None:
         """Track limits and other infractions, from the game's telemetry.
 
@@ -639,15 +611,14 @@ class BrakeEngine:
           reports the cut only after its give-back window, so the sector is taken from behind the
           flag (``cut_give_back_m``);
         * the race-cut pair (time gained and the distance left to give it back) is filled in for
-          every off-track, where the game publishes it;
-        * ``number_of_tyres_out`` is a live count, where the game publishes it.
+          every off-track, where the game publishes it.
 
         A second cut in an already-invalid lap comes from the game's log (see
         :meth:`report_infraction`), which the app follows for exactly that event.
 
-        An infraction the game judges from something it does not expose (no cut in its log, no race
-        cut and no tyres off the track) cannot be pinned to a sector; that is said out loud (a
-        warning) rather than guessed at.
+        An infraction the game judges from something it does not expose (no cut in its log and no
+        race cut) cannot be pinned to a sector; that is said out loud (a warning) rather than
+        guessed at.
 
         The signals overlap: one cut can be seen by the race-cut pair, by the lap flag and in the
         log. Each is attributed to a ``(lap, sector)`` and only the first one to reach it acts, so
@@ -657,7 +628,6 @@ class BrakeEngine:
         if log.isEnabledFor(logging.DEBUG):  # verbose mode: trace the signals as they change
             self._trace_track_limits(s, pos)
         self._check_race_cut(s, pos)
-        self._check_tyres_out(s, pos)
         self._check_lap_flag(s, pos)
 
     def _check_race_cut(self, s: Sample, pos: float) -> None:
@@ -694,28 +664,6 @@ class BrakeEngine:
             )
             return
         self._on_message(f"Off the track at {pos:.0%}: S{idx + 1} won't count")
-
-    def _check_tyres_out(self, s: Sample, pos: float) -> None:
-        """The live tyre count: drop the sector while enough tyres are off the track."""
-        st = self._settings
-        if st.max_tyres_out and s.tyres_out >= st.max_tyres_out:
-            self._lap_saw_off = True  # at least one full off this lap: not a bare cut
-        limit = self._tyres_out_limit(s.lap_valid)
-        over = bool(limit) and s.tyres_out >= limit
-        new_excursion = over and not self._tyres_over
-        self._tyres_over = over
-        if not over:
-            return
-        # Also covers a pass restarted (or a line crossed) while the tyres are still out, so every
-        # sector the excursion reaches is dropped, not just the one it began in.
-        idx = self._sector_of(pos)
-        quiet = self._already_out(self._lap_no, idx)  # before _attribute flags this pass
-        dropped = self._attribute("off track", pos, self._lap_no)
-        self._flag("off track")
-        if new_excursion and dropped is not None and not quiet:
-            self._on_message(
-                f"{s.tyres_out} tyres off the track at {pos:.0%}: S{idx + 1} won't count"
-            )
 
     def _check_lap_flag(self, s: Sample, pos: float) -> None:
         """The one-shot lap flag: drop the sector the infraction happened in.
@@ -880,82 +828,40 @@ class BrakeEngine:
             return ""
         return " in the previous lap" if back == 1 else " in an earlier lap"
 
-    def _at_time(self, at: float) -> _CarAt | None:
-        """The car at ``at``: position and speed interpolated between the samples around it.
+    def _at_time(self, at: float) -> CarAt | None:
+        """The car at ``at``, from the sample history.
 
-        The game buffers its log, so an event line can be read long after it was written; the car's
-        state at the line's own time is what places a cut or a sector line. Taking the last sample
-        at or before ``at`` would quantise that to the telemetry interval - about a metre at racing
-        speed - and bias every line to the earlier sample. Interpolating removes both.
-
-        A pair whose samples both carry the old lap number but whose positions wrap the line is not
-        interpolated across either: the position would be in the new lap while the label stayed on
-        the old one. The earlier sample is the safe choice there too, as it is for a pair spanning a
-        reset or teleport: interpolating across one would invent a position the car never had. A
-        pair one lap number apart is the frame just after the line instead: the first sample after
-        the crossing still carries the old number, so the line was crossed on it and every time
-        between the two belongs to the new lap. Those are interpolated as usual and labelled with
-        the later sample's lap.
-
-        ``in_pit`` is a discrete state, not a quantity: it is taken from the earlier sample and
-        deliberately not interpolated, since the car is either in the pit lane or it is not.
-
-        ``None`` when ``at`` is older than the kept history: guessing from the current position
-        would drop the wrong sector, which is worse than saying nothing.
+        The interpolation rules - including the fallbacks for a reset, a teleport and a
+        start/finish wrap - live in :class:`~.timeline.PositionTimeline`; this is the engine's
+        adapter, which supplies the car as it is known now for a time at or after the newest
+        sample. ``None`` when ``at`` is older than the kept history.
         """
+        return self._timeline.at(at, self._car_now())
+
+    def _car_now(self) -> CarAt | None:
+        """The car as the engine knows it now, for a lookup at or after the newest sample."""
         s = self._last
-        if s is not None and at >= s.t:
-            return _CarAt(min(max(s.pos, 0.0), 0.99999), s.speed_kmh, s.in_pit, self._lap_no)
-        before: _HistoryPoint | None = None
-        after: _HistoryPoint | None = None
-        for point in reversed(self._history):
-            if point.t <= at:
-                before = point
-                break
-            after = point
-        if before is None:
+        if s is None:
             return None
-        if after is None:
-            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
-        new_lap = after.lap == before.lap + 1
-        if after.lap != before.lap and not new_lap:
-            # No pair on one lap to interpolate across: the earlier sample is the safe choice.
-            return _CarAt(before.pos, before.speed_kmh, before.in_pit, before.lap)
-        # One lap apart means the line was crossed on the earlier sample: everything between them
-        # belongs to the new lap, so that is the label even when falling back to the earlier sample.
-        lap = after.lap if new_lap else before.lap
-        span = after.t - before.t
-        if span <= 0.0:
-            return _CarAt(before.pos, before.speed_kmh, before.in_pit, lap)
-        share = (at - before.t) / span
-        delta = ((after.pos - before.pos + 0.5) % 1.0) - 0.5  # signed, wrap-safe
-        if abs(delta) > _JUMP_LAP or (new_lap and delta < 0.0):
-            # A reset or teleport between the samples - or, on a new lap, positions that do not run
-            # forwards - means interpolating would invent a position the car never had, so the
-            # earlier sample is where the event happened.
-            return _CarAt(before.pos, before.speed_kmh, before.in_pit, lap)
-        if delta > 0.0 and before.pos + delta * share >= 1.0:
-            # The kept history wraps the start/finish line within one lap number: interpolating
-            # would put the position in the new lap under the old lap's label.
-            return _CarAt(before.pos, before.speed_kmh, before.in_pit, lap)
-        pos = (before.pos + delta * share) % 1.0
-        speed = before.speed_kmh + (after.speed_kmh - before.speed_kmh) * share
-        return _CarAt(min(max(pos, 0.0), 0.99999), speed, before.in_pit, lap)
+        return CarAt(s.t, clamp_pos(s.pos), s.speed_kmh, s.in_pit, self._lap_no)
 
     def _prune_lap_runs(self) -> None:
-        """Forget the stored-run records of laps too old for a late cut to still reach.
+        """Forget the stored-run records older than the samples a late cut can reach.
 
-        The oldest kept lap is ``_RUNS_KEPT_LAPS`` laps back: the current lap plus that many
-        completed laps, which is as far as a log line read two laps late plus the give-back step
-        can reach.
+        A report is attributed from the sample history, so once a run closed before that history
+        begins no report can reach it. Pruning the two against the same window keeps them in
+        step: the records do not outlive the samples that would identify them.
 
         ``_invalid_sectors`` and ``_lap_notes`` are not pruned with them: they are a few small
         entries per lap, and keeping them means a log line read again (after a restart) is still
         recognised as one already acted on, and a late cut for a sector that was already out stays
         quiet, even once the run it took back is long gone.
         """
-        oldest = self._lap_no - _RUNS_KEPT_LAPS
-        for key in [k for k in self._lap_runs if k[0] < oldest]:
+        now = self._last.t if self._last is not None else None
+        if now is None:
+            return
+        cutoff = now - _HISTORY_S
+        for key in [k for k, entry in self._lap_runs.items() if entry.at < cutoff]:
             del self._lap_runs[key]
 
     def _drop_text(self, where: float, took_back: bool) -> str:
@@ -1024,7 +930,7 @@ class BrakeEngine:
         entry = self._lap_runs.pop((lap, idx), None)
         if entry is None or self._data is None:
             return False
-        run, previous = entry
+        run, previous = entry.run, entry.previous
         # Remove exactly the run this cut put in, and put back whatever it displaced. The whole
         # list cannot just be restored: a later lap may have stored a run of its own in this sector
         # since, and that one is clean and must stay. Runs are matched by identity, since two laps
@@ -1052,17 +958,6 @@ class BrakeEngine:
         This is the detail a report about a missed sector needs: what the game actually reported
         and when, with the position and sector. Off unless verbose logging is on.
         """
-        if s.tyres_out != self._prev_tyres_out:
-            log.debug(
-                "limits: tyres_out %d -> %d at %.1f%% of the lap (lap_valid=%s, limit=%d, S%d)",
-                self._prev_tyres_out,
-                s.tyres_out,
-                pos * 100.0,
-                s.lap_valid,
-                self._tyres_out_limit(s.lap_valid),
-                self._sector + 1,
-            )
-            self._prev_tyres_out = s.tyres_out
         active = race_cut_active(s.cut_gained_ms, s.cut_deadline_m)
         if active != self._prev_cut_active or s.cut_gained_ms != self._prev_cut_gained:
             log.debug(
@@ -1230,7 +1125,7 @@ class BrakeEngine:
             return
         self._learn_lines(first[0], second[0])
 
-    def _audit_split(self, index: int, lap: int, at: float, car: _CarAt) -> None:
+    def _audit_split(self, index: int, lap: int, at: float, car: CarAt) -> None:
         """Compare the game's line with the line the app learned, from the same split.
 
         On a later lap the game's split timestamp says when the car really crossed the line; the
@@ -1383,7 +1278,7 @@ class BrakeEngine:
         accepted = any(r is stored for r in kept)
         if accepted:
             data.sectors[idx] = kept
-            self._lap_runs[(entry.lap, idx)] = (stored, runs)
+            self._lap_runs[(entry.lap, idx)] = _LapRun(stored, runs, entry.end)
         status = (
             SectorStatus.BEST
             if kept[0] is stored
@@ -1426,84 +1321,16 @@ class BrakeEngine:
                 return True
         return False
 
-    @staticmethod
-    def _line_crossing(
-        t0: float | None, p0: float | None, t1: float, p1: float, line: float
-    ) -> float:
-        """When the car crossed ``line`` between two samples.
-
-        ``line`` is 0.0 for the start/finish line, which the car crosses at the lap wrap (position
-        drops from near 1 to near 0) rather than by passing ``line`` from below. Interpolating here
-        keeps a sector's start and end at the physical line instead of at the next telemetry frame,
-        which is what makes a stored sector time accurate to better than one sample.
-
-        The caller must only pass a line that really lies between the samples: ``p0 < line <= p1``
-        for an inner line, or ``p1 < p0`` for the start/finish line. When it does not - the samples
-        show no crossing at all - there is no time to interpolate, and returning the current sample
-        is the honest no-crossing fallback; clamping a share into ``[0, 1]`` would instead invent a
-        crossing at a sample where the car was on the other side of the line.
-        """
-        if t0 is None or p0 is None or t1 <= t0:
-            return t1
-        if line <= 0.0:
-            if p1 >= p0:  # no wrap between the samples: the start/finish line was not crossed
-                return t1
-            span = (1.0 - p0) + p1
-            share = (1.0 - p0) / span if span > 0.0 else 1.0
-        else:
-            if not (p0 < line <= p1):  # the line is not between the samples
-                return t1
-            span = p1 - p0
-            share = (line - p0) / span if span > 0.0 else 1.0
-        return t0 + (t1 - t0) * min(max(share, 0.0), 1.0)
-
     def _crossing_time(self, lap: int, line: float) -> float | None:
-        """When the car crossed ``line`` during ``lap``, interpolated between two samples.
-
-        ``line`` is a lap fraction: 0.0 starts the lap and 1.0 ends it (and starts the next one).
-        None when that crossing is no longer in the kept history: guessing would file a run under
-        a time the car never drove.
-        """
-        if line <= 0.0:
-            return self._lap_start(lap)
-        if line >= 1.0:
-            return self._lap_start(lap + 1)
-        previous: _HistoryPoint | None = None
-        for point in self._history:
-            if (
-                point.lap == lap
-                and previous is not None
-                and previous.lap == lap
-                and previous.pos < line <= point.pos
-            ):
-                span = point.pos - previous.pos
-                if span > 0.0:
-                    return previous.t + (point.t - previous.t) * ((line - previous.pos) / span)
-                return point.t
-            previous = point
-        return None
+        """When the car crossed ``line`` during ``lap`` (see :meth:`PositionTimeline.crossing`)."""
+        return self._timeline.crossing(lap, line)
 
     def _lap_start(self, lap: int) -> float | None:
-        """When the car crossed the line that starts ``lap``, from the samples around the wrap.
+        """When the car crossed the line that starts ``lap``.
 
-        The history records the lap a sample was taken in, so the sample that lands just after the
-        line still carries the old number: the crossing is the wrap (a large drop in position) in
-        the sample or two before the first one of ``lap``. None when the history now begins after
-        it, so a lap whose start it no longer holds is not timed from a guess.
+        See :meth:`PositionTimeline.lap_start`.
         """
-        history = self._history
-        first = next((i for i, entry in enumerate(history) if entry.lap == lap), None)
-        if first is None:
-            return None
-        for j in (first, first - 1, first - 2):
-            if j < 1:
-                continue
-            high, low = history[j - 1], history[j]
-            if high.pos > 0.5 and low.pos < 0.05:  # the start/finish line between these two
-                span = (1.0 - high.pos) + low.pos
-                if span > 0.0:
-                    return high.t + (low.t - high.t) * ((1.0 - high.pos) / span)
-        return None
+        return self._timeline.lap_start(lap)
 
     def _restart_pass(self, sector: int, t: float, pos: float) -> None:
         self._sector, self._pass, self._last_closed = (
@@ -1585,7 +1412,7 @@ class BrakeEngine:
             data.sectors[idx] = kept
             if accepted:
                 self._last_closed = (idx, stored)
-                self._lap_runs[(self._lap_no, idx)] = (stored, previous)
+                self._lap_runs[(self._lap_no, idx)] = _LapRun(stored, previous, t)
                 self._rebuild_zones()
                 self._store.save(data)
         # with learning off the colours still show how the sector compared, but nothing is stored

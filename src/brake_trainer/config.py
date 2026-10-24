@@ -10,6 +10,8 @@ from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
+from .metadata import save_metadata
+
 log = logging.getLogger(__name__)
 
 # Bumped when a stored setting needs to change meaning; see Settings.from_dict.
@@ -28,8 +30,6 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "min_speed_drop": (1.0, 100.0),
     "cluster_m": (5.0, 200.0),
     "top_runs": (1, 10),
-    "max_tyres_out": (0, 4),
-    "max_tyres_out_after_invalid": (0, 4),
     "cut_give_back_m": (0.0, 2000.0),
     "warmup_laps": (0, 5),
     "own_runs_to_replace_ref": (1, 10),
@@ -62,10 +62,6 @@ class Settings:
     top_runs: int = 3  # fastest runs kept per sector
     warmup_laps: int = 1  # laps ignored after leaving the pits (cold tyres and brakes)
     skip_invalid_sectors: bool = True  # sector not counted if the lap was invalidated in it
-    max_tyres_out: int = 4  # tyres off the track that drop a sector (0 = ignore)
-    # Once the game has invalidated the lap its flag stays down and cannot report a second mistake,
-    # so a lower tyre count stands in for it in the remaining sectors of that lap (0 = off).
-    max_tyres_out_after_invalid: int = 2
     # How far back along the lap a cut report is read: the game's give-back window (500 m), because
     # it writes the report only after the driver has had that distance to give the time back.
     # `0` trusts a build that reports at the cut itself; a build with a different window can store
@@ -122,8 +118,13 @@ class Settings:
 
         Version 1 stored ``cut_give_back_m`` at its old default of ``0``, meaning "trust the
         report position". That was wrong for the game's 500 m give-back window, so an old file is
-        moved to the new default once; once saved with ``settings_version`` 2, a deliberate ``0``
-        is left alone.
+        moved to the new default once; once saved with a current version, a deliberate ``0`` is
+        left alone.
+
+        A file from a *newer* build is not migrated: its version is left alone and a warning is
+        logged. This build cannot know what changed after its own version, and writing the version
+        down would make the next build migrate the file a second time. Saving from here still
+        writes only the settings this build knows, so a newer build's extra keys are dropped.
         """
         defaults = cls()
         values: dict[str, Any] = {}
@@ -150,9 +151,18 @@ class Settings:
             elif isinstance(default, str) and isinstance(value, str):
                 values[f.name] = value
         settings = cls(**values).clamped()
-        if raw_version < 2 and settings.cut_give_back_m == 0.0:
-            settings = replace(settings, cut_give_back_m=GAME_GIVE_BACK_M)
-        return replace(settings, settings_version=SETTINGS_VERSION)
+        if raw_version > SETTINGS_VERSION:
+            log.warning(
+                "Settings file is from a newer version (%d > %d); leaving its version alone",
+                raw_version,
+                SETTINGS_VERSION,
+            )
+            return replace(settings, settings_version=raw_version)
+        if raw_version < SETTINGS_VERSION:
+            if raw_version < 2 and settings.cut_give_back_m == 0.0:
+                settings = replace(settings, cut_give_back_m=GAME_GIVE_BACK_M)
+            return replace(settings, settings_version=SETTINGS_VERSION)
+        return settings
 
     def to_dict(self) -> dict[str, Any]:
         return {f.name: getattr(self, f.name) for f in fields(self)}
@@ -179,8 +189,9 @@ def load_settings(path: Path) -> Settings:
 
 def save_settings(settings: Settings, path: Path) -> None:
     tmp = path.with_suffix(".tmp")
+    payload = {**save_metadata(), **settings.to_dict()}
     try:
-        tmp.write_text(json.dumps(settings.to_dict(), indent=2), encoding="utf-8")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         os.replace(tmp, path)
     except OSError as exc:
         log.warning("Could not save settings: %s", exc)

@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .metadata import save_metadata
 from .models import TrackData
 
 log = logging.getLogger(__name__)
@@ -77,7 +78,8 @@ class TrackStore:
         tmp = path.with_suffix(".tmp")
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps(data.to_dict()), encoding="utf-8")
+            payload = {**save_metadata(), **data.to_dict()}
+            tmp.write_text(json.dumps(payload), encoding="utf-8")
             os.replace(tmp, path)
         except OSError as exc:
             log.warning("Could not save learned data: %s", exc)

@@ -42,7 +42,6 @@ class Sample:
     in_pit: bool
     t: float  # seconds (frame timestamp)
     lap_valid: bool = True  # the game's "lap is still valid" flag
-    tyres_out: int = 0  # tyres currently off the track
     cut_gained_ms: int = 0  # graphics race-cut: ms gained by the last off-track cut
     cut_deadline_m: int = 0  # graphics race-cut: distance left to give that time back
     cut_delta_s: float = 0.0  # graphics race-cut: delta vs the cleanly-driven reference

@@ -22,7 +22,7 @@ That has consequences you should know about before relying on it.
 | **Real game behaviour** (telemetry values, overlay over the game, beeps, game-exit detection, the Windows build) | **Only by the maintainer's play-testing.** The AI could not run the game or Windows |
 
 Things that were reasoned about but never confirmed against the real game are called out in the
-docs ("I have not verified ...", for example how tyres-off-track counts on kerbs).
+docs ("I have not verified ...", for example how the race-cut fields behave on kerbs).
 
 ## What this means for you
 

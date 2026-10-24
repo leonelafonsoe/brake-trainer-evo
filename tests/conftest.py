@@ -34,25 +34,23 @@ class Driver:
         brake: float,
         pit: bool = False,
         valid: bool = True,
-        tyres_out: int = 0,
         cut_gained_ms: int = 0,
         cut_deadline_m: int = 0,
     ) -> None:
         self.t += DT
         self.engine.update(
             Sample(
-                self.track,
-                self.car,
-                self.length,
-                pos % 1.0,
-                brake,
-                speed,
-                pit,
-                self.t,
-                valid,
-                tyres_out,
-                cut_gained_ms,
-                cut_deadline_m,
+                track=self.track,
+                car=self.car,
+                length_m=self.length,
+                pos=pos % 1.0,
+                brake=brake,
+                speed_kmh=speed,
+                in_pit=pit,
+                t=self.t,
+                lap_valid=valid,
+                cut_gained_ms=cut_gained_ms,
+                cut_deadline_m=cut_deadline_m,
             )
         )
 
@@ -64,8 +62,6 @@ class Driver:
         stop: float = 1.0001,
         jitter: float = 0.0,
         invalid_from: float | None = None,
-        off_track: tuple[float, float] | None = None,
-        off_tyres: int = 4,
         cut: tuple[float, float] | None = None,
     ) -> float:
         p = start
@@ -76,14 +72,12 @@ class Driver:
                 if 0 <= d < 120:
                     brake, speed = 0.8, min(speed, 200 - d * 0.9)
             valid = invalid_from is None or p < invalid_from
-            out = off_tyres if off_track and off_track[0] <= p < off_track[1] else 0
             down = bool(cut and cut[0] <= p < cut[1])
             self.feed(
                 p,
                 speed,
                 brake,
                 valid=valid,
-                tyres_out=out,
                 cut_gained_ms=250 if down else 0,
                 cut_deadline_m=120 if down else 0,
             )

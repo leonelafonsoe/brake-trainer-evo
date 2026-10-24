@@ -116,13 +116,12 @@ A sector pass is not saved when:
   track in it (see the next point).
 - **Off track**: the game reported a cut that happened while you were in that sector. This uses the
   per-cut event the game writes to its log (one per cut, and the only signal that shows a second cut
-  in a lap it has already invalidated), and, where the game publishes them, the "race cut" pair and
-  the live count of tyres off the track (Settings: "Skip sector if tyres off track", and "...once the
-  lap is invalid"; while the lap is still valid the tyre count takes all four tyres, the game's own
-  rule). The game gives 500 m to give a cut's gained time back and reports it only after that
+  in a lap it has already invalidated), and, where the game publishes it, the live "race cut" pair.
+  The game gives 500 m to give a cut's gained time back and reports it only after that
   window, so the app reads the report back 500 m (`cut_give_back_m`) to the sector where the cut
-  happened rather than the one the report lands in. If that sector was already saved, its run is
-  taken back.
+  happened rather than the one the report lands in. That window is the game's, not a measured
+  distance for every cut, so the read-back is a well-founded heuristic. If that sector was already
+  saved, its run is taken back.
   The game buffers its log, so a cut can be read a minute after it was written, or after the lap it
   belongs to has ended, and several can arrive at once. Each line carries its own time, so every cut
   still lands in the sector - and the lap - it happened in, never in the sector of the same number in
@@ -131,8 +130,8 @@ A sector pass is not saved when:
 - **Paused**: learning was paused at any point during it.
 
 The signals above are the game's own. When the game invalidates a lap for an infraction it does not
-expose (no cut in its log, no race cut and no tyres reported off), the app says so in its log and can
-only drop the sector where the flag dropped. That warning is for the case where there is no log to
+expose (no cut in its log and no race cut), the app says so in its log and can only drop the sector
+where the flag dropped. That warning is for the case where there is no log to
 read: with the game log being followed, every cut is in it, so the app uses it instead. See
 [TELEMETRY.md](TELEMETRY.md).
 
