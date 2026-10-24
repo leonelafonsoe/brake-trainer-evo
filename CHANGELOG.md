@@ -18,20 +18,27 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   `number_of_tyres_out`, and the game's log already reports every cut; the settings only added a
   second, unreliable path that could drop a sector the game did not judge. Existing settings files
   still load: the two keys are ignored.
-- The app version and save time are now written into `settings.json`, every learned-data file and
-  the log, so a file shared for support can be matched to the build that wrote it. The loaders
-  ignore these fields, so files from older and newer builds still load.
+- The app version, a build identifier and the save time are now written into `settings.json` and
+  every learned-data file, so a file shared for support can be matched to the build that wrote it.
+  `build` is the source checkout's git revision (`-dirty` when it had uncommitted changes),
+  `packaged` for a frozen executable, or `BRAKE_TRAINER_BUILD` when set. The loaders ignore these
+  fields, so files from older and newer builds still load. The log opens with one structured
+  diagnostics line instead of a bare version banner:
+  `startup app=... build=... settings_version=... data_version=... debug=... log=...`.
+- Learned-data `version` is now the named `DATA_VERSION` constant, and a file written by a newer
+  layout is ignored (and replaced on the next save) instead of being read under fields this build
+  does not know. Files with an older version still load.
 - A settings file from a newer build is no longer rewritten with this build's settings version:
   its version is left alone (with a warning in the log), so the next run of the newer build does
   not migrate it a second time.
-- Fix: a cut was dropped in the sector where the game's report landed, not the one where it
-  happened. The game gives the driver 500 m to hand back the time a cut gained and writes the
-  report (and drops `is_valid_lap`) only after that window, so a cut at the Ascari entry was
-  reported at the exit, just past the S2/S3 line, and S3 was dropped instead of S2; a cut before
-  Lesmo did the same to S2. Reports are now read back by the game's 500 m window
-  (`cut_give_back_m`, default `500`). A settings file from an older version, which stored the old
-  `0` default, is migrated once; a deliberate `0` in a current file still trusts the report
-  position.
+- Fix: a cut was dropped in the sector a fixed 500 m *behind* the game's report, which moved
+  reports at Ascari and curve 10 back across the S2/S3 line: at Monza, going wide at curve 10
+  (71–73% of the lap) invalidated S2 instead of S3. The game writes its notification and drops
+  `is_valid_lap` where it judges the cut, and the field logs place both at natural corner exits
+  (Roggia 36–37%, Lesmo 50.6%, Ascari 67–68%, curve 10 71–73%). The app now drops the sector at
+  the event's own position and lap; buffered lines are still attributed from their own timestamp,
+  not from read time. The `cut_give_back_m` setting is retired (an existing key is ignored), and
+  `settings_version` is now 3.
 - Pin `acevo-sdk` below 0.2.0. That release only releases captured frames after it sees a clean lap
   boundary, so the live overlay stayed on "Game running — not in a session" until a lap was
   completed. The app needs every frame; lift the pin when the SDK offers a live-frame path again.
@@ -52,7 +59,7 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - Fix: a cut read between the first sample after the start/finish line (which still carries the old
   lap number) and the next was attributed to S1 of the lap that had just ended, greying that sector
   and taking back its stored run. It now belongs to the lap its own time falls in: at the line that
-  is S1 of the new lap, and a give-back window reads it back into S3 of the lap that just ended.
+  is S1 of the new lap.
 - Fix: a buffered split read that arrived after the car had already crossed the game's line kept the
   pass in progress on the start/finish line, storing a first sector that spanned the lap line to the
   read position - too long by the distance already driven. It is now timed from the game's own line,

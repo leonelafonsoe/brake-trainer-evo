@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from brake_trainer.models import TrackData
+from brake_trainer.models import DATA_VERSION, TrackData
 
 FIXTURES = Path(__file__).with_name("fixtures") / "track_data"
 
@@ -43,7 +43,7 @@ FIXTURES = Path(__file__).with_name("fixtures") / "track_data"
 )
 def test_real_stored_track_data_still_loads(store, name, track, boundaries, runs):
     raw = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
-    assert raw["version"] == 1
+    assert raw["version"] == DATA_VERSION
     data = TrackData.from_dict(raw)
     assert data.track == track
     assert data.car == "Ferrari 296 GT3"

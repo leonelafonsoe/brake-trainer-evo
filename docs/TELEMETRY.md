@@ -101,15 +101,12 @@ the log. Each invalidation is recorded against a `(lap, sector)`, so the first s
 acts and the others are folded into it — one cut drops one sector and is announced once — while two
 cuts in different sectors of the same lap each drop their own.
 
-**Read back by the give-back window.** The game judges a cut by the time it gains and gives the
-driver **500 m** to give that time back. It writes the report (and drops `is_valid_lap`) only once
-that distance has passed, so the report is about 500 m beyond the cut. The app reads every report
-back that far along the lap (`cut_give_back_m`, default `500`), which is the sector the cut happened
-in. At Monza, a cut at the Ascari entry is written at the exit, just past the S2/S3 line; reading it
-back keeps it in S2 instead of dropping S3. The 500 m is the game's own window, not a measured
-distance for every cut: a cut taken at a very different speed or line can sit a little either side of
-it, so the read-back is a well-founded heuristic rather than an exact reconstruction. If a build
-reports at the cut itself, the stored value can be set to `0`. If the sector a cut lands in was
+**Attributed where the game reports it.** A cut notification is written where the game judged the
+cut, and the lap flag drops at the same moment. The app drops the sector at that event's own
+position. This matches the field logs: at Monza the notifications and lap-flag drops sit at
+natural corner exits — Roggia at 36–37%, Lesmo at 50.6%, Ascari at 67–68% and curve 10 at
+71–73% — rather than a fixed distance behind them. In particular, a cut at curve 10 (71–73%) is
+in S3, past the 65.67% S2/S3 line; it is not read back into S2. If the sector a cut lands in was
 already saved, its run is taken back (`S3 had its stored run taken back`); if it is still in
 progress, the sector is marked as not counting (`S3 won't count · off track`).
 

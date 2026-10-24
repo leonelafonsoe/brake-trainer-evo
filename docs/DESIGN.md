@@ -138,16 +138,13 @@ The game's *per-excursion* signal is the cut it reports in its log, one HUD noti
 trigger, so a sector is dropped for every cut the game records, including a second one in an
 already-invalid lap. The live race-cut pair is used as well where the game publishes it.
 
-A cut is judged by the time it gains, and the game gives the driver 500 m to give that time back
-before it reports the cut. The report therefore arrives about 500 m after the cut, so the sector it
-is about is that distance behind it (`cut_give_back_m`, `500` by default). That is the game's window,
-not a measured distance for every cut, so it is a well-founded heuristic: a cut taken at a very
-different speed or line can sit a little either side of it. At Monza, a cut at the Ascari entry is
-reported at the exit, just past the S2/S3 line; reading the report back places it in S2, where the
-cut happened, instead of dropping S3. A build that reports at the cut itself can set the stored
-distance to `0`. Because the cut sector may already have been saved, its run is then taken back,
-restoring the list it replaced. The cost of a wrong drop is confined to a sector, and clean sectors
-in between are still kept.
+The notification is written where the game judged the cut, and the lap flag drops at the same
+moment. The app therefore drops the sector at the event's own position. Field logs back this up: at
+Monza the reports sit at natural corner exits (Roggia 36–37%, Lesmo 50.6%, Ascari 67–68%, curve 10
+71–73%), not at a fixed distance behind them. In particular, curve 10's report is in S3, past the
+65.67% S2/S3 line, and must not be read back into S2. Because the cut sector may already have been
+saved, its run is then taken back, restoring the list it replaced. The cost of a wrong drop is
+confined to a sector, and clean sectors in between are still kept.
 
 The game buffers its log (a few KB, flushed when full), so in quiet running a line can sit unwritten
 for a minute or more, and a single read can bring a whole lap's cuts. Each line's own timestamp is

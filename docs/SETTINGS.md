@@ -70,7 +70,6 @@ or the tray icon. **Apply** saves and takes effect immediately. Settings are sto
 
 ## Stored but not shown in the window
 
-- `cut_give_back_m` (default 500)
 - `overlay_x` (default auto)
 - `overlay_y` (default auto)
 

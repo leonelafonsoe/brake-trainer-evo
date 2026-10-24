@@ -101,17 +101,17 @@ mistake. The per-cut event the game writes to its log is what catches those, and
 that log (Settings -> App -> *Follow the game's log*). If the log cannot be found the app
 says so and only the lap flag is left. If a later sector is still saved after a moment the game
 flagged, turn on verbose logging and share the log: it records every track-limit signal with its
-position, sector and the sector the cut was attributed to. See
+position and sector, and every cut from the game's log with its position, lap and dropped sector. See
 [TELEMETRY.md](TELEMETRY.md#track-limits).
 
-**A cut is dropped one sector too late (or too early)**
-The game gives the driver 500 m to give a cut's gained time back and only reports the cut once that
-window has passed, so the report lands about 500 m past the cut. The app reads it back that far
-(`cut_give_back_m`, default `500`), which keeps a cut at a corner entry in the sector where it
-happened instead of the next one. If your build reports at the cut itself, set the stored config
-value to `0`; a build with a different window can store that distance instead (larger reads further
-back). The verbose log prints, per cut, the car's position when the report was written, the position
-attributed and the sector of each, so the right value can be read off a single run.
+**A cut is dropped in the wrong sector**
+The app drops the sector where the game's notification or lap flag is written. Those events are
+written where the game judged the cut: at Monza the field logs put them at natural corner exits
+(Roggia 36–37%, Lesmo 50.6%, Ascari 67–68%, curve 10 71–73%), not at a fixed distance behind the
+cut. If a cut still lands in the wrong sector, turn on verbose logging and share the log: it prints,
+per cut, the car's position when the report was written, the lap it belongs to and the sector that
+was dropped. Check that position against the sector lines in the same log before assuming the
+attribution is at fault.
 
 The game buffers its log (a few KB, flushed when full), so a cut can be read a minute after it was
 written - or after the lap it was in has ended - and a whole lap's cuts can arrive at once. The app
@@ -191,10 +191,23 @@ The app always writes a rotating log (about 1 MB per file, 3 older ones kept):
 
 `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`
 
+Its first line names exactly what produced the log, so a report can be matched to a build without
+guessing:
+
+```text
+2026-10-24 12:00:00,000 INFO    brake_trainer: startup app=0.3.11 build=2983a85ac7d3 settings_version=3 data_version=1 debug=off log=C:\Users\you\AppData\Roaming\BrakeTrainerEvo\brake_trainer.log
+```
+
+`build` is the source checkout's git revision (`-dirty` means it had uncommitted changes),
+`packaged` for a released executable, or the value of `BRAKE_TRAINER_BUILD` when one was set.
+`settings_version` and `data_version` are the settings and learned-data layouts this build reads and
+writes. `debug` is the verbose state at start-up; turning the setting on afterwards adds
+`Verbose (debug) logging is on (setting)`.
+
 Settings -> Diagnostics -> **Open app log folder** opens it. **Verbose (debug) logging** adds a line
 every time the game's track-limit signals change (the race-cut pair, the lap flag and the timing
-invalid flag) and each time the app reads a cut from the game's log, with the position, the sector it
-was reported in and the sector the cut was attributed to. It also records which telemetry regions the
+invalid flag) and each time the app reads a cut from the game's log, with its position, the lap it
+belongs to and the sector that was dropped. It also records which telemetry regions the
 SDK attached to. That is the detail a report about a kept or dropped sector needs, so the fastest way
 to report a track-limits problem is:
 

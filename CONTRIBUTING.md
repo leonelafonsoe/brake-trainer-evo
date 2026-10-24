@@ -88,8 +88,9 @@ The same applies to issues: AI-written bug reports are fine if you checked that 
 
 ## Reporting a bug
 
-Please include the app version, what you were doing (track, car, session type), what you
-expected, and the relevant lines of `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`.
+Please include the app version and build (both on the log's first, `startup ...` line), what you
+were doing (track, car, session type), what you expected, and the relevant lines of
+`%APPDATA%\BrakeTrainerEvo\brake_trainer.log`.
 
 ## License of contributions
 

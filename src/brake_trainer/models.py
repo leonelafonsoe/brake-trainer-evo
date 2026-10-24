@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+# Bumped when a change to TrackData.to_dict would make an older build misread a file. The loader
+# refuses a newer version instead of filing runs under boundaries or fields it does not understand;
+# the app version in the same file is provenance only. See docs/DATA.md.
+DATA_VERSION = 1
+
 
 class SectorStatus(str, Enum):
     """F1-style sector colouring for the current lap."""
@@ -94,7 +99,7 @@ class TrackData:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "version": 1,
+            "version": DATA_VERSION,
             "track": self.track,
             "car": self.car,
             "n_sectors": self.n_sectors,
@@ -105,6 +110,9 @@ class TrackData:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> TrackData:
+        version = int(raw.get("version", DATA_VERSION))
+        if version > DATA_VERSION:
+            raise ValueError(f"data version {version} is newer than {DATA_VERSION}")
         n = int(raw["n_sectors"])
         sectors = [[SectorRun.from_dict(r) for r in runs] for runs in raw["sectors"]]
         if len(sectors) != n:

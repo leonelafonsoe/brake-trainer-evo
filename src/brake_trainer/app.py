@@ -40,8 +40,6 @@ def main() -> int:
     forced_debug = debug_requested_on_startup(sys.argv)  # --debug / BRAKE_TRAINER_DEBUG
     configure_logging(debug=forced_debug)
     _set_taskbar_identity()
-    if forced_debug:
-        log.info("Verbose (debug) logging is on")
 
     app = QApplication(sys.argv)
     app.setApplicationName("Brake Trainer EVO")
@@ -50,7 +48,11 @@ def main() -> int:
     app.setQuitOnLastWindowClosed(False)  # the overlay can be hidden; quit explicitly
 
     holder = SettingsHolder(load_settings(settings_path()))
-    set_debug(forced_debug or holder.value.debug_logging)
+    verbose = forced_debug or holder.value.debug_logging
+    set_debug(verbose)
+    if holder.value.debug_logging and not forced_debug:
+        # The startup line already says debug=on when the flag or environment forced it.
+        log.info("Verbose (debug) logging is on (setting)")
     store = TrackStore(data_dir())
     audio = AudioPlayer(lambda: holder.value)
     worker = EngineWorker(holder, store, audio)

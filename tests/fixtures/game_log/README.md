@@ -6,8 +6,8 @@ They pin the exact line shapes the parser sees; full logs are not committed beca
 large and contain session data.
 
 `notification_block.txt` is the field-log moment where a cut was reported 2.15 s after the S1
-line at Monza. The matching app log put the car at 36.3% of the lap there, so reading the report
-back by the game's 500 m window puts the cut at about 23.2%, in S1, not in S2 where it landed.
+line at Monza. The matching app log put the car at 36.3% of the lap there, which is where the game
+judged the cut (Roggia); the drop belongs to S2, not to S1 a fixed distance behind it.
 `noise.txt` holds the lines around that block that must not produce a second event.
 
 To add a case, put the excerpt in a new `.txt` file here and add a short test in

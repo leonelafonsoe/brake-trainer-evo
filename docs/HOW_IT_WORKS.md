@@ -117,11 +117,8 @@ A sector pass is not saved when:
 - **Off track**: the game reported a cut that happened while you were in that sector. This uses the
   per-cut event the game writes to its log (one per cut, and the only signal that shows a second cut
   in a lap it has already invalidated), and, where the game publishes it, the live "race cut" pair.
-  The game gives 500 m to give a cut's gained time back and reports it only after that
-  window, so the app reads the report back 500 m (`cut_give_back_m`) to the sector where the cut
-  happened rather than the one the report lands in. That window is the game's, not a measured
-  distance for every cut, so the read-back is a well-founded heuristic. If that sector was already
-  saved, its run is taken back.
+  The notification and the lap flag are attributed at their own position, which is where the game
+  judged the cut. If that sector was already saved, its run is taken back.
   The game buffers its log, so a cut can be read a minute after it was written, or after the lap it
   belongs to has ended, and several can arrive at once. Each line carries its own time, so every cut
   still lands in the sector - and the lap - it happened in, never in the sector of the same number in

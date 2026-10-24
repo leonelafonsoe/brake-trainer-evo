@@ -209,9 +209,7 @@ def test_sector_straddling_a_pause_is_not_stored(store):
 
 def _fast_lap_results(store, **lap_kwargs):
     results = []
-    # The lookback is pinned to the shipped default (500 m, 0.1 of this 5000 m lap): these tests
-    # exercise the read-back, not a custom value.
-    settings = Settings(use_game_log=False, warmup_laps=0, cut_give_back_m=500.0)
+    settings = Settings(use_game_log=False, warmup_laps=0)
     engine = BrakeEngine(settings, store, on_sector=results.append)
     driver = Driver(engine)
     for _ in range(4):
@@ -223,9 +221,9 @@ def _fast_lap_results(store, **lap_kwargs):
     return {r.sector: r for r in results}, best_before, best_after
 
 
-def test_the_lap_flag_is_read_back_to_the_sector_the_cut_happened_in(store):
-    # The game reports a cut only after its give-back window (500 m, 0.1 of this 5000 m lap), so a
-    # flag that drops in the middle of S2 is really about a cut in S1, just after its line.
+def test_the_lap_flag_drops_the_sector_where_it_fell(store):
+    # The flag falls in the middle of S2 (1/3..2/3). That is the sector the game judged, so S2 is
+    # the one that must not count; S1 was already driven cleanly and keeps its faster run.
     by_sector, before, after = _fast_lap_results(store, invalid_from=0.52)
     assert by_sector[1].duration is None and "invalidated" in by_sector[1].note
     assert after[1] == before[1]  # the faster-but-invalid sector was not stored
@@ -233,11 +231,12 @@ def test_the_lap_flag_is_read_back_to_the_sector_the_cut_happened_in(store):
     assert by_sector[2].accepted and after[2] < before[2]  # later sectors were driven cleanly
 
 
-def test_a_flag_that_drops_after_the_cut_sector_closed_takes_its_run_back(store):
-    # The cut is in S2; by the time the game reports it the car is in S3 and S2 has been saved.
+def test_a_lap_flag_in_s3_does_not_take_back_the_s2_run_before_it(store):
+    # The flag falls in S3. The sector that must not count is S3; S2's faster, clean run stays.
     by_sector, before, after = _fast_lap_results(store, invalid_from=0.70)
-    assert after[1] == before[1]  # S2's faster run was taken back
-    assert by_sector[2].accepted and after[2] < before[2]  # clean S3 kept
+    assert by_sector[2].duration is None and "invalidated" in by_sector[2].note
+    assert after[2] == before[2]  # the faster-but-invalid S3 was not stored
+    assert by_sector[1].accepted and after[1] < before[1]  # S2's clean run is kept
 
 
 def test_sector_with_a_race_cut_is_not_saved(store):
@@ -366,7 +365,7 @@ def test_a_sector_closes_at_the_line_not_at_the_next_sample(store):
 def test_a_cut_between_samples_is_attributed_from_the_interpolated_position(store):
     # The line at 1/3 falls between these two frames. Interpolating puts the cut at 0.34 (S2); the
     # previous frame's position, 0.32, would blame S1.
-    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0, cut_give_back_m=0.0), store)
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
     driver = Driver(engine)
     driver.feed(0.32, 200.0, 0.0)
     first = driver.t

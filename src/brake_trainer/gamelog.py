@@ -2,16 +2,15 @@
 splits, which are the only place its sector lines can be found (the shared memory has no sector
 fields in this build).
 
-Assetto Corsa EVO judges a track cut by the time it gains. It gives the driver 500 m to hand that
-time back and only reports the cut once that window has passed, as a HUD notification. That
-notification is written to the log as::
+Assetto Corsa EVO judges a track cut by the time it gains, and reports the cut as a HUD
+notification::
 
     ... [gameface] [info] Adding notification UINotificationType_SessionPenalty
 
 The shared memory carries only a one-shot "lap still valid" flag, which drops once per lap and so
-cannot show a second cut; the notification arrives once per cut. Because the report lands 500 m
-past the cut, the engine reads it back to the sector the cut happened in, not the one the report
-lands in (see ``Settings.cut_give_back_m``).
+cannot show a second cut; the notification arrives once per cut. The notification is written where
+the game judged the cut, so the engine attributes it from the car's position at the line's own time,
+not from wherever the car is when the buffered log is read.
 
 Every lap is scored in three sectors, and the end of each is written as::
 
@@ -52,8 +51,8 @@ DEFAULT_LOG_DIR = Path.home() / "Saved Games" / "ACE" / "Logs"
 MIN_INSIDE_M = 2.0  # shorter excursions are tolerated by the game
 PIT_TELEPORT_M = 10.0  # larger values are an artefact of being teleported to the pits
 
-# One HUD notification per cut, written once the give-back window has passed. The warning line that
-# follows it (`false {PENALTY_CLEARED_KEY}` in the current build) carries the HUD text and penalty
+# One HUD notification per cut, written when the game judges it. The warning line that follows it
+# (`false {PENALTY_CLEARED_KEY}` in the current build) carries the HUD text and penalty
 # type, not whether a cut happened: matching only `{PENALTY_ADDED_KEY}` (as a penalty-state parser
 # does) misses every cut this build reports.
 _NOTIFY_RE = re.compile(r"Adding notification UINotificationType_SessionPenalty\b")

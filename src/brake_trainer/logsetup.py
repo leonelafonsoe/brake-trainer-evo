@@ -17,6 +17,9 @@ from contextlib import suppress
 from logging.handlers import RotatingFileHandler
 
 from . import __version__
+from .buildinfo import build_id
+from .config import SETTINGS_VERSION
+from .models import DATA_VERSION
 from .paths import log_path
 
 APP_LOGGER = "brake_trainer"
@@ -31,26 +34,38 @@ def configure_logging(*, debug: bool = False) -> None:
     """Install the console and rotating-file handlers once, then set the level.
 
     Safe to call again (for example from a test): the handlers are only added the first time, and
-    the version banner is only written then too.
+    the startup diagnostics line is only written then too. That line is the first thing a shared
+    log shows, so one look says which build and which file versions produced it.
     """
     root = logging.getLogger()
     installed = False
+    log_target = ""
     if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
         fmt = logging.Formatter(_FORMAT)
         handlers: list[logging.Handler] = [logging.StreamHandler()]
         with suppress(OSError):  # a read-only or missing folder must not stop the app
+            path = log_path()
             handlers.append(
                 RotatingFileHandler(
-                    log_path(), maxBytes=_MAX_BYTES, backupCount=_BACKUPS, encoding="utf-8"
+                    path, maxBytes=_MAX_BYTES, backupCount=_BACKUPS, encoding="utf-8"
                 )
             )
+            log_target = str(path)
         for handler in handlers:
             handler.setFormatter(fmt)
             root.addHandler(handler)
         installed = True
     set_debug(debug)
     if installed:
-        logging.getLogger(APP_LOGGER).info("Brake Trainer %s", __version__)
+        logging.getLogger(APP_LOGGER).info(
+            "startup app=%s build=%s settings_version=%d data_version=%d debug=%s log=%s",
+            __version__,
+            build_id(),
+            SETTINGS_VERSION,
+            DATA_VERSION,
+            "on" if is_debug() else "off",
+            log_target or "(file logging disabled)",
+        )
 
 
 def set_debug(debug: bool) -> None:

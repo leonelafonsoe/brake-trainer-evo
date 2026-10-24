@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 from logging.handlers import RotatingFileHandler
 
-from brake_trainer import __version__, logsetup
+from brake_trainer import __version__, buildinfo, logsetup
+from brake_trainer.config import SETTINGS_VERSION
+from brake_trainer.models import DATA_VERSION
 
 
 def test_set_debug_switches_the_root_level():
@@ -34,6 +36,7 @@ def test_debug_requested_on_startup_reads_the_flag_and_the_environment(monkeypat
 
 def test_configure_logging_adds_its_handlers_only_once(monkeypatch, tmp_path, caplog):
     monkeypatch.setenv("BRAKE_TRAINER_HOME", str(tmp_path))
+    monkeypatch.setenv(buildinfo.BUILD_ENV, "test-build")
     root = logging.getLogger()
     before = list(root.handlers)
     try:
@@ -45,12 +48,19 @@ def test_configure_logging_adds_its_handlers_only_once(monkeypatch, tmp_path, ca
         assert any(isinstance(h, RotatingFileHandler) for h in added)
         assert root.level == logging.DEBUG
         assert (tmp_path / "brake_trainer.log").exists()
-        banners = [
+        startup = [
             record.getMessage()
             for record in caplog.records
-            if record.getMessage() == f"Brake Trainer {__version__}"
+            if record.getMessage().startswith("startup ")
         ]
-        assert banners == [f"Brake Trainer {__version__}"]  # once, not once per call
+        assert len(startup) == 1  # once, not once per call
+        line = startup[0]
+        assert f"app={__version__}" in line
+        assert "build=test-build" in line
+        assert f"settings_version={SETTINGS_VERSION}" in line
+        assert f"data_version={DATA_VERSION}" in line
+        assert "debug=on" in line
+        assert f"log={tmp_path / 'brake_trainer.log'}" in line
     finally:
         for handler in list(root.handlers):
             if handler not in before:

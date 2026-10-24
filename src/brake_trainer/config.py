@@ -15,12 +15,7 @@ from .metadata import save_metadata
 log = logging.getLogger(__name__)
 
 # Bumped when a stored setting needs to change meaning; see Settings.from_dict.
-SETTINGS_VERSION = 2
-
-# The game judges a cut by the time it gains and gives the driver this much track to give it back.
-# It writes the report (and drops `is_valid_lap`) only once that window has passed, so a report is
-# this far past the cut and has to be read back to the sector the cut happened in.
-GAME_GIVE_BACK_M = 500.0
+SETTINGS_VERSION = 3
 
 # (min, max) per numeric field; values outside are clamped on load / apply.
 _LIMITS: dict[str, tuple[float, float]] = {
@@ -30,7 +25,6 @@ _LIMITS: dict[str, tuple[float, float]] = {
     "min_speed_drop": (1.0, 100.0),
     "cluster_m": (5.0, 200.0),
     "top_runs": (1, 10),
-    "cut_give_back_m": (0.0, 2000.0),
     "warmup_laps": (0, 5),
     "own_runs_to_replace_ref": (1, 10),
     "lead_s": (0.3, 5.0),
@@ -62,11 +56,6 @@ class Settings:
     top_runs: int = 3  # fastest runs kept per sector
     warmup_laps: int = 1  # laps ignored after leaving the pits (cold tyres and brakes)
     skip_invalid_sectors: bool = True  # sector not counted if the lap was invalidated in it
-    # How far back along the lap a cut report is read: the game's give-back window (500 m), because
-    # it writes the report only after the driver has had that distance to give the time back.
-    # `0` trusts a build that reports at the cut itself; a build with a different window can store
-    # its own distance, and the verbose log prints the position attributed for each report.
-    cut_give_back_m: float = GAME_GIVE_BACK_M
     own_runs_to_replace_ref: int = 2
     reference_car: str = ""  # "" = automatic
     # --- cues ---
@@ -116,10 +105,9 @@ class Settings:
     def from_dict(cls, raw: Mapping[str, Any]) -> Settings:
         """Build from untrusted data: unknown keys and wrong types fall back to defaults.
 
-        Version 1 stored ``cut_give_back_m`` at its old default of ``0``, meaning "trust the
-        report position". That was wrong for the game's 500 m give-back window, so an old file is
-        moved to the new default once; once saved with a current version, a deliberate ``0`` is
-        left alone.
+        Retired settings are simply unknown keys now, so a file that still stores one
+        (``cut_give_back_m`` from version 2) loads without it and is written back in the current
+        shape.
 
         A file from a *newer* build is not migrated: its version is left alone and a warning is
         logged. This build cannot know what changed after its own version, and writing the version
@@ -159,8 +147,6 @@ class Settings:
             )
             return replace(settings, settings_version=raw_version)
         if raw_version < SETTINGS_VERSION:
-            if raw_version < 2 and settings.cut_give_back_m == 0.0:
-                settings = replace(settings, cut_give_back_m=GAME_GIVE_BACK_M)
             return replace(settings, settings_version=SETTINGS_VERSION)
         return settings
 

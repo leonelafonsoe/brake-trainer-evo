@@ -118,8 +118,8 @@ _LINES_REASONS = frozenset({"finding the sector lines", "the lines were learned 
 
 # How much of the recent sample history to keep, so a cut can be attributed from the position the
 # car had when the game wrote the line. The game buffers its log (a few KB, flushed when full), so a
-# cut can be read a whole lap after it was judged - the give-back window is behind that again - so
-# this covers a lap or two of driving at any sane rate.
+# cut can be read a whole lap after it was judged, so this covers a lap or two of driving at any
+# sane rate.
 _HISTORY_S = 300.0
 
 # Shown when the game invalidates a lap that the app saw no off-track for (no race cut and no cut
@@ -607,9 +607,8 @@ class BrakeEngine:
         The game's own signals, in the frames the app already reads:
 
         * ``is_valid_lap`` is a *one-shot* state: it drops when the game invalidates the lap and
-          stays down until the lap ends, so on its own it can only mark one cut per lap. The game
-          reports the cut only after its give-back window, so the sector is taken from behind the
-          flag (``cut_give_back_m``);
+          stays down until the lap ends, so on its own it can only mark one cut per lap. It is
+          attributed at the position where it drops, which is where the game judged the cut;
         * the race-cut pair (time gained and the distance left to give it back) is filled in for
           every off-track, where the game publishes it.
 
@@ -668,22 +667,15 @@ class BrakeEngine:
     def _check_lap_flag(self, s: Sample, pos: float) -> None:
         """The one-shot lap flag: drop the sector the infraction happened in.
 
-        The flag drops when the game has finished judging a cut, which is its give-back window
-        (``cut_give_back_m``) after the cut, so the sector it happened in is behind the flag.
+        The flag drops where the game judged the cut, and the log notification for the same cut
+        names the same spot, so the event's own position is the sector to drop.
         """
         if not self._settings.skip_invalid_sectors or s.lap_valid or self._lap_valid is False:
             return
         fresh = bool(self._lap_valid)  # a fresh drop, not the state the app found at start-up
-        where = pos if s.in_pit else self._infraction_pos(pos)
+        where = pos
         idx = self._sector_of(where)
-        lap = self._infraction_lap(pos, s.in_pit)
-        if lap < 0:
-            log.debug(
-                "limits: lap flag fell at %.1f%% (S%d) before the first tracked lap: not used",
-                where * 100.0,
-                idx + 1,
-            )
-            return
+        lap = self._lap_no
         # A pass that already will not count - a warm-up lap, the lines still being learned, or one
         # that began mid-sector - makes this drop a no-op. Say nothing rather than announce a loss
         # the driver has been told about already: the game invalidates an out-lap's opening sector
@@ -725,10 +717,11 @@ class BrakeEngine:
         """The game's log reported a cut; drop the sector it happened in.
 
         Called from the log tail (same thread as :meth:`update`). ``at`` is when the game wrote the
-        line. The game buffers its log (a few KB, flushed when full), so a cut can be read seconds
-        or a whole lap after it was judged, and a whole batch can arrive at once. Each is therefore
-        attributed from the car's position *then*, and to the lap it happened in - never to the
-        sector of the same number in the lap being driven now.
+        line, which is where and when the cut was judged. The game buffers its log (a few KB,
+        flushed when full), so a cut can be read seconds or a whole lap after it was judged, and a
+        whole batch can arrive at once. Each is therefore attributed from the car's position
+        *then*, and to the lap it happened in - never to the sector of the same number in the lap
+        being driven now.
 
         One cut can also be seen live (the race-cut pair, the lap flag) and re-read when the game
         restarts its log: a ``(lap, sector)`` the app already invalidated is not dropped again.
@@ -745,20 +738,10 @@ class BrakeEngine:
                 _HISTORY_S,
             )
             return
-        pos, in_pit = found.pos, found.in_pit
-        lap = self._infraction_lap(pos, in_pit, found.lap)
-        if lap < 0:
-            log.debug(
-                "limits: %s written at %.3f predates the first tracked lap (%.1f%% is inside "
-                "the give-back window): no sector to drop",
-                reason,
-                at,
-                pos * 100.0,
-            )
-            return
+        pos, lap = found.pos, found.lap
         if lap == self._lap_no:  # a cut of the lap being driven: not a bare lap-flag drop
             self._lap_saw_off = True
-        where = pos if in_pit else self._infraction_pos(pos)
+        where = pos
         idx = self._sector_of(where)
         quiet = self._already_out(lap, idx)  # before _attribute flags this pass
         took_back = self._attribute("off track", where, lap)
@@ -786,16 +769,12 @@ class BrakeEngine:
             self._late_cut = f"S{idx + 1} of {lap_word} won't count · cut"
             self._late_cut_t = s.t
         log.debug(
-            "limits: %s written at %.3f (read %.1f s later, %s), car at %.1f%% (S%d), "
-            "attributed %s at %.1f%% (S%d), run %s",
+            "limits: %s written at %.3f (read %.1f s later, %s), car at %.1f%% (S%d), run %s",
             reason,
             at,
             s.t - at,
             self._laps_back(lap),
             pos * 100.0,
-            self._sector_of(pos) + 1,
-            f"{self._settings.cut_give_back_m:.0f} m back",
-            where * 100.0,
             idx + 1,
             "taken back" if took_back else "not stored",
         )
@@ -868,31 +847,6 @@ class BrakeEngine:
         """The sector a dropped spot fell in, and what happened to its run: "S2 won't count"."""
         outcome = "had its stored run taken back" if took_back else "won't count"
         return f"S{self._sector_of(where) + 1} {outcome}"
-
-    def _infraction_pos(self, pos: float) -> float:
-        """The lap position a report arriving at ``pos`` is really about.
-
-        The game only reports a cut once the driver has failed to give the time back within its
-        give-back window, so the cut happened ``cut_give_back_m`` of track behind the report.
-        """
-        back = self._settings.cut_give_back_m / max(self._length_m, 1.0)
-        return (pos - back) % 1.0
-
-    def _infraction_lap(self, pos: float, in_pit: bool, lap: int | None = None) -> int:
-        """The lap a cut reported at ``pos`` happened in.
-
-        Same reasoning as :meth:`_infraction_pos`: a report closer to the line than the give-back
-        distance is about a cut in the lap that has just ended, and taking it out of this lap's
-        sector of that number would take the wrong run and grey the wrong colour.
-
-        ``lap`` is the lap the event's own time falls in, as given by :meth:`_at_time`; when it is
-        omitted, the lap being driven now is assumed.
-        """
-        lap = self._lap_no if lap is None else lap
-        if in_pit:
-            return lap
-        back = self._settings.cut_give_back_m / max(self._length_m, 1.0)
-        return lap - 1 if pos - back < 0.0 else lap
 
     def _attribute(self, reason: str, where: float, lap: int) -> bool | None:
         """Make the sector of ``lap`` at ``where`` not count.
@@ -982,17 +936,12 @@ class BrakeEngine:
             )
             self._prev_timing_invalid = s.timing_invalid
         if s.lap_valid != self._lap_valid:
-            where = self._infraction_pos(pos)
             log.debug(
-                "limits: lap_valid %s -> %s at %.1f%% of the lap (S%d); cut attributed %.0f m back "
-                "at %.1f%% (S%d)",
+                "limits: lap_valid %s -> %s at %.1f%% of the lap (S%d)",
                 self._lap_valid,
                 s.lap_valid,
                 pos * 100.0,
                 self._sector + 1,
-                self._settings.cut_give_back_m,
-                where * 100.0,
-                self._sector_of(where) + 1,
             )
 
     def _sector_of(self, pos: float) -> int:
