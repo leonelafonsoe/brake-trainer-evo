@@ -101,7 +101,7 @@ The folder build is recommended. Settings, learned data and logs live in
 | Top line | Track and car, with a dot: grey = waiting for the game, amber = game running, green = live |
 | NEXT BRAKE | Distance to the next learned braking point. White, then amber when the warning is due, red at the point |
 | BRAKE | Your live brake pedal, with your speed |
-| Sector bar | Three groups of segments, one per game sector. Grey = not driven, yellow = slower than your kept runs, green = among your fastest, purple = your fastest. A white outline marks the current sector |
+| Sector bar | Three groups of segments, one per game sector. Each segment is as wide as its sector is long, so the boundaries sit on the game's own lines. Grey = not driven, yellow = slower than your kept runs, green = among your fastest, purple = your fastest. A white outline marks the current sector |
 | Status line | What matters right now: a sector that won't count, learning paused, warm-up, the last sector result, the reference car, or a summary |
 
 <table>

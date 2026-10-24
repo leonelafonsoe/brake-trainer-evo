@@ -4,6 +4,11 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+- Fix: the sector bar drew its two inner boundaries at equal thirds of its width, whatever the
+  game's own sector lines were. On tracks with unequal sectors that put them hundreds of metres
+  from the real line (the Red Bull Ring's S1/S2 line is at 26% of the lap, Spa's S2/S3 at 72%), so
+  the bar looked as if the sector changed at a corner it did not. Each segment now spans its
+  sector's real share of the lap, with the gap between two centred on the game's line.
 - Fix: a buffered log line read between two samples that wrap the start/finish line *backwards*
   within one lap number (a reset, or the car crossing the line the wrong way) was placed at a
   position in the next lap while keeping the old lap's label, dropping a sector that had not been

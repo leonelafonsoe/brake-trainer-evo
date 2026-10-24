@@ -150,7 +150,10 @@ The sector bar shows how each sector of the current lap went compared with *your
 
 The first clean run of a sector is purple, because nothing is slower yet. The previous lap's
 colours stay visible until you complete the first sector of the next lap. A white outline marks
-the sector you are in, and fills as you drive through it.
+the sector you are in, and fills as you drive through it. The segments are sized to the game's
+sectors rather than equal thirds, so the boundary between two of them is where the game's own line
+is - on tracks with very unequal sectors (the Red Bull Ring's first is 26% of the lap, Spa's second
+ends at 72%) equal blocks would put it hundreds of metres out.
 
 The colour is a *rank*, not a stopwatch threshold: green means the run entered your fastest
 `top_runs` runs for that sector (3 by default - Settings -> Sectors). So how far off your best a
