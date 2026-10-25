@@ -15,6 +15,10 @@ AppId={{57936BBA-B965-405A-AEBF-F970FB38F14E}
 AppName=Brake Trainer EVO
 AppVersion={#AppVersion}
 AppPublisher=Brake Trainer EVO contributors
+AppPublisherURL=https://github.com/leonelafonsoe/brake-trainer-evo
+AppSupportURL=https://github.com/leonelafonsoe/brake-trainer-evo/issues
+AppUpdatesURL=https://github.com/leonelafonsoe/brake-trainer-evo/releases
+AppMutex=BrakeTrainerEvo.App
 DefaultDirName={autopf}\Brake Trainer EVO
 DefaultGroupName=Brake Trainer EVO
 DisableProgramGroupPage=yes
@@ -28,11 +32,18 @@ LicenseFile=..\LICENSE
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+CloseApplications=yes
+RestartApplications=no
+VersionInfoCompany=Brake Trainer EVO contributors
+VersionInfoDescription=Brake Trainer EVO
+VersionInfoProductName=Brake Trainer EVO
+VersionInfoProductVersion={#AppVersion}
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; Flags: unchecked
 
 [Files]
+; A self-contained folder: always replace the files, even on a downgrade.
 Source: "..\dist\BrakeTrainerEvo\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
