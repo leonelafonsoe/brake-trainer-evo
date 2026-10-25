@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QCursor, QGuiApplication, QMouseEvent, QPainter
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QCursor,
+    QGuiApplication,
+    QMouseEvent,
+    QPainter,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QMenu,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -105,6 +114,10 @@ class OverlayWindow(QWidget):
         top = QHBoxLayout()
         self._dot = _label("●", size=10, color=theme.MUTED)
         self._title = _label("Brake Trainer", size=11, color=theme.TEXT_DIM)
+        # The title gives way to the tool buttons instead of pushing them out of the window.
+        self._title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._title.setMinimumWidth(0)
+        self._title_full = "Brake Trainer"
         self._learn_btn = _tool_button("⏸", "Pause learning", "Pause learning")
         self._settings_btn = _tool_button("⚙", "Settings", "Settings")
         self._quit_btn = _tool_button("✕", "Quit", "Quit")
@@ -126,6 +139,9 @@ class OverlayWindow(QWidget):
         nxt.addWidget(_caption("NEXT BRAKE"))
         nxt.addStretch(1)
         self._distance = _label("—", size=20, bold=True)
+        # The phase words use a smaller font; a fixed height keeps the row (and the window) still.
+        self._distance.setFixedHeight(24)
+        self._distance.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         nxt.addWidget(self._distance)
         root.addLayout(nxt)
         self._approach = BarWidget(height=4)
@@ -192,15 +208,14 @@ class OverlayWindow(QWidget):
         snap = state.snapshot
         if not state.game_running and not state.live:
             _style(self._dot, f"color:{theme.MUTED}; font-size:10px;")
-            _text(self._title, "Waiting for Assetto Corsa EVO…")
+            self._set_title("Waiting for Assetto Corsa EVO…")
         else:
             color = theme.GREEN if state.live else theme.AMBER
             _style(self._dot, f"color:{color}; font-size:10px;")
             if snap.track and state.live:
-                title = f"{snap.track} · {snap.car}"
-                _text(self._title, title if len(title) <= 36 else title[:35] + "…")
+                self._set_title(f"{snap.track} · {snap.car}")
             else:
-                _text(self._title, "Game running — not in a session")
+                self._set_title("Game running — not in a session")
 
         self._update_distance(state)
         self._brake.set_value(snap.brake, theme.RED if snap.braking else theme.TEXT)
@@ -227,6 +242,33 @@ class OverlayWindow(QWidget):
                 self._ref.setToolTip(state.error)
             if self._ref.isHidden():
                 self._ref.show()
+
+    def _set_title(self, text: str) -> None:
+        self._title_full = text
+        self._elide_title()
+
+    def _elide_title(self) -> None:
+        """Elide by pixel width, not character count: fonts are proportional.
+
+        The budget is computed from the fixed window width (margins, dot, spacing and the three
+        hover buttons), not from the label's current geometry, which may not be laid out yet.
+        """
+        buttons = 0
+        if hasattr(self, "_learn_btn") and self._learn_btn.isVisibleTo(self):
+            buttons = 3 * 22 + 3 * 6
+        width = max(80, self.width() - 28 - 10 - 6 - buttons - 12)
+        shown = self._title.fontMetrics().elidedText(
+            self._title_full, Qt.TextElideMode.ElideRight, width
+        )
+        _text(self._title, shown)
+        tip = self._title_full if shown != self._title_full else ""
+        if self._title.toolTip() != tip:
+            self._title.setToolTip(tip)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
+        super().resizeEvent(event)
+        if hasattr(self, "_title"):  # a resize can arrive while _build is still running
+            self._elide_title()
 
     def _update_distance(self, state: ViewState) -> None:
         snap, st = state.snapshot, self._settings

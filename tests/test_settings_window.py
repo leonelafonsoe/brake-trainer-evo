@@ -186,6 +186,33 @@ def test_selecting_a_parent_covers_its_children(qapp, store):
     assert window.selected_edits() == [DeleteSector("Monza", "Car A", 0)]
 
 
+def test_deleting_a_sector_asks_first(qapp, store, monkeypatch):
+    _stored(store)
+    window = _window(qapp, store)
+    _render(window, store)
+    requested: list = []
+    window.edit_requested.connect(requested.append)
+    sector = window._tree.topLevelItem(0).child(0)
+    window._tree.clearSelection()
+    sector.setSelected(True)
+
+    monkeypatch.setattr(
+        data_page_module.QMessageBox,
+        "question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.No,
+    )
+    window._delete_selected()
+    assert requested == []
+
+    monkeypatch.setattr(
+        data_page_module.QMessageBox,
+        "question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+    window._delete_selected()
+    assert requested == [DeleteSector("Monza", "Car A", 0)]
+
+
 def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
     _stored(store)
     window = _window(qapp, store)

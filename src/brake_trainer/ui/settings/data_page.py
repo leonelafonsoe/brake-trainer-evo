@@ -164,6 +164,16 @@ class DataPageMixin:
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
+        sectors = [e for e in edits if isinstance(e, DeleteSector)]
+        if sectors:
+            names = ", ".join(f"S{e.sector + 1} of {e.track} / {e.car}" for e in sectors)
+            answer = QMessageBox.question(
+                cast(QWidget, self),
+                "Delete sector data",
+                f"Delete {names} and every run stored in it? This cannot be undone.",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
         for edit in edits:
             self.edit_requested.emit(edit)  # applied by the worker, then the tab refreshes
 

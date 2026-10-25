@@ -115,14 +115,25 @@ def test_a_live_session_shows_the_track_car_distance_and_speed(qapp):
     assert window._sectors._boundaries == (0.0, 0.3, 0.6, 1.0)
 
 
-def test_a_long_track_and_car_name_is_truncated(qapp):
+def test_a_long_track_and_car_name_is_elided_by_width(qapp):
     window = _window(qapp)
     state = ViewState(snapshot=Snapshot(track="A" * 40, car="B" * 20), live=True)
 
     window.update_state(state)
 
     assert window._title.text().endswith("…")
-    assert len(window._title.text()) == 36
+    assert window._title.toolTip() == "A" * 40 + " · " + "B" * 20
+
+
+def test_the_distance_row_keeps_one_height(qapp):
+    window = _window(qapp)
+
+    window.update_state(_live(warmup_laps_left=1))
+    phase_height = window._distance.height()
+    window.update_state(_live(next_zone_m=150.0, lead_m=90.0))
+    number_height = window._distance.height()
+
+    assert phase_height == number_height == 24
 
 
 def test_warm_up_paused_and_no_points_have_their_own_words(qapp):
