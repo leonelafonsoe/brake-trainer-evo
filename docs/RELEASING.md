@@ -40,6 +40,9 @@ files:
 | `BrakeTrainerEvo-<version>-windows.zip` | Portable folder build |
 | `SHA256SUMS.txt` | Checksums |
 
+The zip and the installed copy also contain `LICENSE`, `THIRD_PARTY_NOTICES.md` and `licenses/`
+with the third-party texts.
+
 Pre-release tags use a hyphen (for example `v0.4.0-rc1`) and are published as **pre-releases**.
 `release_notes.py` also accepts the compact `v0.4.0rc1` form for local checks, but the workflow's
 pre-release flag only recognises the hyphen form, so use the hyphen when tagging.

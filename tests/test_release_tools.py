@@ -144,19 +144,32 @@ def test_every_workflow_that_tests_or_publishes_runs_the_shared_gates():
 def test_the_packaged_build_ships_the_licence_and_notices(tmp_path):
     build = _load("build_exe")
     source = tmp_path / "source"
-    source.mkdir()
+    licenses = source / "packaging" / "licenses"
+    licenses.mkdir(parents=True)
     for name in build.NOTICES:
         (source / name).write_text(name, encoding="utf-8")
+    for name in ("MIT-acevo-sdk.txt", "LGPL-3.0.txt"):
+        (licenses / name).write_text(name, encoding="utf-8")
     target = tmp_path / "dist" / "BrakeTrainerEvo"
 
     build.copy_notices(target, source)
 
     for name in build.NOTICES:
         assert (target / name).read_text(encoding="utf-8") == name
+    for name in ("MIT-acevo-sdk.txt", "LGPL-3.0.txt"):
+        assert (target / "licenses" / name).read_text(encoding="utf-8") == name
 
     # A missing licence must fail the build, not publish a package without one.
     with pytest.raises(FileNotFoundError):
         build.copy_notices(target, tmp_path / "empty")
+
+    # The third-party texts are required too, even when the root notices are present.
+    source_only_notices = tmp_path / "notices-only"
+    source_only_notices.mkdir()
+    for name in build.NOTICES:
+        (source_only_notices / name).write_text(name, encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        build.copy_notices(target, source_only_notices)
 
 
 def test_the_release_workflow_fails_closed_and_stamps_the_build():

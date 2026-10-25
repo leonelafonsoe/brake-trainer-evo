@@ -4,6 +4,12 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+### Fixed
+
+- The portable zip and the installer now include the third-party licence texts referenced by
+  `THIRD_PARTY_NOTICES.md` (MIT for acevo-sdk and LGPLv3 for Qt/PySide6), and the build fails if
+  any licence file is missing.
+
 ## 0.4.1 - 2026-10-24
 
 ### Fixed
