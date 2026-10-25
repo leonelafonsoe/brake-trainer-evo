@@ -78,7 +78,7 @@ uv run python scripts/build_exe.py --onefile  # a single .exe (slower start, mor
 ```
 
 An installer script for [Inno Setup](https://jrsoftware.org/isinfo.php) is in `packaging/installer.iss`.
-Releases are built automatically by GitHub Actions: see [docs/RELEASING.md](docs/RELEASING.md).
+Releases are built automatically by GitHub Actions: see [the release pipeline](docs/DEVELOPMENT.md#release-pipeline).
 
 The folder build is recommended. Settings, learned data and logs live in
 `%APPDATA%\BrakeTrainerEvo\`, so the program folder can be moved or deleted freely.
@@ -131,7 +131,7 @@ the top centre of the main screen.
 | [Telemetry notes](docs/TELEMETRY.md) | Which game data is used, SDK quirks, caveats |
 | [Data files](docs/DATA.md) | Where files live and the format of the learned data |
 | [About this project](docs/ABOUT.md) | How it was made (AI-written), what was verified and how |
-| [Releasing](docs/RELEASING.md) | How pull requests, nightly builds and versioned releases work |
+| [Release pipeline](docs/DEVELOPMENT.md#release-pipeline) | How pull requests, nightly builds and versioned releases work |
 | [Security policy](SECURITY.md) | How to report a vulnerability privately |
 | [Changelog](CHANGELOG.md) | Version history |
 

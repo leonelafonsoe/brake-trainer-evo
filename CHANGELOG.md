@@ -26,6 +26,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   real fixture bytes are marked binary in Git so a Windows checkout cannot rewrite them.
 - Nightly and Release run `pip-audit` against the locked dependencies, and the weekly Security
   workflow is back on the same `setup-python` release as the other workflows.
+- The release guide is now part of the developer manual instead of a separate page, so the pipeline
+  and the steps that use it live in one place.
 
 ### Fixed
 

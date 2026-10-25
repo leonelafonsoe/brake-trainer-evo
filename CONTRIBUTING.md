@@ -73,7 +73,7 @@ The `README.md` in each fixture folder shows the format and where the data came 
    `BrakeTrainerEvo-windows-...` artifact to try your change (or let a reviewer try it).
 3. After it is merged into `main`, the **Nightly** pre-release on the Releases page is refreshed with
    a build of the newest code.
-4. Maintainers publish numbered versions: see [docs/RELEASING.md](docs/RELEASING.md).
+4. Maintainers publish numbered versions: see [the release pipeline](docs/DEVELOPMENT.md#release-pipeline).
 
 Add a line about your change under `## Unreleased` in `CHANGELOG.md`; it becomes the release notes.
 

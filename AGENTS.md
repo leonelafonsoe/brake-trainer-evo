@@ -118,8 +118,8 @@ Use the detailed recipes in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). In short
   paths, and update `docs/DATA.md`.
 - **UI** — add an offscreen test (module-level `pytest.mark.usefixtures("close_qt_windows")` for
   widgets); feed `ViewState` in, assert what is shown. Do not put learning logic in the UI.
-- **Release** — follow [docs/RELEASING.md](docs/RELEASING.md). Bump once, add the changelog
-  section, run the release check, then push the tag. The workflow is fail-closed.
+- **Release** — follow [the release pipeline](docs/DEVELOPMENT.md#release-pipeline). Bump once, add
+  the changelog section, run the release check, then push the tag. The workflow is fail-closed.
 
 ## Fixtures
 

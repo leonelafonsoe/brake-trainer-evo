@@ -219,8 +219,6 @@ is archived and the app starts from defaults; there is no migration code to keep
 
 ### Release
 
-Follow [RELEASING.md](RELEASING.md). The short version:
-
 1. Put the user-facing changes under `## Unreleased` in `CHANGELOG.md`.
 2. `uv run python scripts/bump_version.py X.Y.Z` (updates `pyproject.toml`, `__init__.py`, `uv.lock`
    and the changelog date/section).
@@ -229,6 +227,8 @@ Follow [RELEASING.md](RELEASING.md). The short version:
 4. Commit, tag `vX.Y.Z` and push the tag. Pre-releases use the hyphen form (`v0.4.0-rc1`).
 5. Watch the Release workflow; it fails closed if the installer, zip or checksums are missing or
    do not verify.
+
+The sections below explain what each workflow does and why.
 
 ## Fixtures and real evidence
 
@@ -261,6 +261,78 @@ logs are evidence, not test input. The full rules are in [CONTRIBUTING.md](../CO
   ended. Each line's own timestamp is what attributes it; the status line names a late cut instead
   of greying the wrong lap.
 
+## Release pipeline
+
+Everything is done by GitHub Actions (`.github/workflows/`); no secrets are needed beyond the
+built-in `GITHUB_TOKEN`.
+
+```mermaid
+flowchart LR
+    PR["Pull request"] --> CI["CI: lint, types, tests<br/>+ Windows build artifact"]
+    CI --> Merge["Merged into main"]
+    Merge --> Nightly["Nightly pre-release<br/>(rolling, always newest main)"]
+    Merge --> Bump["Maintainer: bump_version.py<br/>+ tag vX.Y.Z"]
+    Bump --> Release["Release: installer + zip<br/>+ checksums + changelog"]
+```
+
+### Pull requests (`ci.yml`)
+
+Every pull request runs the shared gates (`.github/actions/gates`) on Linux: pre-commit, format
+check, lint, mypy and the generated settings reference. The tests run on Linux with Python 3.11 and
+3.12 and on Windows with 3.12, then the Windows program is built. The build is attached to the
+workflow run as an artifact (kept 14 days) so anyone can download and try the change. Nothing is
+published, and a failure on any operating system blocks the build. Coverage is measured on the
+Linux 3.12 leg, must stay above the floor in `pyproject.toml`, and is uploaded as `coverage-xml`.
+
+### Nightly (`nightly.yml`)
+
+On every push to `main` (for example a merged pull request) a pre-release called **Nightly (latest
+main)** is refreshed. It runs the same gates as CI, including the coverage floor and a
+`pip-audit` of the locked dependencies, so a nightly cannot publish code that would fail a pull
+request; then the `nightly` tag moves to the new commit and the asset
+`BrakeTrainerEvo-nightly-windows.zip` is replaced. Its description lists the `## Unreleased`
+section of the changelog. It is for trying new code; it may be unstable.
+
+### Versioned release (`release.yml`)
+
+Pushing a tag like `vX.Y.Z` publishes a release with the changelog as its description and these
+files:
+
+| File | What |
+| --- | --- |
+| `BrakeTrainerEvo-<version>-setup.exe` | Installer (Inno Setup, per user, no admin) |
+| `BrakeTrainerEvo-<version>-windows.zip` | Portable folder build |
+| `SHA256SUMS.txt` | Checksums |
+
+The zip and the installed copy also contain `LICENSE`, `THIRD_PARTY_NOTICES.md` and `licenses/`
+with the third-party texts.
+
+Pre-release tags use a hyphen (for example `v0.4.0-rc1`) and are published as **pre-releases**.
+`release_notes.py` also accepts the compact `v0.4.0rc1` form for local checks, but the workflow's
+pre-release flag only recognises the hyphen form, so use the hyphen when tagging.
+
+The workflow fails closed: it stops if the installer cannot be built, if the portable zip, the
+installer or the checksum file is missing or empty, or if a checksum does not match the file it
+names. The executable is stamped with the tag's commit, so `build=` in the log and in every saved
+file identifies the exact code even when the version number is reused. It also refuses to publish
+if the tag does not match the project version, if the changelog has no notes for that version, or if
+`## Unreleased` still has notes (bump first, so the release body cannot be stale). Release runs the
+same coverage and dependency-audit gates as Nightly.
+
+### Trying it safely
+
+Push a throwaway pre-release tag such as `v0.4.0-rc1` first (after a bump to `0.4.0rc1`), or try the
+whole thing in a scratch fork. Delete a bad release and its tag from the Releases page and with
+`git push --delete origin <tag>`.
+
+### Release notes
+
+- The programs are **not code-signed**, so Windows SmartScreen may warn. Code signing needs a
+  certificate (paid); a service such as SignPath offers free signing for open-source projects and
+  could be added to `release.yml` later. The licence here is non-commercial, which may affect
+  eligibility, so check their terms.
+- Fork pull requests run the same checks, but GitHub may ask a maintainer to approve the run first.
+
 ## Repository tools
 
 | Script | Use |
@@ -279,6 +351,5 @@ logs are evidence, not test input. The full rules are in [CONTRIBUTING.md](../CO
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — symptom and action.
 - [DATA.md](DATA.md) — formats and compatibility.
 - [SETTINGS.md](SETTINGS.md) — generated settings reference; never hand-edit.
-- [RELEASING.md](RELEASING.md) — the release process.
 
 Keep each page owning one job and link instead of repeating a long explanation.

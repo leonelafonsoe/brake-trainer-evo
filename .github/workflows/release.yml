@@ -2,7 +2,7 @@ name: Release
 
 # Publishes a GitHub release when a version tag is pushed:
 #   git tag v0.3.8 && git push origin v0.3.8
-# See docs/RELEASING.md.
+# See docs/DEVELOPMENT.md#release-pipeline.
 
 on:
   push:
