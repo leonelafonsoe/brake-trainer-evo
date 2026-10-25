@@ -41,6 +41,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   smaller.
 - `report_split` now has separate audit and learning paths, so the verbose line-comparison code is
   no longer entangled with the fresh-entry learning rules. Behaviour is unchanged.
+- A settings-save failure is shown as a tray notification when the tray supports messages, instead
+  of a modal dialog that could take keyboard focus from the game. It still falls back to the dialog
+  when the tray is unavailable or hidden.
 - Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
   cleanup on failure), so the two cannot drift in how they protect a failed write.
 - Settings type validation now lives in `SettingSpec.coerce`: one rule for every field, including
