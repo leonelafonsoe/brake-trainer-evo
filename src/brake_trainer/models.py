@@ -8,7 +8,7 @@ from typing import Any
 
 # Bumped when a change to TrackData.to_dict would make an older build misread a file. The loader
 # refuses a newer version instead of filing runs under boundaries or fields it does not understand;
-# the app version in the same file is provenance only. See docs/DATA.md.
+# the app version in the same file is provenance only. See docs/GAME_DATA.md.
 DATA_VERSION = 1
 
 

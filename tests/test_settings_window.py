@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QSpinBox,
 )
 
@@ -17,8 +18,9 @@ from brake_trainer.config import Settings
 from brake_trainer.models import SectorRun, TrackData
 from brake_trainer.settings_spec import TABS, SettingSpec
 from brake_trainer.storage import DeleteEntry, DeleteRun, DeleteSector
+from brake_trainer.ui.settings import SettingsWindow
 from brake_trainer.ui.settings import data_page as data_page_module
-from brake_trainer.ui.settings_window import SettingsWindow, _get, _set
+from brake_trainer.ui.settings.form import _get, _set
 
 pytestmark = pytest.mark.usefixtures("close_qt_windows")
 
@@ -34,6 +36,39 @@ def _stored(store) -> TrackData:
     data.boundaries = [0.3, 0.6]  # inner lines; the app adds 0.0 and 1.0 for display
     assert store.save(data)
     return data
+
+
+def test_building_the_window_does_not_scan_the_data_folder(qapp, store, monkeypatch):
+    calls: list[int] = []
+    monkeypatch.setattr(store, "entries", lambda: calls.append(1) or [])
+
+    _window(qapp, store)
+
+    assert calls == []  # the scan waits until the window is shown
+
+
+def test_the_data_tab_refreshes_only_while_visible(qapp, store, monkeypatch):
+    window = _window(qapp, store)
+    calls: list[int] = []
+    monkeypatch.setattr(window, "refresh_data", lambda: calls.append(1))
+
+    monkeypatch.setattr(window, "isVisible", lambda: False)
+    window.refresh_data_if_visible()
+    assert calls == []
+
+    monkeypatch.setattr(window, "isVisible", lambda: True)
+    window.refresh_data_if_visible()
+    assert calls == [1]
+
+
+def test_apply_is_the_default_button_and_reset_is_not(qapp, store):
+    window = _window(qapp, store)
+    apply_btn = window.findChild(QPushButton, "apply")
+    reset = window.findChild(QPushButton, "reset")
+
+    assert apply_btn is not None and apply_btn.isDefault()
+    # Enter in a field must not become "Reset to defaults", which would throw the form away.
+    assert reset is not None and not reset.autoDefault()
 
 
 def test_the_form_round_trips_every_visible_setting(qapp, store):
@@ -109,6 +144,7 @@ def test_collect_preserves_the_hidden_overlay_position(qapp, store):
 def test_the_data_tree_lists_entries_and_requests_deletes(qapp, store):
     _stored(store)
     window = _window(qapp, store)
+    window.refresh_data()  # the tab populates when it is shown
     requested: list = []
     window.edit_requested.connect(requested.append)
 
@@ -134,6 +170,7 @@ def test_the_data_tree_lists_entries_and_requests_deletes(qapp, store):
 def test_selecting_a_parent_covers_its_children(qapp, store):
     _stored(store)
     window = _window(qapp, store)
+    window.refresh_data()
     top = window._tree.topLevelItem(0)
     assert top is not None
 
@@ -146,6 +183,7 @@ def test_selecting_a_parent_covers_its_children(qapp, store):
 def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
     _stored(store)
     window = _window(qapp, store)
+    window.refresh_data()
     requested: list = []
     window.edit_requested.connect(requested.append)
     top = window._tree.topLevelItem(0)
@@ -173,6 +211,7 @@ def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
 def test_refreshing_keeps_an_expanded_entry_open(qapp, store):
     _stored(store)
     window = _window(qapp, store)
+    window.refresh_data()
     top = window._tree.topLevelItem(0)
     assert top is not None
 

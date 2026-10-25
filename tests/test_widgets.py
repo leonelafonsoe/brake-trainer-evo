@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from PySide6.QtGui import QPalette
 
+from brake_trainer.ui import theme
 from brake_trainer.ui.widgets import sector_rects
 
 WIDTH = 300.0
@@ -17,6 +19,15 @@ def _boundary(rects: list[tuple[float, float]], index: int) -> float:
     """Where sector ``index - 1`` ends and sector ``index`` starts."""
     left, width = rects[index - 1]
     return (left + width + rects[index][0]) / 2
+
+
+def test_the_palette_matches_the_dark_theme():
+    palette = theme.palette()
+
+    assert palette.color(QPalette.ColorRole.Window).name() == theme.BG
+    assert palette.color(QPalette.ColorRole.Base).name() == theme.BG
+    assert palette.color(QPalette.ColorRole.Highlight).name() == theme.ACCENT
+    assert palette.color(QPalette.ColorRole.HighlightedText).name() == theme.BUTTON_TEXT
 
 
 def test_sector_boundaries_follow_the_games_unequal_lines():

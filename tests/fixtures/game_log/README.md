@@ -1,7 +1,6 @@
 # Game-log fixtures
 
-Small excerpts from real Assetto Corsa EVO game logs (build 0.9.1, Monza), kept verbatim
-apart from the Steam and car IDs in `connect.txt`, which are placeholders of the same shape.
+Small excerpts from real Assetto Corsa EVO game logs (build 0.9.1, Monza), kept verbatim.
 They pin the exact line shapes the parser sees; full logs are not committed because they are
 large and contain session data.
 

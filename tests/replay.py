@@ -8,10 +8,10 @@ it to reproduce attribution bugs from a small, anonymized trace instead of the g
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from brake_trainer.engine import BrakeEngine
-from brake_trainer.gamelog import LogState, line_time, parse_line
+from brake_trainer.gamelog import line_time, parse_line
 from brake_trainer.models import Sample
 
 DEFAULT_DT = 1 / 30
@@ -33,8 +33,13 @@ class ReplayFrame:
 
 
 def line_at(payload: str, at: float) -> str:
-    """A game-log line with the same ``[YYYY-MM-DD HH:MM:SS.mmm]`` prefix the game uses."""
-    stamp = datetime.fromtimestamp(at, UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    """A game-log line with the same ``[YYYY-MM-DD HH:MM:SS.mmm]`` prefix the game uses.
+
+    The game writes local time and :func:`brake_trainer.gamelog.line_time` parses it as local time,
+    so the round trip must use the same clock. Formatting this as UTC made every line look hours
+    old wherever the machine was not on UTC.
+    """
+    stamp = datetime.fromtimestamp(at).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     return f"[{stamp}] {payload}"
 
 
@@ -57,7 +62,6 @@ class Replay:
         self.length_m = length_m
         self.dt = dt
         self.t = start
-        self._log = LogState()
 
     def feed(self, frame: ReplayFrame) -> None:
         self.t += self.dt
@@ -78,7 +82,7 @@ class Replay:
         )
         if not frame.log_line:
             return
-        event = parse_line(frame.log_line, self._log)
+        event = parse_line(frame.log_line)
         if event is None:
             return
         # The line's own timestamp is what the engine attributes from; the replay time is only a

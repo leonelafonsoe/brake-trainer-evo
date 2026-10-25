@@ -8,10 +8,10 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ..models import DropReason, SectorResult, SectorRun, SectorStatus
-from ..outcomes import LINES_REASONS
+from ..outcomes import LINES_REASONS, outcome_for_run, render_outcome
 from ..timeline import CarAt, clamp_pos
 from .constants import _HISTORY_S, _LINE_MATCH, _LINES_WAIT_LAPS
-from .passes import _LapRun, _LostPass, _Pass
+from .passes import _LapRun, _LostPass, _Pass, keep_fastest
 
 if TYPE_CHECKING:
     from .engine import BrakeEngine
@@ -359,6 +359,10 @@ class LinesMixin:
         lines for good: see :meth:`_lines_watch`). A sector the game took out is never stored.
         """
         data = self._data
+        if not self._settings.learning_enabled:
+            # Pausing learning must freeze the data: a pass held while it was on is not a reason
+            # to write once the driver has asked the app to stop changing anything.
+            return False
         if data is None or (entry.lap, entry.sector) in self._invalid_sectors:
             return False
         idx = entry.sector
@@ -366,27 +370,20 @@ class LinesMixin:
         runs = data.sectors[idx]
         previous_best = min((r.t for r in runs), default=None)
         stored = SectorRun(duration, onsets)
-        kept = sorted([*runs, stored], key=lambda r: r.t)[: self._settings.top_runs]
-        accepted = any(r is stored for r in kept)
+        kept, accepted, status = keep_fastest(runs, stored, self._settings.top_runs)
         if accepted:
             data.sectors[idx] = kept
             self._lap_runs[(entry.lap, idx)] = _LapRun(stored, runs, entry.end)
-        status = (
-            SectorStatus.BEST
-            if kept[0] is stored
-            else SectorStatus.GOOD
-            if accepted
-            else SectorStatus.SLOWER
-        )
         if entry.lap == self._status_lap and 0 <= idx < len(self._status):
             self._status[idx] = status
         changed = self._forget_early(entry.run.onsets) or accepted
+        outcome = outcome_for_run(accepted, learning=True)
         log.debug(
             "lines: S%d of lap %d timed after the fact: %.2f s (%s)",
             idx + 1,
             entry.lap,
             duration,
-            "kept" if accepted else "not kept",
+            render_outcome(outcome),
         )
         self._report(
             SectorResult(
@@ -394,10 +391,11 @@ class LinesMixin:
                 duration,
                 accepted,
                 kept[0].t,
-                "kept" if accepted else "not kept",
+                render_outcome(outcome),
                 len(onsets),
                 status,
                 previous_best,
+                outcome,
             )
         )
         return changed
@@ -416,10 +414,3 @@ class LinesMixin:
     def _crossing_time(self: BrakeEngine, lap: int, line: float) -> float | None:  # type: ignore[misc]
         """When the car crossed ``line`` during ``lap`` (see :meth:`PositionTimeline.crossing`)."""
         return self._timeline.crossing(lap, line)
-
-    def _lap_start(self: BrakeEngine, lap: int) -> float | None:  # type: ignore[misc]
-        """When the car crossed the line that starts ``lap``.
-
-        See :meth:`PositionTimeline.lap_start`.
-        """
-        return self._timeline.lap_start(lap)

@@ -50,7 +50,7 @@ file, not from an assumption. Add the smallest excerpt that proves the case to `
 
 - `game_log/` for exact parser inputs: one notification block, split line or connection line.
 - `track_data/` for real stored `version: 1` JSON, to keep older files loading and round-tripping.
-- `settings/` for real settings JSON from older versions, to test one-time migrations.
+- `settings/` for real settings JSON from older versions, to test that an unknown layout is archived.
 
 Rules:
 
@@ -73,7 +73,7 @@ The `README.md` in each fixture folder shows the format and where the data came 
    `BrakeTrainerEvo-windows-...` artifact to try your change (or let a reviewer try it).
 3. After it is merged into `main`, the **Nightly** pre-release on the Releases page is refreshed with
    a build of the newest code.
-4. Maintainers publish numbered versions: see [docs/RELEASING.md](docs/RELEASING.md).
+4. Maintainers publish numbered versions: see [the release pipeline](docs/DEVELOPMENT.md#release-pipeline).
 
 Add a line about your change under `## Unreleased` in `CHANGELOG.md`; it becomes the release notes.
 

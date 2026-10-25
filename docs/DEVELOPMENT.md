@@ -26,7 +26,8 @@ export QT_QPA_PLATFORM=offscreen    # the UI tests must not need a display
 ```
 
 The `dev` extra installs pytest, coverage, ruff, mypy and PyInstaller. `uv.lock` pins the exact
-resolved versions; CI uses `uv sync --frozen --extra dev`. The runtime dependencies are PySide6 and
+resolved versions; CI uses `uv sync --locked --extra dev`, which fails if `uv.lock` is stale, so a
+dependency change must be committed with its lock. The runtime dependencies are PySide6 and
 `acevo-sdk` (pinned below 0.2.0; see the comment in `pyproject.toml`).
 
 ## Run from source
@@ -51,7 +52,7 @@ BRAKE_TRAINER_HOME=/tmp/brake-trainer-dev uv run python -m brake_trainer
 Run the same gates as CI (`.github/actions/gates/action.yml`):
 
 ```bash
-uv sync --frozen --extra dev
+uv sync --locked --extra dev
 uv run pre-commit run --all-files  # ruff, formatting, YAML/TOML, whitespace, mypy
 uv run ruff format --check .
 uv run ruff check .
@@ -59,7 +60,12 @@ uv run mypy
 uv run pytest -q -W error
 uv run pytest -q -W error --cov    # coverage with the floor from pyproject.toml
 uv run python scripts/gen_settings_doc.py --check
-uv run python scripts/release_notes.py --tag v0.5.0 --check
+```
+
+Before tagging a release, also run
+
+```bash
+uv run python scripts/release_notes.py --tag vX.Y.Z --check
 ```
 
 Use `uv run ruff format .` to apply formatting, and `uv run python scripts/gen_settings_doc.py` to
@@ -88,8 +94,11 @@ regenerate the settings reference after changing a setting.
 | Telemetry reader, audio, process probing | `tests/test_telemetry_audio.py` |
 | Worker thread, queueing, shutdown | `tests/test_worker.py` |
 | Overlay states and settings form | `tests/test_overlay.py`, `tests/test_settings_window.py` |
+| Composition root, single instance | `tests/test_app.py` |
+| Pure layers do not import Qt/adapters | `tests/test_architecture.py` |
+| Settings application, save warnings, shutdown | `tests/test_controller.py` |
 | Status line and widget geometry | `tests/test_status.py`, `tests/test_widgets.py` |
-| Docs, release tools, generated files | `tests/test_docs.py`, `tests/test_release_tools.py` |
+| Docs, links, release tools, generated files | `tests/test_docs.py`, `tests/test_docs_links.py`, `tests/test_release_tools.py` |
 
 `tests/conftest.py` has the fixtures that make a scenario short:
 
@@ -108,7 +117,7 @@ single read, and `threading.Event`/`asyncio.Event`/condition polling replace gue
 ```
 src/brake_trainer/
   models.py       data types (Sample, Snapshot, TrackData, ViewState)
-  config.py       Settings, clamping, settings_version migration
+  config.py       Settings, clamping, atomic settings persistence
   settings_spec.py settings metadata: labels, ranges, tabs, defaults
   timeline.py     position history, interpolation, crossing detection
   engine/         learning, sector timing, cues (pure logic)
@@ -129,6 +138,7 @@ src/brake_trainer/
   logsetup.py     rotating log and verbose mode
   ui/             overlay, settings/ (window, form, diagnostics/data/about pages), status line,
                   widgets, worker, theme, icon
+  controller.py   settings application and shutdown policy (no Qt)
   app.py          wiring and tray icon
 ```
 
@@ -157,7 +167,7 @@ Boundaries:
    in `tests/test_settings_window.py`.
 5. If the engine reads it while running, handle it in `BrakeEngine.apply_settings` and test the
    live change. Every setting is documented as live; keep that true.
-6. Add the changelog line and update `docs/SETTINGS.md` (generated) or `docs/HOW_IT_WORKS.md`.
+6. Add the changelog line and update `docs/SETTINGS.md` (generated) or `docs/GUIDE.md`.
 
 ### The game-log parser
 
@@ -168,8 +178,8 @@ Boundaries:
    `GameLogTail` path with `poll_once()`.
 4. Keep the line's own timestamp as the attribution time. Never substitute the read time for a
    buffered event.
-5. Update `docs/TELEMETRY.md` (format and caveats) and, if the driver sees a change,
-   `docs/HOW_IT_WORKS.md`.
+5. Update `docs/GAME_DATA.md` (format and caveats) and, if the driver sees a change,
+   `docs/GUIDE.md`.
 
 ### Learning, sectors or cues
 
@@ -179,7 +189,7 @@ Boundaries:
    time. Do not snap to the nearest frame.
 3. Cover the boundary you touch: a sector line, a jump/teleport, a deferred line, a cut, a warm-up
    or a pause.
-4. Update `docs/HOW_IT_WORKS.md` for behaviour and `docs/DESIGN.md` if the reason changes.
+4. Update `docs/GUIDE.md` for behaviour and `docs/DESIGN.md` if the reason changes.
 
 ### Storage or data schema
 
@@ -191,10 +201,10 @@ Boundaries:
    run by time and onsets, not time alone.
 4. Preserve the safety rules: never overwrite an unreadable file, quarantine by move, block saves
    if the move fails, and report a failed write.
-5. Update `docs/DATA.md`.
+5. Update `docs/GAME_DATA.md`.
 
-For settings, bump `SETTINGS_VERSION` when renaming or retiring keys; newer unknown keys are
-preserved, retired keys from older files are dropped.
+For settings, bump `SETTINGS_VERSION` when renaming or retiring keys. A file with another version
+is archived and the app starts from defaults; there is no migration code to keep.
 
 ### UI
 
@@ -209,16 +219,16 @@ preserved, retired keys from older files are dropped.
 
 ### Release
 
-Follow [RELEASING.md](RELEASING.md). The short version:
-
 1. Put the user-facing changes under `## Unreleased` in `CHANGELOG.md`.
-2. `uv run python scripts/bump_version.py X.Y.Z` (updates `pyproject.toml`, `__init__.py` and the
-   changelog date/section).
+2. `uv run python scripts/bump_version.py X.Y.Z` (updates `pyproject.toml`, `__init__.py`, `uv.lock`
+   and the changelog date/section).
 3. Run every gate above, including
    `uv run python scripts/release_notes.py --tag vX.Y.Z --check`.
 4. Commit, tag `vX.Y.Z` and push the tag. Pre-releases use the hyphen form (`v0.4.0-rc1`).
 5. Watch the Release workflow; it fails closed if the installer, zip or checksums are missing or
    do not verify.
+
+The sections below explain what each workflow does and why.
 
 ## Fixtures and real evidence
 
@@ -227,7 +237,7 @@ the smallest excerpt that proves one behaviour under `tests/fixtures/`:
 
 - `game_log/` — parser inputs (notification block, split, connection line).
 - `track_data/` — real stored `version: 1` JSON for loader/round-trip tests.
-- `settings/` — real settings JSON from older versions for migrations.
+- `settings/` — real settings JSON from older versions, proving an unknown layout is archived.
 
 Remove names, Steam IDs, car IDs and paths; never commit a full session log. Add a new fixture
 instead of silently replacing an old one, and note the game/app build in the folder README. App
@@ -251,24 +261,95 @@ logs are evidence, not test input. The full rules are in [CONTRIBUTING.md](../CO
   ended. Each line's own timestamp is what attributes it; the status line names a late cut instead
   of greying the wrong lap.
 
+## Release pipeline
+
+Everything is done by GitHub Actions (`.github/workflows/`); no secrets are needed beyond the
+built-in `GITHUB_TOKEN`.
+
+```mermaid
+flowchart LR
+    PR["Pull request"] --> CI["CI: lint, types, tests<br/>+ Windows build artifact"]
+    CI --> Merge["Merged into main"]
+    Merge --> Nightly["Nightly pre-release<br/>(rolling, always newest main)"]
+    Merge --> Bump["Maintainer: bump_version.py<br/>+ tag vX.Y.Z"]
+    Bump --> Release["Release: installer + zip<br/>+ checksums + changelog"]
+```
+
+### Pull requests (`ci.yml`)
+
+Every pull request runs the shared gates (`.github/actions/gates`) on Linux: pre-commit, format
+check, lint, mypy and the generated settings reference. The tests run on Linux with Python 3.11 and
+3.12 and on Windows with 3.12, then the Windows program is built. The build is attached to the
+workflow run as an artifact (kept 14 days) so anyone can download and try the change. Nothing is
+published, and a failure on any operating system blocks the build. The packaged program is started
+once with a temporary app folder and must write its `startup app=` line before the build is
+accepted. Coverage is measured on the Linux 3.12 leg, must stay above the floor in
+`pyproject.toml`, and is uploaded as `coverage-xml`.
+
+### Nightly (`nightly.yml`)
+
+On every push to `main` (for example a merged pull request) a pre-release called **Nightly (latest
+main)** is refreshed. It runs the same gates as CI, including the coverage floor and a
+`pip-audit` of the locked dependencies, so a nightly cannot publish code that would fail a pull
+request; then the `nightly` tag moves to the new commit and the asset
+`BrakeTrainerEvo-nightly-windows.zip` is replaced. Its description lists the `## Unreleased`
+section of the changelog. It is for trying new code; it may be unstable.
+
+### Versioned release (`release.yml`)
+
+Pushing a tag like `vX.Y.Z` publishes a release with the changelog as its description and these
+files:
+
+| File | What |
+| --- | --- |
+| `BrakeTrainerEvo-<version>-setup.exe` | Installer (Inno Setup, per user, no admin) |
+| `BrakeTrainerEvo-<version>-windows.zip` | Portable folder build |
+| `SHA256SUMS.txt` | Checksums |
+
+The zip and the installed copy also contain `LICENSE`, `THIRD_PARTY_NOTICES.md` and `licenses/`
+with the third-party texts.
+
+Pre-release tags use a hyphen (for example `v0.4.0-rc1`) and are published as **pre-releases**.
+`release_notes.py` also accepts the compact `v0.4.0rc1` form for local checks, but the workflow's
+pre-release flag only recognises the hyphen form, so use the hyphen when tagging.
+
+The workflow fails closed: it stops if the installer cannot be built, if the portable zip, the
+installer or the checksum file is missing or empty, or if a checksum does not match the file it
+names. The executable is stamped with the tag's commit, so `build=` in the log and in every saved
+file identifies the exact code even when the version number is reused. It also refuses to publish
+if the tag does not match the project version, if the changelog has no notes for that version, or if
+`## Unreleased` still has notes (bump first, so the release body cannot be stale). Release runs the
+same coverage and dependency-audit gates as Nightly.
+
+### Trying it safely
+
+Push a throwaway pre-release tag such as `v0.4.0-rc1` first (after a bump to `0.4.0rc1`), or try the
+whole thing in a scratch fork. Delete a bad release and its tag from the Releases page and with
+`git push --delete origin <tag>`.
+
+### Release notes
+
+- The programs are **not code-signed**, so Windows SmartScreen may warn. Code signing needs a
+  certificate (paid); a service such as SignPath offers free signing for open-source projects and
+  could be added to `release.yml` later. The licence here is non-commercial, which may affect
+  eligibility, so check their terms.
+- Fork pull requests run the same checks, but GitHub may ask a maintainer to approve the run first.
+
 ## Repository tools
 
 | Script | Use |
 | --- | --- |
 | `scripts/gen_settings_doc.py` | Rebuild `docs/SETTINGS.md`; `--check` is a CI gate. |
 | `scripts/release_notes.py` | Print or check the changelog section for a tag (`--tag`, `--check`, `--out`). |
-| `scripts/bump_version.py` | Update the version in both places and the changelog date. |
+| `scripts/bump_version.py` | Update the version in both places, `uv.lock` and the changelog. |
 | `scripts/build_exe.py` | PyInstaller build (Windows); bakes in `build-id.txt`. |
 | `scripts/make_icon.py` | Regenerate `packaging/icon.ico`. |
 
 ## Documentation map
 
-- [HOW_IT_WORKS.md](HOW_IT_WORKS.md) — behaviour.
+- [GUIDE.md](GUIDE.md) — behaviour and troubleshooting.
 - [DESIGN.md](DESIGN.md) — why.
-- [TELEMETRY.md](TELEMETRY.md) — SDK and game log.
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — symptom and action.
-- [DATA.md](DATA.md) — formats and compatibility.
+- [GAME_DATA.md](GAME_DATA.md) — SDK, game log, file formats and compatibility.
 - [SETTINGS.md](SETTINGS.md) — generated settings reference; never hand-edit.
-- [RELEASING.md](RELEASING.md) — the release process.
 
 Keep each page owning one job and link instead of repeating a long explanation.

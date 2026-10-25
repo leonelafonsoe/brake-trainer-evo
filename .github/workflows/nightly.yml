@@ -32,21 +32,27 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - run: uv sync --frozen --extra dev
+      - run: uv sync --locked --extra dev
 
       # The same gates as CI, so a nightly can never publish code that would fail a pull request.
       - uses: ./.github/actions/gates
+        with:
+          coverage: "true"
+          audit: "true"
 
       - name: Build the executable
         env:
           BRAKE_TRAINER_BUILD: ${{ github.sha }}
-        run: uv run --frozen --no-sync python scripts/build_exe.py
+        run: uv run --locked --no-sync python scripts/build_exe.py
+
+      - name: Smoke-test the packaged app
+        run: uv run --locked --no-sync python scripts/smoke_test_exe.py dist/BrakeTrainerEvo/BrakeTrainerEvo.exe
 
       - name: Name the asset
         run: Copy-Item (Get-ChildItem dist\BrakeTrainerEvo-*-windows.zip).FullName dist\BrakeTrainerEvo-nightly-windows.zip
 
       - name: Write the notes
-        run: uv run --frozen --no-sync python scripts/release_notes.py --unreleased --sha "${{ github.sha }}" --repo "${{ github.repository }}" --out nightly_notes.md
+        run: uv run --locked --no-sync python scripts/release_notes.py --unreleased --sha "${{ github.sha }}" --repo "${{ github.repository }}" --out nightly_notes.md
 
       - name: Move the nightly tag to this commit
         run: |

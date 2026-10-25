@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,7 @@ from ..outcomes import (
     LINES_REASONS,
     NOT_COUNTING_ANYWAY,
     PASS_FLAGS,
+    outcome_for_run,
     primary,
     render_outcome,
 )
@@ -24,6 +26,22 @@ from .constants import _COVERAGE_REQUIRED, _HISTORY_S
 
 if TYPE_CHECKING:
     from .engine import BrakeEngine
+
+
+def keep_fastest(
+    runs: Sequence[SectorRun], stored: SectorRun, top: int
+) -> tuple[list[SectorRun], bool, SectorStatus]:
+    """Merge a new run into the kept list: the list, whether it was kept, and its rank."""
+    kept = sorted([*runs, stored], key=lambda run: run.t)[:top]
+    accepted = any(run is stored for run in kept)
+    status = (
+        SectorStatus.BEST
+        if kept[0] is stored
+        else SectorStatus.GOOD
+        if accepted
+        else SectorStatus.SLOWER
+    )
+    return kept, accepted, status
 
 
 @dataclass(slots=True)
@@ -95,6 +113,7 @@ class PassesMixin:
         """
         if (
             self._data is None
+            or not self._settings.learning_enabled
             or run is None
             or not run.onsets
             or not run.clean
@@ -227,14 +246,7 @@ class PassesMixin:
         previous = list(data.sectors[idx])  # so a late cut report can put it back
         previous_best = min((r.t for r in previous), default=None)
         stored = SectorRun(round(t - run.t0, 3), list(run.onsets))
-        kept = sorted([*previous, stored], key=lambda r: r.t)[: self._settings.top_runs]
-        accepted = any(r is stored for r in kept)
-        if kept[0] is stored:
-            self._status[idx] = SectorStatus.BEST
-        elif accepted:
-            self._status[idx] = SectorStatus.GOOD
-        else:
-            self._status[idx] = SectorStatus.SLOWER
+        kept, accepted, self._status[idx] = keep_fastest(previous, stored, self._settings.top_runs)
 
         if learning:
             data.sectors[idx] = kept
@@ -244,12 +256,7 @@ class PassesMixin:
                 self._rebuild_zones()
                 self._save(data)
         # with learning off the colours still show how the sector compared, but nothing is stored
-        if not accepted:
-            outcome = SectorOutcome(OutcomeKind.NOT_KEPT)
-        elif learning:
-            outcome = SectorOutcome(OutcomeKind.KEPT)
-        else:
-            outcome = SectorOutcome(OutcomeKind.WOULD_KEEP)
+        outcome = outcome_for_run(accepted, learning)
         status = self._status[idx]
         self._report(
             SectorResult(

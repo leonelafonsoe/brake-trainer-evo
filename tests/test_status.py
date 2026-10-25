@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from brake_trainer.config import Settings
-from brake_trainer.models import SectorResult, SectorStatus, Snapshot
+from brake_trainer.models import (
+    DropReason,
+    OutcomeKind,
+    SectorOutcome,
+    SectorResult,
+    SectorStatus,
+    Snapshot,
+)
 from brake_trainer.ui import theme
 from brake_trainer.ui.status import status_line
 
@@ -13,8 +20,12 @@ def snap(**kw) -> Snapshot:
     return Snapshot(**{**base, **kw})
 
 
-def result(status=SectorStatus.BEST, duration=18.01, best=None, note="kept", was=None):
-    return SectorResult(1, duration, True, duration if best is None else best, note, 1, status, was)
+def result(
+    status=SectorStatus.BEST, duration=18.01, best=None, note="kept", was=None, outcome=None
+):
+    return SectorResult(
+        1, duration, True, duration if best is None else best, note, 1, status, was, outcome
+    )
 
 
 def test_nothing_to_say_when_not_live():
@@ -87,11 +98,19 @@ def test_a_result_says_how_far_off_the_sector_best_it_was():
 
 
 def test_not_counted_result_explains_why_but_warm_up_noise_is_hidden():
-    bad = result(duration=None, note="not counted · off track")
+    bad = result(
+        duration=None,
+        note="not counted · off track",
+        outcome=SectorOutcome(OutcomeKind.DROPPED, DropReason.OFF_TRACK),
+    )
     assert status_line(snap(last_result=bad, last_result_age=1.0), ST, True)[0] == (
         "S2 not counted · off track"
     )
-    warm = result(duration=None, note="not counted · warm-up lap")
+    warm = result(
+        duration=None,
+        note="not counted · warm-up lap",
+        outcome=SectorOutcome(OutcomeKind.DROPPED, DropReason.WARM_UP),
+    )
     assert status_line(snap(last_result=warm, last_result_age=1.0), ST, True)[0] == (
         "2 braking points"
     )

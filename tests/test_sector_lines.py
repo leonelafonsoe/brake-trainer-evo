@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 import pytest
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine
-from brake_trainer.models import Sample
+from brake_trainer.models import OutcomeKind, Sample
 from brake_trainer.timeline import crossing_between
 
 from .conftest import DT, LENGTH, Driver
@@ -352,6 +353,9 @@ def test_the_sectors_the_lines_arrived_too_late_for_are_timed_from_the_samples(s
 
     timed = [r for r in results if r.duration is not None]
     assert len(timed) == 5 and all(r.accepted for r in timed)
+    # A sector timed after the fact is a normal result: it carries the typed outcome the status
+    # line relies on, not just the rendered words.
+    assert all(r.outcome is not None for r in timed)
     saved = store.load("Monza", "Car A", N_SECTORS)
     # Lap 0's S2 and S3 (its S1 began mid-sector, so it stays out) plus all of lap 1.
     assert [len(runs) for runs in saved.sectors] == [1, 2, 2]
@@ -464,6 +468,29 @@ def test_a_log_with_no_splits_falls_back_to_equal_lines_and_still_times_the_firs
     # fourth lap counts live on top (its S3 is still running when the test ends: no wrap).
     assert [len(runs) for runs in saved.sectors] == [3, 4, 3]
     assert sum("no sector splits" in m for m in messages) == 1
+
+
+def test_settling_the_lines_while_paused_stores_nothing(store):
+    # A fresh track holds the passes that closed before the game's lines arrived, so they can be
+    # timed once the lines turn up. If the driver pauses learning meanwhile, giving up on the lines
+    # must not write those passes: pausing freezes the data.
+    results = []
+    engine = BrakeEngine(Settings(warmup_laps=0), store, on_sector=results.append)
+    driver = Driver(engine)
+    for _ in range(2):
+        driver.lap(CORNERS)  # no split is ever reported
+    before = store.load("Monza", "Car A", N_SECTORS).to_dict()
+
+    engine.apply_settings(replace(engine.settings, learning_enabled=False))
+    results.clear()
+    for _ in range(2):  # the third lap crossing settles for equal splits while paused
+        driver.lap(CORNERS)
+
+    assert store.load("Monza", "Car A", N_SECTORS).to_dict() == before
+    # Sectors still close and report how they compared (the colours keep working), but none of them
+    # was kept, and nothing was timed after the fact from the held passes.
+    assert results
+    assert not any(r.outcome is not None and r.outcome.kind is OutcomeKind.KEPT for r in results)
 
 
 def test_a_learned_line_is_shared_with_the_other_cars(store):

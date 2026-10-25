@@ -24,6 +24,47 @@ def _live(**over) -> ViewState:
     return ViewState(snapshot=Snapshot(track="Monza", car="Ferrari 296 GTB", **over), live=True)
 
 
+def test_the_overlay_never_takes_focus_or_a_taskbar_slot(qapp):
+    window = _window(qapp)
+
+    flags = window.windowFlags()
+    assert flags & Qt.WindowType.Tool
+    assert flags & Qt.WindowType.WindowDoesNotAcceptFocus
+    assert window.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+
+
+def test_the_glyph_buttons_have_accessible_names(qapp):
+    window = _window(qapp, Settings(learning_enabled=True))
+
+    assert window._settings_btn.accessibleName() == "Settings"
+    assert window._quit_btn.accessibleName() == "Quit"
+    assert window._learn_btn.accessibleName() == "Pause learning"
+
+    window.apply_settings(replace(window._settings, learning_enabled=False))
+    assert window._learn_btn.accessibleName() == "Resume learning"
+
+
+def test_the_default_position_is_on_the_primary_screen(qapp):
+    from PySide6.QtGui import QGuiApplication
+
+    window = _window(qapp)
+    window.move_to_default()
+
+    area = QGuiApplication.primaryScreen().availableGeometry()
+    assert area.contains(window.pos())
+
+
+def test_a_saved_position_inside_a_screen_is_restored(qapp):
+    from PySide6.QtGui import QGuiApplication
+
+    window = _window(qapp)
+    area = QGuiApplication.primaryScreen().availableGeometry()
+
+    window.place(area.x() + 10, area.y() + 10)
+
+    assert (window.x(), window.y()) == (area.x() + 10, area.y() + 10)
+
+
 def test_waiting_for_the_game_is_quiet(qapp):
     window = _window(qapp)
 

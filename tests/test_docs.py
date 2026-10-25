@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,9 +33,26 @@ def test_readme_lists_every_top_level_module():
     assert not missing, f"README project layout is missing: {', '.join(missing)}"
 
 
+def test_every_docs_page_is_linked_from_the_readme():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    missing = sorted(
+        path.name for path in (ROOT / "docs").glob("*.md") if f"docs/{path.name}" not in readme
+    )
+    assert not missing, f"README does not link: {', '.join(missing)}"
+
+
+def test_the_agents_target_version_matches_the_package():
+    from brake_trainer import __version__
+
+    text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    match = re.search(r"This branch targets \*\*(\d+\.\d+\.\d+)\*\*", text)
+    assert match is not None, "AGENTS.md lost its 'This branch targets **X.Y.Z**' line"
+    assert match.group(1) == __version__
+
+
 def test_data_doc_matches_the_log_rotation():
     from brake_trainer import logsetup
 
-    doc = (ROOT / "docs" / "DATA.md").read_text(encoding="utf-8")
+    doc = (ROOT / "docs" / "GAME_DATA.md").read_text(encoding="utf-8")
     size_mb = logsetup._MAX_BYTES // 1_000_000
     assert f"about {size_mb} MB x {logsetup._BACKUPS}" in doc

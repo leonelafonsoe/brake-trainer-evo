@@ -5,21 +5,21 @@ from __future__ import annotations
 import contextlib
 import logging
 import sys
-from dataclasses import replace
-from typing import Any
 
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
+from . import __version__
 from .audio import AudioPlayer
-from .config import Settings, SettingsHolder, load_settings, save_settings
+from .config import SettingsHolder, load_settings, save_settings
+from .controller import AppController
 from .logsetup import configure_logging, debug_requested_on_startup, set_debug
 from .paths import data_dir, settings_path
 from .storage import TrackStore
 from .ui import theme
 from .ui.icon import app_icon
 from .ui.overlay import OverlayWindow
-from .ui.settings_window import SettingsWindow
+from .ui.settings import SettingsWindow
 from .ui.worker import EngineWorker
 
 log = logging.getLogger("brake_trainer")
@@ -28,15 +28,19 @@ log = logging.getLogger("brake_trainer")
 _app_mutex: int | None = None
 
 
-def _create_app_mutex() -> None:
-    """Create the named mutex the installer checks before replacing a running program."""
+def _create_app_mutex() -> bool:
+    """Create the installer's named mutex; return whether this is the first instance."""
     global _app_mutex
     if sys.platform != "win32":
-        return
-    with contextlib.suppress(Exception):
+        return True
+    try:
         import ctypes
 
-        _app_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "BrakeTrainerEvo.App")
+        kernel32 = ctypes.windll.kernel32
+        _app_mutex = kernel32.CreateMutexW(None, False, "BrakeTrainerEvo.App")
+        return kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+    except Exception:  # pragma: no cover - ctypes failure must not stop the app
+        return True
 
 
 def _set_taskbar_identity() -> None:
@@ -53,11 +57,16 @@ def _set_taskbar_identity() -> None:
 def main() -> int:
     forced_debug = debug_requested_on_startup(sys.argv)  # --debug / BRAKE_TRAINER_DEBUG
     configure_logging(debug=forced_debug)
-    _create_app_mutex()
+    if not _create_app_mutex():
+        log.info("Brake Trainer EVO is already running; exiting")
+        return 0
     _set_taskbar_identity()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Brake Trainer EVO")
+    app.setApplicationVersion(__version__)
+    app.setStyle("Fusion")  # a consistent base for the dark QSS on Windows
+    app.setPalette(theme.palette())
     app.setStyleSheet(theme.STYLE)
     app.setWindowIcon(app_icon())
     app.setQuitOnLastWindowClosed(False)  # the overlay can be hidden; quit explicitly
@@ -75,34 +84,22 @@ def main() -> int:
     settings_window = SettingsWindow(lambda: holder.value, store)
 
     toggles: dict[str, QAction] = {}  # tray checkboxes by settings field, kept in sync
-    save_warning_shown = False
 
-    def apply(settings: Settings) -> None:
-        nonlocal save_warning_shown
-        holder.value = settings
-        if not save_settings(settings, settings_path()) and not save_warning_shown:
-            # Applying still works for this session; make the risk visible instead of losing the
-            # change silently at exit.
-            save_warning_shown = True
-            log.error("Could not save settings to %s", settings_path())
-            QMessageBox.warning(
-                settings_window,
-                "Settings not saved",
-                "The settings could not be written to:\n"
-                f"{settings_path()}\n\n"
-                "They apply for this session, but may be lost when the app exits. "
-                "Check that the folder is writable.",
-            )
-        worker.update_settings(settings)
-        overlay.apply_settings(settings)
-        set_debug(forced_debug or settings.debug_logging)  # takes effect immediately
-        for field, action in toggles.items():
-            action.blockSignals(True)
-            action.setChecked(getattr(settings, field))
-            action.blockSignals(False)
+    def warn(message: str) -> None:
+        QMessageBox.warning(settings_window, "Settings not saved", message)
 
-    def update(**changes: Any) -> None:
-        apply(replace(holder.value, **changes))
+    controller = AppController(
+        holder=holder,
+        worker=worker,
+        overlay=overlay,
+        window=settings_window,
+        toggles=toggles,
+        save=save_settings,
+        settings_path=settings_path,
+        set_debug=set_debug,
+        forced_debug=forced_debug,
+        warn=warn,
+    )
 
     def show_settings() -> None:
         settings_window.show()
@@ -118,12 +115,12 @@ def main() -> int:
     worker.game_closed.connect(lambda: app.quit() if holder.value.close_with_game else None)
     overlay.settings_requested.connect(show_settings)
     overlay.quit_requested.connect(app.quit)
-    overlay.toggle_on_top.connect(lambda on: update(overlay_always_on_top=on))
-    overlay.toggle_learning.connect(lambda on: update(learning_enabled=on))
-    overlay.moved.connect(lambda x, y: update(overlay_x=x, overlay_y=y))
-    settings_window.applied.connect(apply)
+    overlay.toggle_on_top.connect(controller.set_always_on_top)
+    overlay.toggle_learning.connect(controller.set_learning)
+    overlay.moved.connect(controller.move_overlay)
+    settings_window.applied.connect(controller.apply)
     settings_window.edit_requested.connect(worker.request_edit)
-    worker.data_changed.connect(settings_window.refresh_data)
+    worker.data_changed.connect(settings_window.refresh_data_if_visible)
     settings_window.test_cue.connect(lambda kind: audio.play(kind, force=True))
 
     # --- tray icon (a way back to the settings even when the overlay is click-through)
@@ -131,14 +128,14 @@ def main() -> int:
     tray.setToolTip("Brake Trainer EVO")
     menu = QMenu()
     menu.addAction("Settings…", show_settings)
-    for field, text in (
-        ("learning_enabled", "Learn braking points"),
-        ("overlay_always_on_top", "Overlay always on top"),
-        ("overlay_click_through", "Overlay click-through"),
+    for field, text, setter in (
+        ("learning_enabled", "Learn braking points", controller.set_learning),
+        ("overlay_always_on_top", "Overlay always on top", controller.set_always_on_top),
+        ("overlay_click_through", "Overlay click-through", controller.set_click_through),
     ):
         action = QAction(text, menu, checkable=True)
         action.setChecked(getattr(holder.value, field))
-        action.toggled.connect(lambda on, f=field: update(**{f: on}))
+        action.toggled.connect(lambda on, apply=setter: apply(on))
         menu.addAction(action)
         toggles[field] = action
     menu.addAction("Show overlay", show_overlay)
@@ -148,23 +145,7 @@ def main() -> int:
     tray.setContextMenu(menu)
     tray.show()
 
-    def shutdown() -> None:
-        log.info("Shutting down")
-        if not save_settings(holder.value, settings_path()):
-            log.error("Could not save settings to %s", settings_path())
-        worker.request_stop()
-        if not worker.wait(5000):
-            # A live QThread must not be destroyed when main() returns. terminate() is a last
-            # resort: it can skip the engine's final flush, so say so rather than hiding it.
-            log.error(
-                "Telemetry worker did not stop within 5 s; terminating it "
-                "(its final data flush may be lost)"
-            )
-            worker.terminate()
-            if not worker.wait(1000):
-                log.error("Telemetry worker is still running after terminate(); exiting anyway")
-
-    app.aboutToQuit.connect(shutdown)
+    app.aboutToQuit.connect(controller.shutdown)
 
     overlay.place(holder.value.overlay_x, holder.value.overlay_y)
     overlay.show()

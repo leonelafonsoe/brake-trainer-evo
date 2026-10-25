@@ -9,9 +9,8 @@ themselves. It is not the manual: the detailed pages are linked.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution rules, fixtures, AI-assisted policy.
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — full setup, checks and change recipes.
 - [docs/DESIGN.md](docs/DESIGN.md) — architecture and the reasons behind it.
-- [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) — the behaviour the tests protect.
-- [docs/DATA.md](docs/DATA.md) — storage formats, compatibility and failure policy.
-- [docs/TELEMETRY.md](docs/TELEMETRY.md) — game data, the SDK and the game log.
+- [docs/GUIDE.md](docs/GUIDE.md) — the behaviour the tests protect, plus troubleshooting.
+- [docs/GAME_DATA.md](docs/GAME_DATA.md) — storage formats, compatibility, game data and the log.
 - [tests/fixtures/README.md](tests/fixtures/README.md) — real-evidence fixture rules.
 
 ## Setup
@@ -36,11 +35,11 @@ Run it from source with `uv run python -m brake_trainer` (or `uv run brake-train
 
 ## Gates
 
-Run all of these before calling a change done. They are the same gates CI, Nightly and Release
-use (`.github/actions/gates/action.yml`):
+Run all of these before calling a change done. CI runs the same gates (`.github/actions/gates/action.yml`
+plus the pre-commit step):
 
 ```bash
-uv sync --frozen --extra dev
+uv sync --locked --extra dev
 uv run pre-commit run --all-files
 uv run ruff format --check .
 uv run ruff check .
@@ -48,8 +47,9 @@ uv run mypy
 uv run pytest -q -W error
 uv run pytest -q -W error --cov   # enforces the coverage floor
 uv run python scripts/gen_settings_doc.py --check
-uv run python scripts/release_notes.py --tag v0.5.0 --check
 ```
+
+Before tagging a release, also run `uv run python scripts/release_notes.py --tag vX.Y.Z --check`.
 
 - A warning is an error (`filterwarnings = ["error"]`). Fix the warning; do not filter it away.
 - Each test has a 60-second timeout, so a hang fails instead of blocking CI.
@@ -68,8 +68,9 @@ Keep these boundaries; they are what makes the app testable and the data safe.
   Inject side effects so tests can run without a game or a display.
 - **Provenance** — `metadata` and the build/version from `buildinfo` assemble what a saved file
   records.
-- **UI** — `ui/*` and `app`. Thin. `ui/status.py` keeps the status-line decision as a pure
-  function so it is testable without Qt.
+- **UI** — `ui/*`, `controller` and `app`. Thin. `ui/status.py` keeps the status-line decision as a
+  pure function and `controller.py` keeps the settings/shutdown policy Qt-free, so both are testable
+  without a display.
 
 More detail and the thread diagram: [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -93,11 +94,11 @@ More detail and the thread diagram: [docs/DESIGN.md](docs/DESIGN.md).
   file and remove the temporary one.
 - `DATA_VERSION` guards the learned-data layout. Bump it when a change to `TrackData.to_dict`
   would make an older build misread a file, and add a fixture plus a round-trip/migration test.
-- `SETTINGS_VERSION` guards settings. Bump it when renaming or retiring keys; unknown keys from a
-  newer file are preserved, while retired keys from older files are dropped.
+- `SETTINGS_VERSION` guards settings. Bump it when renaming or retiring keys: a file with any other
+  version is archived and the app starts from defaults. There is no migration code.
 - Archive by move, do not delete, when a file is unusable. Deleting learned data is a user action.
 
-Formats and the full policy: [docs/DATA.md](docs/DATA.md).
+Formats and the full policy: [docs/GAME_DATA.md](docs/GAME_DATA.md#files).
 
 ## Change recipes
 
@@ -107,17 +108,17 @@ Use the detailed recipes in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). In short
   default reference to `Settings`, regenerate `docs/SETTINGS.md`, and test the round-trip/clamping.
   If the engine uses it live, apply it in `apply_settings`.
 - **Game-log parser** — start from a real, anonymized excerpt in `tests/fixtures/game_log/`; add
-  the smallest test for `parse_line`/`line_time`; update `docs/TELEMETRY.md` if the format is
+  the smallest test for `parse_line`/`line_time`; update `docs/GAME_DATA.md` if the format is
   explained there. Never invent a log format.
 - **Learning or sectors** — use the synthetic `Driver` in `tests/conftest.py`; keep crossings
   interpolated between frames; test the boundary, teleport and deferred-line cases you touch.
-  Update `docs/HOW_IT_WORKS.md`.
+  Update `docs/GUIDE.md`.
 - **Storage schema** — bump the version, keep an old fixture loading, test round-trip and failure
-  paths, and update `docs/DATA.md`.
+  paths, and update `docs/GAME_DATA.md`.
 - **UI** — add an offscreen test (module-level `pytest.mark.usefixtures("close_qt_windows")` for
   widgets); feed `ViewState` in, assert what is shown. Do not put learning logic in the UI.
-- **Release** — follow [docs/RELEASING.md](docs/RELEASING.md). Bump once, add the changelog
-  section, run the release check, then push the tag. The workflow is fail-closed.
+- **Release** — follow [the release pipeline](docs/DEVELOPMENT.md#release-pipeline). Bump once, add
+  the changelog section, run the release check, then push the tag. The workflow is fail-closed.
 
 ## Fixtures
 
@@ -128,11 +129,9 @@ input. Full rules: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Docs and generated files
 
-- `docs/HOW_IT_WORKS.md` — behaviour.
+- `docs/GUIDE.md` — behaviour and troubleshooting.
 - `docs/DESIGN.md` — why.
-- `docs/TELEMETRY.md` — SDK and game log.
-- `docs/TROUBLESHOOTING.md` — symptom and action.
-- `docs/DATA.md` — file formats and compatibility.
+- `docs/GAME_DATA.md` — game data, SDK, game log, file formats and compatibility.
 - `docs/SETTINGS.md` is generated. **Never hand-edit it**; run
   `uv run python scripts/gen_settings_doc.py`.
 
@@ -141,7 +140,7 @@ Link instead of duplicating a long explanation, and keep each page owning one jo
 ## Release and versioning
 
 - The version lives in `pyproject.toml` and `src/brake_trainer/__init__.py`; they must match.
-- This branch targets **0.4.0**. Bump only as part of a release.
+- This branch targets **0.5.0**. Bump only as part of a release.
 - A version tag must match the project version and have a non-empty changelog section; `## Unreleased`
   must be empty when tagging.
 - Pre-release tags use the hyphen form (`v0.4.0-rc1`); the Release workflow treats only those as

@@ -45,6 +45,10 @@ def _winsound_backend(wav: bytes) -> None:
     winsound.PlaySound(wav, winsound.SND_MEMORY)  # blocks for the length of the beep
 
 
+_WARN_MS = 90  # tone lengths are fixed; the pitch and the volume are what a driver tunes
+_HERE_MS = 120
+
+
 class AudioPlayer:
     """Plays the warn / here cues. Each beep runs on its own short-lived thread."""
 
@@ -58,16 +62,16 @@ class AudioPlayer:
         self._cache: dict[tuple[int, int, float], bytes] = {}
 
     def _tone(self, kind: CueKind, st: Settings) -> bytes:
-        hz, ms = (st.warn_hz, st.warn_ms) if kind is CueKind.WARN else (st.here_hz, st.here_ms)
+        hz, ms = (st.warn_hz, _WARN_MS) if kind is CueKind.WARN else (st.here_hz, _HERE_MS)
         key = (hz, ms, round(st.volume, 2))
         if key not in self._cache:
             self._cache[key] = make_tone(hz, ms, st.volume)
         return self._cache[key]
 
     def play(self, kind: CueKind, *, force: bool = False) -> None:
-        """Play a cue. ``force`` ignores the sound-enabled switch (used by the test buttons)."""
+        """Play a cue. ``force`` ignores a zero volume (used by the test buttons)."""
         st = self._get_settings()
-        if self._backend is None or not (st.sound_enabled or force):
+        if self._backend is None or (st.volume <= 0 and not force):
             return
         threading.Thread(target=self._run, args=(self._tone(kind, st),), daemon=True).start()
 

@@ -13,8 +13,9 @@ from typing import Any, Literal
 
 Kind = Literal["bool", "int", "optint", "float", "text"]
 
-# Bumped when a stored setting needs to change meaning; see Settings.from_dict.
-SETTINGS_VERSION = 3
+# Bumped when the stored settings layout changes. A file with any other version is archived and the
+# app starts from defaults (see config.load_settings): there is no migration code to keep.
+SETTINGS_VERSION = 4
 
 TAB_ORDER: tuple[str, ...] = ("Cues", "Detection", "Sectors", "Overlay", "App", "Diagnostics")
 
@@ -39,7 +40,6 @@ class SettingSpec:
     suffix: str = ""
     tip: str = ""
     special: str = ""  # text shown for the minimum value, e.g. "Off"
-    internal: bool = False  # not a user setting and never documented
 
     @property
     def visible(self) -> bool:
@@ -53,14 +53,6 @@ class SettingSpec:
 
 
 SPECS: tuple[SettingSpec, ...] = (
-    SettingSpec(
-        name="sound_enabled",
-        kind="bool",
-        default=True,
-        tab="Cues",
-        label="Sound cues",
-        tip="Turn all cue sounds on or off. The overlay keeps working.",
-    ),
     SettingSpec(
         name="volume",
         kind="float",
@@ -84,19 +76,6 @@ SPECS: tuple[SettingSpec, ...] = (
         decimals=1,
         suffix=" s",
         tip="The low beep sounds this many seconds before the braking point.",
-    ),
-    SettingSpec(
-        name="min_lead_m",
-        kind="float",
-        default=35.0,
-        tab="Cues",
-        label="Minimum warning distance",
-        lo=5.0,
-        hi=300.0,
-        step=5,
-        decimals=0,
-        suffix=" m",
-        tip="At low speed the warning never comes closer than this.",
     ),
     SettingSpec(
         name="here_m",
@@ -134,18 +113,6 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Pitch of the low warning beep (braking point coming up).",
     ),
     SettingSpec(
-        name="warn_ms",
-        kind="int",
-        default=90,
-        tab="Cues",
-        label="Warning length",
-        lo=30,
-        hi=500,
-        step=10,
-        suffix=" ms",
-        tip="Length of the warning beep.",
-    ),
-    SettingSpec(
         name="here_hz",
         kind="int",
         default=1800,
@@ -158,18 +125,6 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Pitch of the high beep (you are at the braking point).",
     ),
     SettingSpec(
-        name="here_ms",
-        kind="int",
-        default=120,
-        tab="Cues",
-        label="Brake-now length",
-        lo=30,
-        hi=500,
-        step=10,
-        suffix=" ms",
-        tip="Length of the high beep.",
-    ),
-    SettingSpec(
         name="brake_on",
         kind="float",
         default=0.25,
@@ -179,17 +134,6 @@ SPECS: tuple[SettingSpec, ...] = (
         hi=0.95,
         step=0.05,
         tip="Pedal position that counts as the start of a braking event.",
-    ),
-    SettingSpec(
-        name="brake_off",
-        kind="float",
-        default=0.1,
-        tab="Detection",
-        label="Braking ends below",
-        lo=0.01,
-        hi=0.9,
-        step=0.01,
-        tip="Pedal position below which a braking event ends.",
     ),
     SettingSpec(
         name="min_peak",
@@ -233,7 +177,10 @@ SPECS: tuple[SettingSpec, ...] = (
         default=True,
         tab="Sectors",
         label="Learn braking points",
-        tip="Off = cues still play, but nothing is saved or changed (e.g. during a race).",
+        tip=(
+            "Off = cues still play, but no braking points or sector times are saved or changed"
+            " (e.g. during a race)."
+        ),
     ),
     SettingSpec(
         name="warmup_laps",
@@ -251,14 +198,6 @@ SPECS: tuple[SettingSpec, ...] = (
         special="Off",
     ),
     SettingSpec(
-        name="skip_invalid_sectors",
-        kind="bool",
-        default=True,
-        tab="Sectors",
-        label="Skip sector if lap invalidated",
-        tip="A sector where the game invalidates your lap (track limits, cuts) is not saved.",
-    ),
-    SettingSpec(
         name="top_runs",
         kind="int",
         default=3,
@@ -267,16 +206,6 @@ SPECS: tuple[SettingSpec, ...] = (
         lo=1,
         hi=10,
         tip="Cue points are the median of these runs. 1 = copy your single best run.",
-    ),
-    SettingSpec(
-        name="own_runs_to_replace_ref",
-        kind="int",
-        default=2,
-        tab="Sectors",
-        label="Own runs before leaving reference",
-        lo=1,
-        hi=10,
-        tip="With a new car, borrowed points are used until you have this many runs.",
     ),
     SettingSpec(
         name="reference_car",
@@ -367,7 +296,7 @@ SPECS: tuple[SettingSpec, ...] = (
         name="telemetry_hz",
         kind="float",
         default=60.0,
-        tab="App",
+        tab="Diagnostics",
         label="Telemetry rate",
         lo=5.0,
         hi=60.0,
@@ -377,7 +306,8 @@ SPECS: tuple[SettingSpec, ...] = (
         tip=(
             "How often telemetry is read. Higher makes live data a little smoother; 60 is plenty."
             " Sector lines are interpolated between samples rather than snapped to them, so it can"
-            " refine the estimate only up to the rate the game publishes."
+            " refine the estimate only up to the rate the game publishes. A change applies the next"
+            " time telemetry starts (after a restart or a reconnection), not to the live capture."
         ),
     ),
     SettingSpec(
@@ -402,12 +332,6 @@ SPECS: tuple[SettingSpec, ...] = (
         kind="optint",
         default=None,
     ),
-    SettingSpec(
-        name="settings_version",
-        kind="int",
-        default=3,
-        internal=True,
-    ),
 )
 
 SPEC_BY_NAME: dict[str, SettingSpec] = {spec.name: spec for spec in SPECS}
@@ -420,6 +344,4 @@ OPTIONAL_INT: frozenset[str] = frozenset(spec.name for spec in SPECS if spec.kin
 TABS: dict[str, list[SettingSpec]] = {
     tab: [spec for spec in SPECS if spec.tab == tab] for tab in TAB_ORDER
 }
-HIDDEN: tuple[SettingSpec, ...] = tuple(
-    spec for spec in SPECS if spec.tab is None and not spec.internal
-)
+HIDDEN: tuple[SettingSpec, ...] = tuple(spec for spec in SPECS if spec.tab is None)

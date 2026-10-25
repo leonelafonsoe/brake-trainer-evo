@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import errno
 import json
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from brake_trainer import __version__
+from brake_trainer import config as config_module
 from brake_trainer import storage as storage_module
 from brake_trainer.buildinfo import build_id
 from brake_trainer.config import SETTINGS_VERSION, Settings, load_settings, save_settings
@@ -27,7 +27,17 @@ def test_settings_roundtrip(tmp_path):
 
 def test_settings_ignore_bad_values_and_clamp(tmp_path):
     path = tmp_path / "s.json"
-    path.write_text(json.dumps({"volume": 7, "lead_s": "fast", "bogus": 1, "top_runs": True}))
+    path.write_text(
+        json.dumps(
+            {
+                "settings_version": SETTINGS_VERSION,
+                "volume": 7,
+                "lead_s": "fast",
+                "bogus": 1,
+                "top_runs": True,
+            }
+        )
+    )
     st = load_settings(path)
     assert st.volume == 1.0
     assert st.lead_s == Settings().lead_s
@@ -41,76 +51,86 @@ def test_settings_missing_or_corrupt_file(tmp_path):
     assert load_settings(bad) == Settings()
 
 
-def test_a_retired_setting_is_ignored_and_the_version_advances():
-    # Version 2 stored `cut_give_back_m`; version 3 trusts each event's own position instead. The
-    # key is now unknown and ignored, and the file is written back without it.
-    st = Settings.from_dict({"settings_version": 2, "cut_give_back_m": 500.0, "volume": 0.4})
-    assert st.settings_version == SETTINGS_VERSION
-    assert st.volume == 0.4
-    assert "cut_give_back_m" not in st.to_dict()
-
-
-def test_the_real_0_3_11_settings_migrate_once(tmp_path):
-    # The shared 0.3.11 file has no version and stores the retired cut setting.
+def test_a_corrupt_settings_file_is_moved_aside_not_overwritten(tmp_path):
     path = tmp_path / "settings.json"
-    path.write_text(
-        (FIXTURES / "settings_0.3.11.json").read_text(encoding="utf-8"), encoding="utf-8"
-    )
-    st = load_settings(path)
-    assert st.settings_version == SETTINGS_VERSION
-    assert st.volume == 0.6  # the rest of the real file is kept
-    assert st.debug_logging is True
+    original = "{not json"
+    path.write_text(original, encoding="utf-8")
 
-    save_settings(st, path)
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    assert raw["settings_version"] == SETTINGS_VERSION
-    assert "cut_give_back_m" not in raw  # the retired key is not written again
+    assert load_settings(path) == Settings()
+
+    assert not path.exists()
+    archived = list(tmp_path.glob("settings.invalid-*.json"))
+    assert len(archived) == 1
+    assert archived[0].read_text(encoding="utf-8") == original
 
 
-def test_a_newer_settings_file_is_kept_and_warned_about(caplog):
-    # A file written by a newer build must not be rewritten with this build's version: that would
-    # make the next run migrate it again and lose whatever the newer build chose.
-    raw = {"settings_version": SETTINGS_VERSION + 1, "volume": 0.4}
-    with caplog.at_level(logging.WARNING, logger="brake_trainer.config"):
-        st = Settings.from_dict(raw)
-    assert st.settings_version == SETTINGS_VERSION + 1
-    assert st.volume == 0.4
-    assert any("newer version" in record.message for record in caplog.records)
-
-
-def test_a_newer_settings_file_keeps_unknown_keys_on_save(tmp_path):
+def test_settings_are_never_written_when_the_unreadable_file_cannot_be_moved(tmp_path, monkeypatch):
     path = tmp_path / "settings.json"
-    path.write_text(
-        json.dumps(
-            {
-                "settings_version": SETTINGS_VERSION + 1,
-                "volume": 0.4,
-                "future_option": {"nested": True},
-            }
-        ),
-        encoding="utf-8",
-    )
+    original = "{not json"
+    path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(config_module, "_archive_settings", lambda _path, _reason: False)
 
-    st = load_settings(path)
-    assert st.volume == 0.4
-    assert st.settings_version == SETTINGS_VERSION + 1
-    assert save_settings(st, path)
+    assert load_settings(path) == Settings()
+    assert not save_settings(Settings(volume=0.2), path)
+    assert path.read_text(encoding="utf-8") == original
 
-    saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["settings_version"] == SETTINGS_VERSION + 1
-    assert saved["future_option"] == {"nested": True}
-    assert saved["volume"] == 0.4
+
+def test_non_finite_settings_fall_back_to_the_default():
+    assert Settings.from_dict({"volume": float("nan"), "lead_s": float("inf")}) == Settings()
+    assert Settings(volume=float("nan")).clamped().volume == Settings().volume
+
+
+@pytest.mark.parametrize("version", [SETTINGS_VERSION - 1, SETTINGS_VERSION + 1])
+def test_a_settings_file_from_another_version_is_archived_not_migrated(tmp_path, version):
+    # There is no per-version migration: a layout this build does not know is kept as evidence and
+    # the app starts from defaults.
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"settings_version": version, "volume": 0.4}), encoding="utf-8")
+
+    assert load_settings(path) == Settings()
+
+    assert not path.exists()
+    archived = list(tmp_path.glob("settings.version-*.json"))
+    assert len(archived) == 1
+    assert json.loads(archived[0].read_text(encoding="utf-8"))["volume"] == 0.4
+
+
+def test_the_real_0_3_11_settings_file_is_archived(tmp_path):
+    # The shared 0.3.11 file predates `settings_version` and stores retired keys. It is evidence of
+    # the old layout, so it is moved aside intact rather than partly loaded.
+    original = (FIXTURES / "settings_0.3.11.json").read_text(encoding="utf-8")
+    path = tmp_path / "settings.json"
+    path.write_text(original, encoding="utf-8")
+
+    assert load_settings(path) == Settings()
+
+    archived = list(tmp_path.glob("settings.version-0-*.json"))
+    assert len(archived) == 1
+    assert archived[0].read_text(encoding="utf-8") == original
 
 
 def test_save_settings_reports_a_failed_write(tmp_path):
     path = tmp_path / "settings.json"
     path.mkdir()  # replacing a file with a directory must fail
     assert not save_settings(Settings(), path)
+    assert not list(tmp_path.glob("*.tmp"))  # the temporary file is not left behind
 
 
-def test_brake_off_stays_below_brake_on():
-    st = Settings(brake_on=0.2, brake_off=0.5).clamped()
-    assert st.brake_off < st.brake_on
+def test_a_failed_settings_fsync_keeps_the_old_file_and_removes_the_temporary(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "settings.json"
+    assert save_settings(Settings(volume=0.2), path)
+    original = path.read_text(encoding="utf-8")
+
+    def full(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(config_module.os, "fsync", full)
+    assert not save_settings(Settings(volume=0.9), path)
+
+    assert path.read_text(encoding="utf-8") == original
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 def test_verbose_logging_is_off_by_default_and_round_trips(tmp_path):
@@ -217,7 +237,9 @@ def test_store_apply_does_not_overwrite_an_unsafe_file(store, monkeypatch):
     monkeypatch.setattr(store, "_quarantine", lambda path, status: None)
 
     store.load("Monza", "Car A", 3)  # blocks the path
-    assert not store.apply(DeleteSector("Monza", "Car A", 0))
+    refused = store.apply(DeleteSector("Monza", "Car A", 0))
+    assert not refused.ok and not refused.changed  # a refusal, not a successful no-op
+    assert refused.detail
     assert path.read_text(encoding="utf-8") == original
 
 
@@ -289,6 +311,11 @@ def test_an_edit_that_cannot_be_written_is_a_failure_not_a_no_op(store, monkeypa
     assert no_op.ok and not no_op.changed
 
 
+def test_an_edit_for_an_entry_that_was_never_stored_is_a_successful_no_op(store):
+    result = store.apply(DeleteSector("Monza", "Never driven", 0))
+    assert result.ok and not result.changed and not result.detail
+
+
 def test_a_delete_that_cannot_remove_the_file_is_reported(store):
     # The path is a directory, so unlink fails with a real OSError rather than a mocked one.
     (store.directory / "Monza__Car_A.json").mkdir(parents=True)
@@ -323,6 +350,33 @@ def test_quarantine_never_overwrites_an_earlier_file(store, monkeypatch):
         "Monza__Car_A.corrupt-20261024-120000.json",
         "Monza__Car_A.corrupt-20261024-120000-1.json",
     }
+
+
+def test_a_legacy_name_is_resolved_only_once_per_identity(store, monkeypatch):
+    # Every sector close saves. Now that a legacy file is read to check whose it is, that read must
+    # happen when the name is resolved, not on every save.
+    write_path = _data("Car A", 1, 18.0)
+    legacy = store.directory / "Monza__Car_A.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps(write_path.to_dict()), encoding="utf-8")
+
+    calls: list[Path] = []
+    original = store._stored_names
+    monkeypatch.setattr(store, "_stored_names", lambda p: calls.append(p) or original(p))
+
+    assert store.save(_data("Car A", 2, 19.0))
+    assert store.save(_data("Car A", 3, 20.0))
+
+    assert calls == [legacy]
+
+
+def test_deleting_an_entry_forgets_its_resolved_path(store):
+    assert store.save(_data("Car A", 1))
+    assert store.delete("Monza", "Car A").changed
+    assert store.load("Monza", "Car A", 3).total_runs() == 0
+
+    assert store.save(_data("Car A", 2))
+    assert store.load("Monza", "Car A", 3).total_runs() == 2
 
 
 def test_two_names_that_slug_the_same_do_not_share_a_file(store):
@@ -380,8 +434,8 @@ def test_deleting_a_run_with_a_duplicate_time_removes_the_named_one(store):
     assert not store.apply(DeleteRun("Monza", "Car A", 0, 18.0, (0.99,))).changed
     assert len(store.load("Monza", "Car A", 3).sectors[0]) == 1
 
-    # The old time-only form still works for callers that predate the onsets.
-    assert store.apply(DeleteRun("Monza", "Car A", 0, 18.0)).changed
+    # The row that is still there is named by its own onsets.
+    assert store.apply(DeleteRun("Monza", "Car A", 0, 18.0, (0.05,))).changed
     assert store.load("Monza", "Car A", 3).sectors[0] == []
 
 

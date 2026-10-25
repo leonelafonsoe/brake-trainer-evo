@@ -23,7 +23,7 @@ then beeps as you approach those points. A small transparent HUD shows the detai
 > the maintainer, who steers the work and tests it in the game. It has automated tests, but it has
 > not been through formal code review or long-term field testing. Expect rough edges, read the code
 > before you trust it, and please report bugs. AI-assisted pull requests are welcome, with a human
-> check: see [CONTRIBUTING.md](CONTRIBUTING.md) and [About this project](docs/ABOUT.md).
+> check: see [CONTRIBUTING.md](CONTRIBUTING.md) and [how this was built](#how-this-was-built).
 
 ## Features
 
@@ -51,7 +51,7 @@ Get a build from the [Releases page](https://github.com/leonelafonsoe/brake-trai
 - **Nightly**: a pre-release rebuilt after every change to `main`, for trying the newest code.
 
 The programs are not code-signed, so Windows SmartScreen may warn the first time (see
-[Troubleshooting](docs/TROUBLESHOOTING.md#installing-and-running)). Each versioned release lists its
+[Troubleshooting](docs/GUIDE.md#installing-and-running)). Each versioned release lists its
 changes and has `SHA256SUMS.txt` to verify the installer and zip. The rolling Nightly pre-release
 has only the portable zip.
 
@@ -78,7 +78,7 @@ uv run python scripts/build_exe.py --onefile  # a single .exe (slower start, mor
 ```
 
 An installer script for [Inno Setup](https://jrsoftware.org/isinfo.php) is in `packaging/installer.iss`.
-Releases are built automatically by GitHub Actions: see [docs/RELEASING.md](docs/RELEASING.md).
+Releases are built automatically by GitHub Actions: see [the release pipeline](docs/DEVELOPMENT.md#release-pipeline).
 
 The folder build is recommended. Settings, learned data and logs live in
 `%APPDATA%\BrakeTrainerEvo\`, so the program folder can be moved or deleted freely.
@@ -123,15 +123,12 @@ the top centre of the main screen.
 
 | Document | What is in it |
 | --- | --- |
-| [How it works](docs/HOW_IT_WORKS.md) | Braking events, sectors, warm-up, what is not learned, colours, reference car |
+| [Guide](docs/GUIDE.md) | Braking events, sectors, warm-up, cues, colours, status line, and troubleshooting |
 | [Settings reference](docs/SETTINGS.md) | Every setting with defaults, ranges and what it does |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Installation problems, no overlay, no sound, nothing learned |
 | [Design notes](docs/DESIGN.md) | Architecture and the reasoning behind the main decisions |
-| [Development](docs/DEVELOPMENT.md) | Setup, checks, architecture map and change recipes |
-| [Telemetry notes](docs/TELEMETRY.md) | Which game data is used, SDK quirks, caveats |
-| [Data files](docs/DATA.md) | Where files live and the format of the learned data |
-| [About this project](docs/ABOUT.md) | How it was made (AI-written), what was verified and how |
-| [Releasing](docs/RELEASING.md) | How pull requests, nightly builds and versioned releases work |
+| [Development](docs/DEVELOPMENT.md) | Setup, checks, architecture map, change recipes, release pipeline |
+| [Game data and files](docs/GAME_DATA.md) | Which game data is used, SDK quirks, log format, storage and compatibility |
+| [Release pipeline](docs/DEVELOPMENT.md#release-pipeline) | How pull requests, nightly builds and versioned releases work |
 | [Security policy](SECURITY.md) | How to report a vulnerability privately |
 | [Changelog](CHANGELOG.md) | Version history |
 
@@ -154,6 +151,7 @@ src/brake_trainer/
   paths.py         per-user app, data and log folders
   buildinfo.py     which build this is (commit or packaged identifier)
   logsetup.py      logging: rotating file + console, verbose mode
+  controller.py    settings application and shutdown policy (no Qt)
   app.py           wiring, tray icon
   ui/              overlay, settings/ (window, form, diagnostics/data/about pages), status line,
                    icon, worker thread, theme
@@ -198,8 +196,34 @@ agent, [AGENTS.md](AGENTS.md) is the short working guide. Pull requests are welc
   what the app attributes from, so every one still lands in its own sector of its own lap, and one
   for a lap that is over is named on the status line. An infraction it judges from something it does
   not expose cannot be pinned to a sector, and the app says so in its log. More in
-  [Telemetry notes](docs/TELEMETRY.md#track-limits).
+  [track limits](docs/GAME_DATA.md#track-limits).
 - Windows only (it uses the game's shared memory, `tasklist` and `winsound`).
+
+## How this was built
+
+Brake Trainer EVO is a **"vibe coded"** project: almost all of the code, tests and documentation were
+written by an AI assistant, [Claude](https://www.anthropic.com/claude) (Anthropic), over a long
+conversation with the maintainer. The maintainer decides what to build, runs it in Assetto Corsa EVO,
+and reports what they see; the assistant writes, tests and revises the code. Features such as the
+sector-based learning, the reference car, warm-up laps and the HUD style came from that back and
+forth.
+
+| Area | How it was checked |
+| --- | --- |
+| Learning engine, sectors, warm-up, validity rules, reference car, pause | Automated scenario tests with a synthetic driver on a fake track (`tests/`) |
+| Settings, data files, status line, telemetry reader logic, audio generation | Automated unit tests, with fakes for the game and the SDK |
+| Code quality | `ruff` (lint + format) and `mypy --strict`, run before each release |
+| The windows' appearance | Rendered offscreen and inspected as screenshots |
+| **Real game behaviour** (telemetry values, overlay over the game, beeps, game-exit detection, the Windows build) | **Only by the maintainer's play-testing.** The AI could not run the game or Windows |
+
+Things reasoned about but never confirmed against the real game are called out in the docs. Treat
+this as hobby software: it may have bugs the tests do not cover, especially anything that depends on
+live game data. The AI can be confidently wrong, so if a doc or comment makes a claim about the
+game, check it. It only reads telemetry and never touches the game files, which keeps the risk low,
+but see the [disclaimer](#disclaimer).
+
+AI-assisted pull requests are welcome, with a human check: see
+[CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-contributions).
 
 ## Credits
 

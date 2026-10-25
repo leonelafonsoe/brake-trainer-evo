@@ -5,8 +5,11 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 
+import pytest
+
 from brake_trainer.config import Settings
 from brake_trainer.engine import BrakeEngine
+from brake_trainer.gamelog import line_time
 from brake_trainer.models import CueKind
 
 from .replay import Replay, ReplayFrame, line_at
@@ -16,6 +19,12 @@ SPLIT = "[gameplay] [info] Received split: isStart false, isEnd false, index {in
 
 
 BASE = datetime(2026, 10, 24, 12, 0, tzinfo=UTC).timestamp()
+
+
+def test_a_replay_line_round_trips_through_the_log_parser():
+    # The harness must write the same clock the parser reads: local wall time, to the millisecond.
+    at = 1_700_000_000.125
+    assert line_time(line_at("payload", at)) == pytest.approx(at, abs=0.001)
 
 
 def test_a_replayed_cut_line_is_attributed_at_its_own_time(store):

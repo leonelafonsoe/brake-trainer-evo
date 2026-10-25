@@ -4,6 +4,74 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+### Changed
+
+- Settings no longer carry `settings_version` as a field and there is no migration code. A settings
+  file from another version (older, newer, or pre-versioning) is moved to
+  `settings.version-<n>-<stamp>.json` and the app starts from defaults, so no build rewrites a layout
+  it does not understand. `SETTINGS_VERSION` remains the schema number written into the file.
+- CI installs the lock with `uv sync --locked`, so a stale `uv.lock` fails instead of being silently
+  ignored. Dependabot now tracks the `uv` ecosystem, pre-commit hooks run in CI, and Nightly and
+  Release enforce the coverage floor.
+- The settings-application and shutdown policy moved out of `app.py` into a Qt-free `AppController`,
+  so the save-failure warning, tray sync, dialog reload and worker shutdown are tested directly. The
+  worker's game-log callbacks and idle tick now have integration tests too.
+- A legacy learned-data filename is resolved once per identity instead of being re-read on every
+  sector save.
+- The UI now uses a dark Fusion palette with visible focus and disabled states, so native controls
+  match the rest of the window. Apply is the default dialog button (Enter no longer risks Reset),
+  the overlay buttons have accessible names, and the default overlay position follows the screen
+  under the cursor.
+- An architecture test enforces that the pure layers never import Qt, the UI or the adapters, and
+  real fixture bytes are marked binary in Git so a Windows checkout cannot rewrite them.
+- Nightly and Release run `pip-audit` against the locked dependencies, and the weekly Security
+  workflow is back on the same `setup-python` release as the other workflows.
+- Documentation is six pages instead of ten: `GUIDE.md` (behaviour and troubleshooting),
+  `GAME_DATA.md` (telemetry, log, files and compatibility), `DESIGN.md`, `DEVELOPMENT.md` (including
+  the release pipeline), `SETTINGS.md`, and the README. The old pages were merged rather than
+  rewritten, so the field evidence and failure policy are unchanged.
+- Every Windows build is started once with a temporary app folder and must write its startup line,
+  so a package that cannot launch fails CI instead of being published.
+
+### Fixed
+
+- Pausing learning now freezes the data even when the game's sector lines settle while it is
+  paused: the passes held for retiming are dropped instead of being written behind the driver's back.
+- A sector timed after the fact carries the same typed outcome as one timed live, so the status line
+  never falls back to matching English text.
+- An unreadable `settings.json` is moved to `settings.invalid-<stamp>.json` instead of being replaced
+  by defaults at the next save. If it cannot be moved, settings writes are refused for the run. The
+  write is flushed to disk before the replace, and a failed write removes its temporary file.
+- A data edit that hits an unreadable or blocked file is reported as a failed edit, not as a
+  successful no-op.
+- Non-finite settings values (`NaN`/`Infinity`) fall back to their defaults instead of being stored
+  as invalid JSON.
+- The overlay is a non-activating tool window: it no longer takes keyboard focus or a taskbar slot
+  from the game.
+- A crashed telemetry worker now says so on the HUD instead of leaving it waiting for the game.
+- The settings window no longer scans the learned-data folder at startup or while it is hidden, and
+  the store's issue list is safe to read from the UI thread.
+- A settings-save failure is reported again after a later successful save, and a tray or overlay
+  change is reflected in an open settings window instead of being undone by the next Apply.
+- A second copy of the app exits instead of running a second overlay and writer.
+- An empty game-process name is treated as "unknown" instead of matching the first task list row.
+- The replay harness writes local timestamps, matching the game-log parser; the previous UTC
+  formatting made every line look hours old outside UTC.
+
+### Removed
+
+- The pre-0.9 game-log parser (`Limits: car ... tyres out changed`), the connection/UUID learning it
+  needed, and the `connect.txt` fixture. Only the current notification and split lines are read, so
+  `parse_line` is stateless and a log that already has content is skipped as a whole instead of
+  being read from the top.
+- Seven expert settings that the defaults already handled: "Sound cues" (volume 0 is silent),
+  "Minimum warning distance" (fixed at 35 m), the warning and brake-now tone lengths (fixed at
+  90/120 ms), "Braking ends below" (now always 0.15 below the start threshold), "Skip sector if lap
+  invalidated" (always on; it was a way to defeat the product's promise), and "Own runs before
+  leaving reference" (fixed at 2). The telemetry rate moved to the Diagnostics tab.
+- `SETTINGS_VERSION` is now 4, so a settings file from 0.5.0 or earlier is archived and the app
+  starts from defaults (see [GAME_DATA.md](docs/GAME_DATA.md#files)).
+
 ## 0.5.0 - 2026-10-25
 
 ### Added

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -94,15 +95,14 @@ class DeleteRun:
 
     ``time`` alone cannot name a run: two runs of one sector can have the same time (different
     laps, same pace) and the fastest list changes as you drive. ``onsets`` is the run's other
-    content, so a delete still names exactly the row the driver picked. ``None`` keeps the old
-    time-only behaviour for callers that predate it.
+    content, so a delete names exactly the row the driver picked.
     """
 
     track: str
     car: str
     sector: int
     time: float
-    onsets: tuple[float, ...] | None = None
+    onsets: tuple[float, ...]
 
 
 DataEdit = DeleteEntry | DeleteSector | DeleteRun
@@ -127,6 +127,12 @@ class TrackStore:
         self._blocked: set[Path] = set()
         self._issues: dict[Path, StorageIssue] = {}
         self._pending_issues: list[StorageIssue] = []
+        # The worker saves and the settings window lists entries; the issue/blocked maps are the
+        # only state both touch, so they are the only state that needs a lock.
+        self._lock = threading.Lock()
+        # Resolving a legacy name reads the file to check whose it is. That is fine once, but it
+        # must not happen on every save: each sector close writes.
+        self._resolved: dict[tuple[str, str], Path] = {}
 
     def _legacy_path(self, track: str, car: str) -> Path:
         """The name written before collision handling; still the first choice when it is ours."""
@@ -158,13 +164,20 @@ class TrackStore:
         different track/car pairs must never share a file, and an unreadable file must never be
         overwritten.
         """
+        key = (track, car)
+        with self._lock:
+            cached = self._resolved.get(key)
+        if cached is not None:
+            return cached
         hashed = self._hashed_path(track, car)
         if hashed.exists():
-            return hashed
-        legacy = self._legacy_path(track, car)
-        if not legacy.exists() or self._stored_names(legacy) == (track, car):
-            return legacy
-        return hashed
+            path = hashed
+        else:
+            legacy = self._legacy_path(track, car)
+            path = legacy if not legacy.exists() or self._stored_names(legacy) == key else hashed
+        with self._lock:
+            self._resolved[key] = path
+        return path
 
     def _candidates(self, track: str, car: str) -> list[Path]:
         """The files that may hold this identity, in the order to read them."""
@@ -186,16 +199,19 @@ class TrackStore:
 
     def issues(self) -> list[StorageIssue]:
         """Every unsafe file seen this process, including ones already quarantined."""
-        return [self._issues[path] for path in sorted(self._issues)]
+        with self._lock:
+            return [self._issues[path] for path in sorted(self._issues)]
 
     def take_issues(self) -> list[StorageIssue]:
         """New issues since the last call, for the engine to surface once."""
-        pending, self._pending_issues = self._pending_issues, []
-        return pending
+        with self._lock:
+            pending, self._pending_issues = self._pending_issues, []
+            return pending
 
     def _record(self, issue: StorageIssue) -> None:
-        self._issues[issue.path] = issue
-        self._pending_issues.append(issue)
+        with self._lock:
+            self._issues[issue.path] = issue
+            self._pending_issues.append(issue)
 
     def _quarantine(self, path: Path, status: LoadStatus) -> Path | None:
         """Move an unsafe file aside, returning its new path or ``None`` if that failed."""
@@ -230,7 +246,8 @@ class TrackStore:
             )
             self._record(StorageIssue(path, status, detail, quarantine))
         else:
-            self._blocked.add(path)
+            with self._lock:
+                self._blocked.add(path)
             log.error(
                 "Learned data %s could not be read (%s) and could not be moved; "
                 "it will not be overwritten",
@@ -284,7 +301,9 @@ class TrackStore:
         the temporary file is removed and the previous entry is left untouched.
         """
         path = self._target(data.track, data.car)
-        if path in self._blocked:
+        with self._lock:
+            blocked = path in self._blocked
+        if blocked:
             detail = "the file could not be read and must not be overwritten"
             log.error("Refusing to overwrite unreadable learned data %s", path.name)
             return StoreResult(ok=False, detail=detail)
@@ -361,10 +380,16 @@ class TrackStore:
             return self.delete(edit.track, edit.car)
         result = self._read(self._target(edit.track, edit.car))
         data = result.data
+        if result.status is LoadStatus.MISSING:
+            return StoreResult()  # nothing stored: a successful no-op
         if result.status is not LoadStatus.OK or data is None:
-            return StoreResult()
+            # A file that could not be read is a refusal, not "nothing to delete": the caller must
+            # report it instead of pretending the edit succeeded.
+            return StoreResult(
+                ok=False, detail=result.detail or "the stored file could not be read"
+            )
         if not 0 <= edit.sector < data.n_sectors:
-            return StoreResult()
+            return StoreResult(ok=False, detail="the stored file has no such sector")
         runs = data.sectors[edit.sector]
         if isinstance(edit, DeleteSector):
             if not runs:
@@ -372,14 +397,12 @@ class TrackStore:
             data.sectors[edit.sector] = []
         else:
             # The time alone is not an identity: two runs can share it. The onsets name the row
-            # the driver picked; an old time-only request still works, but a request that names
-            # onsets and no longer matches is a no-op rather than a wrong delete.
+            # the driver picked; a request that no longer matches is a no-op, not a wrong delete.
             index = next(
                 (
                     i
                     for i, run in enumerate(runs)
-                    if abs(run.t - edit.time) < 1e-6
-                    and (edit.onsets is None or tuple(run.onsets) == edit.onsets)
+                    if abs(run.t - edit.time) < 1e-6 and tuple(run.onsets) == edit.onsets
                 ),
                 None,
             )
@@ -391,9 +414,10 @@ class TrackStore:
     def delete(self, track: str, car: str) -> StoreResult:
         paths = [path for path in self._candidates(track, car) if path.exists()]
         if not paths:
-            for path in self._candidates(track, car):
-                self._blocked.discard(path)
-                self._issues.pop(path, None)
+            with self._lock:
+                for path in self._candidates(track, car):
+                    self._blocked.discard(path)
+                    self._issues.pop(path, None)
             return StoreResult()
         changed = False
         for path in paths:
@@ -406,8 +430,11 @@ class TrackStore:
                 return StoreResult(ok=False, detail=str(exc))
             else:
                 changed = True
-            self._blocked.discard(path)
-            self._issues.pop(path, None)
+            with self._lock:
+                self._blocked.discard(path)
+                self._issues.pop(path, None)
+        with self._lock:
+            self._resolved.pop((track, car), None)
         return StoreResult(changed=changed)
 
     def clear(self) -> int:

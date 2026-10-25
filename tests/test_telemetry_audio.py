@@ -242,6 +242,18 @@ async def test_reader_unknown_probe_never_closes(monkeypatch):
     assert await task is ExitReason.STOPPED
 
 
+def test_an_empty_process_name_never_matches_the_task_list():
+    from brake_trainer.telemetry import GameStatus, find_game_process
+
+    class Result:
+        stdout = '"System","4","Services","0","100 K"\n"explorer.exe","9","Console","1","1 K"\n'
+
+    assert find_game_process("", run=lambda *args, **kwargs: Result()).status is GameStatus.UNKNOWN
+    assert (
+        find_game_process("   ", run=lambda *args, **kwargs: Result()).status is GameStatus.UNKNOWN
+    )
+
+
 def test_open_process_watcher_is_a_noop_off_windows():
     import sys
 
@@ -264,7 +276,7 @@ def test_make_tone_is_valid_wav_and_volume_scales():
     assert peak(quiet) < peak(loud) / 5
 
 
-def test_audio_player_respects_enabled_flag():
+def test_audio_player_respects_a_zero_volume():
     played = []
     done = threading.Event()
 
@@ -272,7 +284,7 @@ def test_audio_player_respects_enabled_flag():
         played.append(wav)
         done.set()
 
-    holder = {"st": Settings(sound_enabled=False)}
+    holder = {"st": Settings(volume=0.0)}
     player = AudioPlayer(lambda: holder["st"], backend=backend)
     player.play(CueKind.WARN)
     assert played == []

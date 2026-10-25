@@ -39,6 +39,7 @@ class DataPageMixin:
         edit_requested: SignalInstance
 
         def _reveal(self, folder: Path) -> None: ...
+        def isVisible(self) -> bool: ...
 
     def _data_tab(self) -> QWidget:
         page = QWidget()
@@ -69,8 +70,15 @@ class DataPageMixin:
             row.addWidget(btn)
         row.addStretch(1)
         layout.addLayout(row)
-        self.refresh_data()
+        # No scan here: the window refreshes when it is shown. Reading the data folder while the
+        # app starts would delay the overlay and could quarantine a file without the driver ever
+        # opening Settings.
         return page
+
+    def refresh_data_if_visible(self) -> None:
+        """Refresh after a data edit, but never while the window is hidden."""
+        if self.isVisible():
+            self.refresh_data()
 
     def refresh_data(self) -> None:
         expanded = set()

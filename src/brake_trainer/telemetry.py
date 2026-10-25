@@ -104,6 +104,10 @@ def open_process_watcher(pid: int) -> ProcessWatcher | None:
 
 def find_game_process(fragment: str, run: Callable[..., Any] = subprocess.run) -> GameProbe:
     """Is a process whose name contains ``fragment`` running? Returns its name and pid if so."""
+    if not fragment.strip():
+        # An empty name would match the first row of the task list (System), which would then be
+        # watched as if it were the game. Say "unknown" instead: the reader never closes on that.
+        return GameProbe(GameStatus.UNKNOWN)
     try:
         flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
         out = run(

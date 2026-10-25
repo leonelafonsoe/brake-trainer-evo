@@ -155,11 +155,6 @@ def test_status_uses_the_typed_outcome_before_the_note_text():
     )
 
 
-def test_a_hand_built_result_still_uses_the_note_fallback():
-    warm = SectorResult(1, None, False, None, "not counted · finding the sector lines")
-    assert status_line(_snapshot(warm), Settings(), True)[0] == "1 braking points"
-
-
 def test_already_out_reads_the_remembered_outcome_not_its_text(store):
     engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
     # The map stores outcomes, not the driver-facing note: any dropped outcome is remembered,

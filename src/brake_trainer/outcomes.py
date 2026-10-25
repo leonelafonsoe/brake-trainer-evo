@@ -51,6 +51,13 @@ _ACCEPTED_WORDS = {
 }
 
 
+def outcome_for_run(accepted: bool, learning: bool) -> SectorOutcome:
+    """The outcome of a completed run: kept, would be kept while paused, or not kept."""
+    if not accepted:
+        return SectorOutcome(OutcomeKind.NOT_KEPT)
+    return SectorOutcome(OutcomeKind.KEPT if learning else OutcomeKind.WOULD_KEEP)
+
+
 def primary(reasons: set[DropReason]) -> DropReason:
     """The one reason worth showing for a sector that did not count."""
     for reason in PRIORITY:
