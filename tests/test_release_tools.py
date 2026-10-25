@@ -270,6 +270,13 @@ def test_dependabot_covers_uv_and_actions():
     assert "package-ecosystem: github-actions" in config
 
 
+def test_dependabot_ignores_the_incompatible_acevo_release():
+    config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+
+    assert "dependency-name: acevo-sdk" in config
+    assert 'versions: ["0.2.x"]' in config
+
+
 def test_dependencies_are_locked_and_ci_refuses_a_stale_lock():
     assert (ROOT / "uv.lock").is_file()
 

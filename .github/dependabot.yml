@@ -5,6 +5,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # 0.2.0 withholds frames until a clean lap boundary, which starves the live overlay. Revisit
+      # after an on-track validation; see the pin comment in pyproject.toml.
+      - dependency-name: acevo-sdk
+        versions: ["0.2.x"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
