@@ -188,6 +188,31 @@ def test_changing_the_hud_scale_rebuilds_live(qapp):
     assert window._title.text() == "Monza · Ferrari 296 GTB"
 
 
+def test_changing_the_hud_scale_keeps_the_overlay_centered(qapp):
+    from PySide6.QtGui import QGuiApplication
+
+    window = _window(qapp)
+    area = QGuiApplication.primaryScreen().availableGeometry()
+    window.show()
+    qapp.processEvents()
+    window.move(
+        area.center().x() - window.width() // 2,
+        area.center().y() - window.height() // 2,
+    )
+    qapp.processEvents()
+    before = window.frameGeometry().center()
+    moved: list[tuple[int, int]] = []
+    window.moved.connect(lambda x, y: moved.append((x, y)))
+
+    window.apply_settings(replace(window._settings, hud_scale=2.0))
+    qapp.processEvents()  # the new position is emitted on the next event-loop turn
+
+    after = window.frameGeometry().center()
+    assert abs(after.x() - before.x()) <= 1
+    assert abs(after.y() - before.y()) <= 1
+    assert moved
+
+
 def test_the_distance_row_keeps_one_height(qapp):
     window = _window(qapp)
 

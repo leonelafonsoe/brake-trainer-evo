@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -273,6 +273,20 @@ class OverlayWindow(QWidget):
         self._ref = _label("", size=10, color=theme.TEXT_DIM, scale=scale)
         root.addWidget(self._ref)
 
+    def _recenter(self, center: QPoint) -> None:
+        """Keep ``center`` in place after the window grew, clamped so it stays on its screen."""
+        if not self.isVisible():
+            return
+        x = center.x() - self.width() // 2
+        y = center.y() - self.height() // 2
+        screen = QGuiApplication.screenAt(center)
+        if screen is not None:
+            area = screen.availableGeometry()
+            x = min(max(x, area.left()), max(area.left(), area.right() - self.width() + 1))
+            y = min(max(y, area.top()), max(area.top(), area.bottom() - self.height() + 1))
+        self.move(x, y)
+        self.moved.emit(self.x(), self.y())
+
     def _set_buttons_visible(self, visible: bool) -> None:
         self._learn_btn.setVisible(visible)
         self._settings_btn.setVisible(visible)
@@ -297,7 +311,12 @@ class OverlayWindow(QWidget):
         old = self._settings
         self._settings = settings
         if old.hud_scale != settings.hud_scale:
+            center = self.frameGeometry().center() if self.isVisible() else None
             self._build()  # the label fonts and fixed metrics are baked in at build time
+            if center is not None:
+                # The new content has no final height until the layout has run: recenter on the
+                # next event-loop turn, when the window has its new size.
+                QTimer.singleShot(0, lambda point=center: self._recenter(point))
         self.setWindowOpacity(settings.overlay_opacity)
         learning = settings.learning_enabled
         self._learn_btn.set_kind("pause" if learning else "play")
