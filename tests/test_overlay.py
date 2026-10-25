@@ -125,6 +125,22 @@ def test_a_long_track_and_car_name_is_truncated(qapp):
     assert len(window._title.text()) == 36
 
 
+def test_showing_the_hover_buttons_does_not_move_the_title(qapp):
+    window = _window(qapp)
+    window.show()
+    qapp.processEvents()
+    window._set_buttons_visible(False)
+    qapp.processEvents()
+    window.update_state(_live())
+    hidden = (window._dot.geometry(), window._title.geometry())
+
+    window._set_buttons_visible(True)
+    qapp.processEvents()
+    window.update_state(_live())
+
+    assert (window._dot.geometry(), window._title.geometry()) == hidden
+
+
 def test_the_distance_row_keeps_one_height(qapp):
     window = _window(qapp)
 
