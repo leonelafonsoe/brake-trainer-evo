@@ -110,6 +110,19 @@ in S3, past the 65.67% S2/S3 line; it is not read back into S2. If the sector a 
 already saved, its run is taken back (`S3 had its stored run taken back`); if it is still in
 progress, the sector is marked as not counting (`S3 won't count · off track`).
 
+### Field validation
+
+A clean field session on **Monza / Ferrari 296 GT3** (app 0.5.0, game 0.9.1) was used to check the
+premise with real timestamps. Five deliberate cuts were driven: Lesmo at 50.6% and 51.4% (S2), Ascari
+at 68.3% (S3, just after the 65.7% S2/S3 line), Parabolica at 95.7% (S3, near the start/finish seam)
+and a second Ascari cut in the same lap as the 51.4% Lesmo cut. All five were attributed to the
+expected sector; the late reads were also attributed to the correct lap.
+
+Across 18 split audits, the interpolation residual was **median 3.75 ms / 0.25 m**, **maximum
+15 ms / 0.9 m**, with both `before` and `after` signs. That is below one telemetry frame at these
+speeds and shows no systematic clock offset, so no time-offset setting is applied. The test table in
+`tests/test_cut_attribution.py` keeps the 50.6%, 51.4%, 68.3% and 95.7% cases as regressions.
+
 **Read from the line's own time.** The game buffers this log (a few KB, flushed when full), so a line
 can reach the file a minute after it was written - or after the lap it belongs to has ended - and one
 read can bring a whole lap's cuts at once. Every line carries its own timestamp, so the app attributes
