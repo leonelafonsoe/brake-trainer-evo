@@ -57,15 +57,13 @@ has only the portable zip.
 
 ## Quick start (from source)
 
-Requirements: Windows 10/11, Python 3.11 or newer, Assetto Corsa EVO.
+Requirements: Windows 10/11, Python 3.11 or newer, [uv](https://docs.astral.sh/uv/), Assetto Corsa EVO.
 
 ```powershell
 git clone https://github.com/leonelafonsoe/brake-trainer-evo
 cd brake-trainer-evo
-py -m venv .venv
-.venv\Scripts\Activate.ps1          # if scripts are blocked, see docs/TROUBLESHOOTING.md
-pip install -e ".[dev]"
-py -m brake_trainer
+uv sync --extra dev
+uv run python -m brake_trainer
 ```
 
 Start it before or after the game. For the overlay to show over the game, run the game in
@@ -75,8 +73,8 @@ work either way).
 ### Build the executable
 
 ```powershell
-py scripts/build_exe.py            # dist\BrakeTrainerEvo\BrakeTrainerEvo.exe (+ a .zip)
-py scripts/build_exe.py --onefile  # a single .exe (slower start, more antivirus false alarms)
+uv run python scripts/build_exe.py            # dist\BrakeTrainerEvo\BrakeTrainerEvo.exe (+ a .zip)
+uv run python scripts/build_exe.py --onefile  # a single .exe (slower start, more antivirus false alarms)
 ```
 
 An installer script for [Inno Setup](https://jrsoftware.org/isinfo.php) is in `packaging/installer.iss`.
@@ -172,12 +170,12 @@ without a display, the game or Windows.
 ## Development
 
 ```powershell
-pip install -e ".[dev]"
-ruff format .       # format
-ruff check .        # lint
-mypy                # type check (strict)
-pytest              # tests
-py scripts/gen_settings_doc.py   # regenerate docs/SETTINGS.md after changing settings
+uv sync --extra dev
+uv run ruff format .       # format
+uv run ruff check .        # lint
+uv run mypy                # type check (strict)
+uv run pytest              # tests
+uv run python scripts/gen_settings_doc.py   # regenerate docs/SETTINGS.md
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution rules and

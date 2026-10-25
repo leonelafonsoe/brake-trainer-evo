@@ -226,3 +226,15 @@ def test_dependabot_covers_python_and_actions():
 
     assert "package-ecosystem: pip" in config
     assert "package-ecosystem: github-actions" in config
+
+
+def test_dependencies_are_locked_and_ci_uses_the_frozen_lock():
+    assert (ROOT / "uv.lock").is_file()
+
+    for name in ("ci.yml", "nightly.yml", "release.yml"):
+        workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        assert "astral-sh/setup-uv@" in workflow, name
+        assert "uv sync --frozen --extra dev" in workflow, name
+
+    gates = (ROOT / ".github" / "actions" / "gates" / "action.yml").read_text(encoding="utf-8")
+    assert "uv run --frozen --no-sync" in gates
