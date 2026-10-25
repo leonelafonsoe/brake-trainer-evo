@@ -95,6 +95,7 @@ regenerate the settings reference after changing a setting.
 | Telemetry reader, audio, process probing | `tests/test_telemetry_audio.py` |
 | Worker thread, queueing, shutdown | `tests/test_worker.py` |
 | Overlay states and settings form | `tests/test_overlay.py`, `tests/test_settings_window.py` |
+| Tray vs dialog save-failure warning | `tests/test_notifications.py` |
 | Composition root, single instance | `tests/test_app.py` |
 | Pure layers do not import Qt/adapters | `tests/test_architecture.py` |
 | Settings application, save warnings, shutdown | `tests/test_controller.py` |
@@ -139,7 +140,7 @@ src/brake_trainer/
   audio.py        generated beeps
   logsetup.py     rotating log and verbose mode
   ui/             overlay, settings/ (window, form, diagnostics/data/about pages), status line,
-                  widgets, worker, theme, icon
+                  widgets, worker, theme, icon, notifications
   controller.py   settings application and shutdown policy (no Qt)
   app.py          wiring and tray icon
 ```

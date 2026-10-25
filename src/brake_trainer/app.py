@@ -7,7 +7,7 @@ import logging
 import sys
 
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from . import __version__
 from .audio import AudioPlayer
@@ -18,6 +18,7 @@ from .paths import data_dir, settings_path
 from .storage import TrackStore
 from .ui import theme
 from .ui.icon import app_icon
+from .ui.notifications import warn as notify_warning
 from .ui.overlay import OverlayWindow
 from .ui.settings import SettingsWindow
 from .ui.worker import EngineWorker
@@ -84,9 +85,10 @@ def main() -> int:
     settings_window = SettingsWindow(lambda: holder.value, store.directory)
 
     toggles: dict[str, QAction] = {}  # tray checkboxes by settings field, kept in sync
+    tray: QSystemTrayIcon | None = None  # assigned below, before any user action can warn
 
     def warn(message: str) -> None:
-        QMessageBox.warning(settings_window, "Settings not saved", message)
+        notify_warning(tray, settings_window, "Settings not saved", message)
 
     controller = AppController(
         holder=holder,
@@ -125,7 +127,7 @@ def main() -> int:
     settings_window.test_cue.connect(lambda kind: audio.play(kind, force=True))
 
     # --- tray icon (a way back to the settings even when the overlay is click-through)
-    tray = QSystemTrayIcon(app_icon(), app)
+    tray = QSystemTrayIcon(app_icon(), app)  # also captured by warn() above
     tray.setToolTip("Brake Trainer EVO")
     menu = QMenu()
     menu.addAction("Settings…", show_settings)
