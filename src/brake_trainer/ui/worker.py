@@ -49,7 +49,12 @@ class EngineWorker(QThread):
     # ------------------------------------------------------------------ called from the UI thread
 
     def update_settings(self, settings: Settings) -> None:
-        self._engine.apply_settings(settings)
+        """Queue new settings; the worker applies them before the next sample or tick.
+
+        The engine must only be mutated on its own thread: applying here would let a change land
+        in the middle of ``update()``, between its reads of the old settings and its rebuild.
+        """
+        self._engine.queue_settings(settings)
 
     def request_edit(self, edit: DataEdit) -> None:
         """Delete stored data (applied on the worker thread, so it cannot be undone by a save)."""

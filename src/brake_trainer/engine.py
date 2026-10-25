@@ -225,6 +225,7 @@ class BrakeEngine:
         self._on_warning = on_warning or (lambda text: None)
         self._on_data_changed = on_data_changed or (lambda: None)
         self._pending: deque[DataEdit] = deque()  # edits requested from the UI thread
+        self._pending_settings: deque[Settings] = deque()  # settings requested from the UI thread
 
         self._key: tuple[str, str] | None = None
         self._n = 0
@@ -287,9 +288,18 @@ class BrakeEngine:
         return self._settings
 
     def apply_settings(self, settings: Settings) -> None:
-        """Swap in new settings; takes effect on the next sample (zones are rebuilt)."""
+        """Swap in new settings; takes effect on the next sample (zones are rebuilt).
+
+        Only the thread that runs :meth:`update` may call this. The UI queues a change with
+        :meth:`queue_settings` instead, so it cannot land between a sample's own reads.
+        """
         self._settings = settings
         self._reload = True
+
+    def queue_settings(self, settings: Settings) -> None:
+        """Ask for new settings. Safe from any thread; applied by :meth:`apply_pending` on the
+        worker thread, before the next sample or tick."""
+        self._pending_settings.append(settings)
 
     def reset_tracking(self) -> None:
         """Forget the in-progress sector, e.g. after telemetry was interrupted."""
@@ -301,8 +311,14 @@ class BrakeEngine:
         self._pending.append(edit)
 
     def apply_pending(self) -> bool:
-        """Apply queued edits. If one touches the entry in use, it is reloaded from disk
-        (otherwise the in-memory copy would be saved back and undo the deletion)."""
+        """Apply settings and data edits queued from the UI thread.
+
+        Settings go first, so an edit that reloads the entry in use sees the current ones. If an
+        edit touches that entry, it is reloaded from disk (otherwise the in-memory copy would be
+        saved back and undo the deletion). Returns whether a data edit changed the store.
+        """
+        while self._pending_settings:
+            self.apply_settings(self._pending_settings.popleft())
         changed = False
         while self._pending:
             edit = self._pending.popleft()
