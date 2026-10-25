@@ -6,7 +6,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QByteArray, Signal
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -31,6 +32,7 @@ class SettingsWindow(FormMixin, DiagnosticsPageMixin, DataPageMixin, AboutPageMi
     test_cue = Signal(object)  # CueKind
     edit_requested = Signal(object)  # DataEdit
     data_refresh_requested = Signal()
+    geometry_changed = Signal(str)
 
     _get_settings: Callable[[], Settings]
     _data_dir: Path
@@ -50,6 +52,9 @@ class SettingsWindow(FormMixin, DiagnosticsPageMixin, DataPageMixin, AboutPageMi
         self._widgets: dict[str, tuple[SettingSpec, QWidget]] = {}
         self.setWindowTitle("Brake Trainer — Settings")
         self.setMinimumWidth(560)
+        saved_geometry = get_settings().window_geometry
+        if saved_geometry:
+            self.restoreGeometry(QByteArray.fromBase64(saved_geometry.encode("ascii")))
 
         layout = QVBoxLayout(self)
         self._tabs = QTabWidget()
@@ -92,3 +97,11 @@ class SettingsWindow(FormMixin, DiagnosticsPageMixin, DataPageMixin, AboutPageMi
         self.load(self._get_settings())
         self.data_refresh_requested.emit()
         super().showEvent(event)
+
+    def save_geometry(self) -> None:
+        """Remember the dialog's position and size, so it reopens there next time."""
+        self.geometry_changed.emit(bytes(self.saveGeometry().toBase64().data()).decode("ascii"))
+
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+        self.save_geometry()
+        super().closeEvent(event)

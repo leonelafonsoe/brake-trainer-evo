@@ -46,6 +46,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   when the tray is unavailable or hidden.
 - The history line crossings and the live sector transition now share the same interpolation helper;
   the timing arithmetic is identical and the tests pin the same results.
+- The settings window remembers its position and size, so it reopens where it was left instead of
+  jumping back to the default spot.
 - Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
   cleanup on failure), so the two cannot drift in how they protect a failed write.
 - Settings type validation now lives in `SettingSpec.coerce`: one rule for every field, including

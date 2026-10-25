@@ -184,6 +184,17 @@ def test_typed_setters_change_only_their_field(parts):
     assert (parts.holder.value.overlay_x, parts.holder.value.overlay_y) == (120, -5)
 
 
+def test_window_geometry_is_saved_without_reapplying(parts):
+    parts.controller.save_window_geometry("Z2VvbWV0cnk=")
+
+    assert parts.holder.value.window_geometry == "Z2VvbWV0cnk="
+    assert parts.save.calls == [(parts.holder.value, parts.path)]
+    assert parts.worker.settings == []  # geometry must not reapply the whole settings set
+
+    parts.controller.save_window_geometry("Z2VvbWV0cnk=")
+    assert len(parts.save.calls) == 1  # unchanged geometry is not written again
+
+
 def test_shutdown_saves_stops_and_waits_once(parts):
     parts.controller.shutdown()
 

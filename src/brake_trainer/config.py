@@ -64,6 +64,7 @@ class Settings:
     overlay_click_through: bool = DEFAULTS["overlay_click_through"]
     overlay_x: int | None = DEFAULTS["overlay_x"]
     overlay_y: int | None = DEFAULTS["overlay_y"]
+    window_geometry: str = DEFAULTS["window_geometry"]  # managed by the settings dialog
 
     def clamped(self) -> Settings:
         changes: dict[str, Any] = {}
