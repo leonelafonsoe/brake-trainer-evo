@@ -198,8 +198,8 @@ guessing:
 2026-10-24 12:00:00,000 INFO    brake_trainer: startup app=0.4.0 build=2983a85ac7d3 settings_version=3 data_version=1 debug=off log=C:\Users\you\AppData\Roaming\BrakeTrainerEvo\brake_trainer.log
 ```
 
-`build` is the source checkout's git revision (`-dirty` means it had uncommitted changes),
-`packaged` for a released executable, or the value of `BRAKE_TRAINER_BUILD` when one was set.
+`build` is the source checkout's git revision (`-dirty` means it had uncommitted changes), the
+commit baked into a packaged executable, or the value of `BRAKE_TRAINER_BUILD` when one was set.
 `settings_version` and `data_version` are the settings and learned-data layouts this build reads and
 writes. `debug` is the verbose state at start-up; turning the setting on afterwards adds
 `Verbose (debug) logging is on (setting)`.

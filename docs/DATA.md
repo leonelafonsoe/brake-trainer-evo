@@ -41,10 +41,10 @@ the session and the app shows a warning instead of failing silently.
 ```
 
 - `app_version`, `build` and `saved_at`: the version, the exact code and when it was saved (UTC).
-  `build` is the source checkout's git revision (`-dirty` when it had uncommitted changes),
-  `packaged` for a frozen executable, or the value of `BRAKE_TRAINER_BUILD` when one was set. These
-  fields are for support and debugging and are ignored when the file is loaded, so files from older
-  and newer builds still load. `settings.json` carries the same three fields.
+  `build` is the source checkout's git revision (`-dirty` when it had uncommitted changes), the
+  commit baked into a packaged executable, or the value of `BRAKE_TRAINER_BUILD` when one was set.
+  These fields are for support and debugging and are ignored when the file is loaded, so files
+  from older and newer builds still load. `settings.json` carries the same three fields.
 - `version`: the learned-data format version (`1`), separate from the app version. Unlike
   `app_version`, it decides whether the data can be read: a file written by a newer layout is
   moved to `data\quarantine\` (with a warning in the log) and a fresh entry starts, so the newer

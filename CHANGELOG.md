@@ -44,6 +44,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - Python 3.11 or newer is required (3.10 is past end of life). Pull requests and the nightly build
   run the same gates, with the tests also on Windows, so a platform-only failure is caught before
   it ships.
+- A release now fails closed: it stops if the installer cannot be built, if the portable zip, the
+  installer or the checksum file is missing or empty, or if a checksum does not match. The
+  executable is stamped with the commit it was built from, so `build=` identifies the exact code.
 
 ### Fixed
 

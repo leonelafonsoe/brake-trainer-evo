@@ -75,7 +75,10 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -e ".[dev]"
-      - run: python scripts/build_exe.py
+      - name: Build the executable
+        env:
+          BRAKE_TRAINER_BUILD: ${{ github.sha }}
+        run: python scripts/build_exe.py
       - uses: actions/upload-artifact@v4
         with:
           name: BrakeTrainerEvo-windows-${{ github.sha }}

@@ -134,6 +134,22 @@ def test_every_workflow_that_tests_or_publishes_runs_the_shared_gates():
     assert "windows-latest" in ci and "matrix" in ci  # the tests run on Windows too
 
 
+def test_the_release_workflow_fails_closed_and_stamps_the_build():
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "BRAKE_TRAINER_BUILD: ${{ github.sha }}" in workflow
+    assert "SHA256SUMS.txt" in workflow
+    assert "Checksum mismatch" in workflow
+    assert "Missing release asset" in workflow
+    # The old checksum step silently skipped whichever file was absent.
+    assert "-ErrorAction SilentlyContinue |\n            ForEach-Object" not in workflow
+    # The publish list is exact, not a glob that could match an old artifact.
+    assert "dist/BrakeTrainerEvo-${{ steps.version.outputs.value }}-setup.exe" in workflow
+    assert "dist/BrakeTrainerEvo-*-setup.exe" not in workflow
+
+    build = (ROOT / "scripts" / "build_exe.py").read_text(encoding="utf-8")
+    assert "BUILD_FILE" in build and "--add-data" in build  # the commit reaches the frozen app
+
+
 def test_bump_version_updates_everything_and_keeps_an_empty_unreleased(project):
     bump.bump(project, "0.3.9", date(2026, 10, 14))
     text = (project / "CHANGELOG.md").read_text()

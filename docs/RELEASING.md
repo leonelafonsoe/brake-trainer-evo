@@ -66,10 +66,13 @@ pre-release flag only recognises the hyphen form, so use the hyphen when tagging
 5. Watch the *Release* run on the Actions tab. When it finishes the release appears on the
    Releases page.
 
-The workflow refuses to publish if the tag does not match the version in the project, if the
-changelog has no notes for that version, or if `## Unreleased` still has notes (bump first, so the
-release body cannot be stale). `py scripts/release_notes.py --tag v0.4.0 --check` runs the same
-check locally.
+The workflow fails closed: it stops if the installer cannot be built, if the portable zip, the
+installer or the checksum file is missing or empty, or if a checksum does not match the file it
+names. The executable is stamped with the tag's commit, so `build=` in the log and in every saved
+file identifies the exact code even when the version number is reused. The workflow refuses to
+publish if the tag does not match the version in the project, if the changelog has no notes for that
+version, or if `## Unreleased` still has notes (bump first, so the release body cannot be stale).
+`py scripts/release_notes.py --tag v0.4.0 --check` runs the same check locally.
 
 ### Trying it safely
 
@@ -84,6 +87,7 @@ whole thing in a scratch fork. Delete a bad release and its tag from the Release
   could be added to `release.yml` later. The licence here is non-commercial, which may affect
   eligibility, so check their terms.
 - The workflows were written without being able to run them. If a step fails on the first run,
-  the log of that step usually shows the cause. A release now fails if the installer cannot be
-  built; fix the build before tagging again rather than shipping a release without one.
+  the log of that step usually shows the cause. A release fails if the installer cannot be built,
+  if any expected asset is missing or empty, or if a checksum does not verify; fix the build before
+  tagging again rather than shipping an incomplete release.
 - Fork pull requests run the same checks, but GitHub may ask a maintainer to approve the run first.

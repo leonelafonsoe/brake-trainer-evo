@@ -35,6 +35,8 @@ jobs:
       - uses: ./.github/actions/gates
 
       - name: Build the executable
+        env:
+          BRAKE_TRAINER_BUILD: ${{ github.sha }}
         run: python scripts/build_exe.py
 
       - name: Name the asset

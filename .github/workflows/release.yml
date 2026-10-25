@@ -38,6 +38,8 @@ jobs:
         uses: ./.github/actions/gates
 
       - name: Build the executable
+        env:
+          BRAKE_TRAINER_BUILD: ${{ github.sha }}
         run: python scripts/build_exe.py
 
       - name: Read the version
@@ -50,14 +52,48 @@ jobs:
         id: installer
         run: |
           choco install innosetup --no-progress -y
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.value }}" packaging\installer.iss
+          # The package's major version and install location can change: find the compiler rather
+          # than assuming "Inno Setup 6" under Program Files (x86).
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup*\ISCC.exe", "$env:ProgramFiles\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $iscc) { throw "Inno Setup compiler (ISCC.exe) was not found" }
+          & $iscc.FullName "/DAppVersion=${{ steps.version.outputs.value }}" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
       - name: Checksums
         run: |
-          Get-ChildItem dist\BrakeTrainerEvo-*-windows.zip, dist\BrakeTrainerEvo-*-setup.exe -ErrorAction SilentlyContinue |
-            ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
-            Set-Content dist\SHA256SUMS.txt -Encoding ascii
+          $zip = @(Get-ChildItem dist\BrakeTrainerEvo-*-windows.zip)
+          $setup = @(Get-ChildItem dist\BrakeTrainerEvo-*-setup.exe)
+          if ($zip.Count -ne 1) { throw "Expected exactly one portable zip, found $($zip.Count)" }
+          if ($setup.Count -ne 1) { throw "Expected exactly one installer, found $($setup.Count)" }
+
+          $lines = @($zip[0], $setup[0]) | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          }
+          $lines | Set-Content dist\SHA256SUMS.txt -Encoding ascii
           Get-Content dist\SHA256SUMS.txt
+
+          # Read the file back and verify it: publishing a checksum that does not match is worse
+          # than publishing no checksum at all.
+          $sums = @(Get-Content dist\SHA256SUMS.txt)
+          if ($sums.Count -ne 2) { throw "Expected 2 checksum lines, found $($sums.Count)" }
+          foreach ($line in $sums) {
+            $hash, $name = $line -split "\s+", 2
+            $file = Join-Path dist $name
+            if (-not (Test-Path $file)) { throw "Checksum names a missing file: $name" }
+            if ((Get-FileHash $file -Algorithm SHA256).Hash.ToLower() -ne $hash) {
+              throw "Checksum mismatch: $name"
+            }
+          }
+
+      - name: Assert the release assets
+        run: |
+          $version = "${{ steps.version.outputs.value }}"
+          foreach ($name in @("BrakeTrainerEvo-$version-windows.zip", "BrakeTrainerEvo-$version-setup.exe", "SHA256SUMS.txt")) {
+            $path = Join-Path dist $name
+            if (-not (Test-Path $path)) { throw "Missing release asset: $name" }
+            if ((Get-Item $path).Length -eq 0) { throw "Empty release asset: $name" }
+          }
 
       - name: Write the release notes
         run: |
@@ -70,6 +106,6 @@ jobs:
           body_path: release_notes.md
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
-            dist/BrakeTrainerEvo-*-windows.zip
-            dist/BrakeTrainerEvo-*-setup.exe
+            dist/BrakeTrainerEvo-${{ steps.version.outputs.value }}-windows.zip
+            dist/BrakeTrainerEvo-${{ steps.version.outputs.value }}-setup.exe
             dist/SHA256SUMS.txt

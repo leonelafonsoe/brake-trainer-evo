@@ -15,6 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 
 BUILD_ENV = "BRAKE_TRAINER_BUILD"  # set to name a build explicitly (packagers, tests, local runs)
+BUILD_FILE = "build-id.txt"  # baked into a frozen build by scripts/build_exe.py
 UNKNOWN = "unknown"
 PACKAGED = "packaged"
 
@@ -26,9 +27,10 @@ def build_id() -> str:
     """A short identifier for the running build, in order of preference:
 
     1. ``BRAKE_TRAINER_BUILD``, so a build can be named explicitly;
-    2. the git revision of a source checkout (``-dirty`` when it has uncommitted changes);
-    3. ``packaged`` inside a frozen executable, which carries no git metadata;
-    4. ``unknown`` if there is no checkout and no override.
+    2. the identifier a frozen build baked in at build time;
+    3. the git revision of a source checkout (``-dirty`` when it has uncommitted changes);
+    4. ``packaged`` inside a frozen executable with no baked identifier;
+    5. ``unknown`` if there is no checkout and no override.
 
     Best effort: a missing ``git`` or an unreadable checkout must never stop the app from starting.
     """
@@ -36,8 +38,17 @@ def build_id() -> str:
     if override:
         return override
     if getattr(sys, "frozen", False):
-        return PACKAGED
+        return _embedded_build_id() or PACKAGED
     return _git_describe() or UNKNOWN
+
+
+def _embedded_build_id() -> str:
+    """The identifier written into a frozen build, or "" when there is none."""
+    base = Path(getattr(sys, "_MEIPASS", _ROOT))
+    try:
+        return (base / BUILD_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 @lru_cache(maxsize=1)
