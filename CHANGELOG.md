@@ -36,6 +36,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - Every pull request now type-checks with `mypy --platform win32` as well as the host platform, so
   Windows-only `ctypes`/`winsound` mistakes fail in CI instead of only in Nightly. This caught the
   `Any` return in `_create_app_mutex`.
+- Game-process detection moved out of `TelemetryReader.run` into a small `_GameWatch`, with unit
+  tests for the handle, two-miss fallback and probing cadence. The reader loop is correspondingly
+  smaller.
 - Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
   cleanup on failure), so the two cannot drift in how they protect a failed write.
 - Settings type validation now lives in `SettingSpec.coerce`: one rule for every field, including

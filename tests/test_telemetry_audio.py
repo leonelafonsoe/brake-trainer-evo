@@ -21,6 +21,7 @@ from brake_trainer.telemetry import (
     GameProbe,
     GameStatus,
     TelemetryReader,
+    _GameWatch,
     find_game_process,
     sample_from_frame,
 )
@@ -195,6 +196,77 @@ async def test_reader_restarts_and_exits_instantly_with_a_process_handle(monkeyp
     assert len(probe_calls) == 1  # no process listing once we hold a handle
     assert watcher.closed and states == [True, False]
     assert len(FakeCapture.created) == 2 and restarts and samples
+
+
+class _FakeWatcher:
+    def __init__(self) -> None:
+        self.exited_now = False
+        self.closed = False
+
+    def exited(self) -> bool:
+        return self.exited_now
+
+    def close(self) -> None:
+        self.closed = True
+
+
+async def test_game_watch_opens_a_handle_and_reports_the_exit():
+    watchers: list[_FakeWatcher] = []
+
+    def open_watcher(_pid: int) -> _FakeWatcher:
+        watcher = _FakeWatcher()
+        watchers.append(watcher)
+        return watcher
+
+    watch = _GameWatch(
+        lambda _: GameProbe(GameStatus.RUNNING, "ACE.exe", 7),
+        open_watcher,
+        clock=iter([10.0, 20.0]).__next__,
+    )
+
+    first = await watch.poll("ace")
+    assert first.detected == "ACE.exe" and not first.closed
+
+    watchers[0].exited_now = True
+    assert (await watch.poll("ace")).closed
+
+    watch.close()
+    assert watchers[0].closed
+
+
+async def test_game_watch_needs_two_misses_before_closing():
+    probes = iter(
+        [
+            GameProbe(GameStatus.RUNNING, "ACE.exe", 0),
+            GameProbe(GameStatus.ABSENT),
+            GameProbe(GameStatus.ABSENT),
+        ]
+    )
+    watch = _GameWatch(
+        lambda _: next(probes),
+        lambda _pid: None,  # no handle: fall back to polling
+        clock=iter([10.0, 20.0, 30.0]).__next__,
+    )
+
+    assert (await watch.poll("ace")).detected == "ACE.exe"
+    assert not (await watch.poll("ace")).closed
+    assert (await watch.poll("ace")).closed
+
+
+async def test_game_watch_waits_before_probing_again():
+    calls: list[str] = []
+    probes = [GameProbe(GameStatus.UNKNOWN)] * 3
+    watch = _GameWatch(
+        lambda name: calls.append(name) or probes.pop(0),
+        lambda _pid: None,
+        clock=iter([10.0, 11.0, 20.0]).__next__,
+    )
+
+    await watch.poll("ace")
+    await watch.poll("ace")  # inside the 3 s waiting cadence: no probe
+    await watch.poll("ace")
+
+    assert len(calls) == 2
 
 
 async def test_reader_falls_back_to_polling_without_a_handle(monkeypatch):
