@@ -8,6 +8,7 @@ to :class:`brake_trainer.config.Settings`.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -50,6 +51,31 @@ class SettingSpec:
         if self.lo is None or self.hi is None:
             return None
         return self.lo, self.hi
+
+    def coerce(self, value: object) -> object:
+        """Validate one JSON value for this setting, raising when it is not the right kind.
+
+        Bounds are applied later by ``Settings.clamped()``; this only decides whether the value can
+        be used at all. ``bool`` is rejected as a number, floats must be finite, and the optional
+        integer fields accept ``None``.
+        """
+        if self.kind == "bool":
+            if isinstance(value, bool):
+                return value
+        elif self.kind == "int":
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+        elif self.kind == "optint":
+            if value is None or (isinstance(value, int) and not isinstance(value, bool)):
+                return value
+        elif self.kind == "float":
+            if isinstance(value, int | float) and not isinstance(value, bool):
+                number = float(value)
+                if math.isfinite(number):
+                    return number
+        elif self.kind == "text" and isinstance(value, str):
+            return value
+        raise TypeError(f"{self.name} is not a valid {self.kind}: {value!r}")
 
 
 SPECS: tuple[SettingSpec, ...] = (

@@ -95,23 +95,10 @@ class Settings:
             spec = SPEC_BY_NAME.get(f.name)
             if spec is None:  # the registry tests forbid this; be defensive for old files
                 continue
-            value = raw[f.name]
-            if spec.kind == "optint":
-                if value is None or (isinstance(value, int) and not isinstance(value, bool)):
-                    values[f.name] = value
-            elif spec.kind == "bool":
-                if isinstance(value, bool):
-                    values[f.name] = value
-            elif spec.kind == "int":
-                if isinstance(value, int) and not isinstance(value, bool):
-                    values[f.name] = value
-            elif spec.kind == "float":
-                if isinstance(value, int | float) and not isinstance(value, bool):
-                    number = float(value)
-                    if math.isfinite(number):
-                        values[f.name] = number
-            elif spec.kind == "text" and isinstance(value, str):
-                values[f.name] = value
+            try:
+                values[f.name] = spec.coerce(raw[f.name])
+            except (TypeError, ValueError):
+                continue  # wrong type or a non-finite number: use the default
         return cls(**values).clamped()
 
     def to_dict(self) -> dict[str, Any]:

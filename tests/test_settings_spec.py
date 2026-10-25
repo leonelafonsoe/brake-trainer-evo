@@ -62,6 +62,29 @@ def test_kind_default_and_annotation_agree(spec):
     assert getattr(Settings(), spec.name) == spec.default
 
 
+@pytest.mark.parametrize("spec", SPECS, ids=lambda spec: spec.name)
+def test_every_spec_coerces_its_own_default(spec):
+    assert spec.coerce(spec.default) == spec.default
+
+
+def test_coercion_rejects_wrong_types_and_non_finite_numbers():
+    with pytest.raises(TypeError):
+        SPEC_BY_NAME["volume"].coerce(True)  # bool is not a pedal value
+    with pytest.raises(TypeError):
+        SPEC_BY_NAME["volume"].coerce("0.5")
+    with pytest.raises(TypeError):
+        SPEC_BY_NAME["volume"].coerce(float("nan"))
+    with pytest.raises(TypeError):
+        SPEC_BY_NAME["warn_hz"].coerce(True)
+    with pytest.raises(TypeError):
+        SPEC_BY_NAME["learning_enabled"].coerce(1)
+    with pytest.raises(TypeError):
+        SPEC_BY_NAME["game_process"].coerce(1)
+    with pytest.raises(TypeError):
+        SPEC_BY_NAME["overlay_x"].coerce("1")
+    assert SPEC_BY_NAME["overlay_x"].coerce(None) is None
+
+
 def test_bounds_are_derived_and_only_visible_numbers_are_bounded():
     assert {spec.name: spec.bounds for spec in SPECS if spec.bounds is not None} == LIMITS
     assert {"overlay_x", "overlay_y"} == OPTIONAL_INT
