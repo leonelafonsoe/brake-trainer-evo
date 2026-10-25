@@ -161,6 +161,58 @@ def test_showing_the_hover_buttons_does_not_move_the_title(qapp):
     assert (window._dot.geometry(), window._title.geometry()) == hidden
 
 
+def test_the_default_hud_scale_keeps_the_original_metrics(qapp):
+    window = _window(qapp, Settings())
+
+    assert window.width() == 300
+    assert window._distance.height() == 24
+    assert window._learn_btn.width() == 22
+
+
+def test_the_hud_scale_scales_the_window_and_metrics(qapp):
+    window = _window(qapp, Settings(hud_scale=1.5))
+
+    assert window.width() == 450
+    assert window._distance.height() == 36
+    assert window._learn_btn.width() == 33
+
+
+def test_changing_the_hud_scale_rebuilds_live(qapp):
+    window = _window(qapp)
+    window.update_state(_live())
+    window.apply_settings(replace(window._settings, hud_scale=2.0))
+
+    assert window.width() == 600
+    assert window._distance.height() == 48
+    assert window._learn_btn.width() == 44
+    assert window._title.text() == "Monza · Ferrari 296 GTB"
+
+
+def test_changing_the_hud_scale_keeps_the_overlay_centered(qapp):
+    from PySide6.QtGui import QGuiApplication
+
+    window = _window(qapp)
+    area = QGuiApplication.primaryScreen().availableGeometry()
+    window.show()
+    qapp.processEvents()
+    window.move(
+        area.center().x() - window.width() // 2,
+        area.center().y() - window.height() // 2,
+    )
+    qapp.processEvents()
+    before = window.frameGeometry().center()
+    moved: list[tuple[int, int]] = []
+    window.moved.connect(lambda x, y: moved.append((x, y)))
+
+    window.apply_settings(replace(window._settings, hud_scale=2.0))
+    qapp.processEvents()  # the new position is emitted on the next event-loop turn
+
+    after = window.frameGeometry().center()
+    assert abs(after.x() - before.x()) <= 1
+    assert abs(after.y() - before.y()) <= 1
+    assert moved
+
+
 def test_the_distance_row_keeps_one_height(qapp):
     window = _window(qapp)
 
@@ -210,14 +262,14 @@ def test_a_storage_warning_uses_the_status_line(qapp):
 
 def test_updating_settings_toggles_pause_and_window_flags(qapp):
     window = _window(qapp, Settings(learning_enabled=True, overlay_always_on_top=False))
-    assert window._learn_btn.text() == "⏸"
+    assert window._learn_btn.kind == "pause"
     assert not (window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
 
     window.apply_settings(
         replace(window._settings, learning_enabled=False, overlay_always_on_top=True)
     )
 
-    assert window._learn_btn.text() == "▶"
+    assert window._learn_btn.kind == "play"
     assert window._learn_btn.toolTip() == "Resume learning"
     assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
 

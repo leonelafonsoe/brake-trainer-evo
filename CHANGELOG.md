@@ -54,6 +54,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   change instead of silently between releases.
 - Expert detection and cue knobs ("Minimum peak pressure", "Same-corner distance" and "Skip cue if
   brake above") moved to a separate Advanced tab, leaving the default tabs focused on everyday use.
+- The overlay has a "HUD scale" setting (0.75–2.00), applied live. Text, margins, bars and the hover
+  buttons scale together, for high-DPI screens or a HUD that is too small/large.
 - Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
   cleanup on failure), so the two cannot drift in how they protect a failed write.
 - Settings type validation now lives in `SettingSpec.coerce`: one rule for every field, including

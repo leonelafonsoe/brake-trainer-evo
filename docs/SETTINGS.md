@@ -44,6 +44,7 @@ capture starts.
 
 | Setting | Key | Default | Range | What it does |
 | --- | --- | --- | --- | --- |
+| HUD scale | `hud_scale` | 1× | 0.75 - 2 × | Scale the overlay text and layout. 1.00 is the normal size; use 1.25-1.50 on a high-DPI screen. |
 | Always on top | `overlay_always_on_top` | on | on / off | Needs the game in borderless / windowed mode to be visible over it. |
 | Opacity | `overlay_opacity` | 1 | 0.3 - 1 | Opacity of the whole overlay, text included. |
 | Background opacity | `overlay_background` | 0 | 0 - 0.9 | 0 = fully transparent (HUD style). Raise it if the text is hard to read. |

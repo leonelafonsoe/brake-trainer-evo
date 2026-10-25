@@ -58,6 +58,7 @@ class Settings:
     # verbose log for troubleshooting (see docs/GUIDE.md#logs-and-resetting)
     debug_logging: bool = DEFAULTS["debug_logging"]
     # --- overlay ---
+    hud_scale: float = DEFAULTS["hud_scale"]
     overlay_always_on_top: bool = DEFAULTS["overlay_always_on_top"]
     overlay_opacity: float = DEFAULTS["overlay_opacity"]
     overlay_background: float = DEFAULTS["overlay_background"]  # 0 = fully transparent, HUD style
