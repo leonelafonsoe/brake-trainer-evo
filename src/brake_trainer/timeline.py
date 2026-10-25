@@ -203,7 +203,7 @@ def crossing_between(
     ``line`` is 0.0 for the start/finish line, which the car crosses at the lap wrap (position
     drops from near 1 to near 0) rather than by passing ``line`` from below. Interpolating here
     removes the frame quantisation and the bias to the earlier sample; the residual is the
-    interpolation error described in ``docs/TELEMETRY.md``.
+    interpolation error described in ``docs/GAME_DATA.md``.
 
     The caller must only pass a line that really lies between the samples: ``p0 < line <= p1``
     for an inner line, or ``p1 < p0`` for the start/finish line. When it does not - the samples

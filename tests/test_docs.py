@@ -53,6 +53,6 @@ def test_the_agents_target_version_matches_the_package():
 def test_data_doc_matches_the_log_rotation():
     from brake_trainer import logsetup
 
-    doc = (ROOT / "docs" / "DATA.md").read_text(encoding="utf-8")
+    doc = (ROOT / "docs" / "GAME_DATA.md").read_text(encoding="utf-8")
     size_mb = logsetup._MAX_BYTES // 1_000_000
     assert f"about {size_mb} MB x {logsetup._BACKUPS}" in doc

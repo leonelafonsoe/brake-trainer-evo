@@ -9,9 +9,8 @@ themselves. It is not the manual: the detailed pages are linked.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution rules, fixtures, AI-assisted policy.
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — full setup, checks and change recipes.
 - [docs/DESIGN.md](docs/DESIGN.md) — architecture and the reasons behind it.
-- [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) — the behaviour the tests protect.
-- [docs/DATA.md](docs/DATA.md) — storage formats, compatibility and failure policy.
-- [docs/TELEMETRY.md](docs/TELEMETRY.md) — game data, the SDK and the game log.
+- [docs/GUIDE.md](docs/GUIDE.md) — the behaviour the tests protect, plus troubleshooting.
+- [docs/GAME_DATA.md](docs/GAME_DATA.md) — storage formats, compatibility, game data and the log.
 - [tests/fixtures/README.md](tests/fixtures/README.md) — real-evidence fixture rules.
 
 ## Setup
@@ -99,7 +98,7 @@ More detail and the thread diagram: [docs/DESIGN.md](docs/DESIGN.md).
   version is archived and the app starts from defaults. There is no migration code.
 - Archive by move, do not delete, when a file is unusable. Deleting learned data is a user action.
 
-Formats and the full policy: [docs/DATA.md](docs/DATA.md).
+Formats and the full policy: [docs/GAME_DATA.md](docs/GAME_DATA.md#files).
 
 ## Change recipes
 
@@ -109,13 +108,13 @@ Use the detailed recipes in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). In short
   default reference to `Settings`, regenerate `docs/SETTINGS.md`, and test the round-trip/clamping.
   If the engine uses it live, apply it in `apply_settings`.
 - **Game-log parser** — start from a real, anonymized excerpt in `tests/fixtures/game_log/`; add
-  the smallest test for `parse_line`/`line_time`; update `docs/TELEMETRY.md` if the format is
+  the smallest test for `parse_line`/`line_time`; update `docs/GAME_DATA.md` if the format is
   explained there. Never invent a log format.
 - **Learning or sectors** — use the synthetic `Driver` in `tests/conftest.py`; keep crossings
   interpolated between frames; test the boundary, teleport and deferred-line cases you touch.
-  Update `docs/HOW_IT_WORKS.md`.
+  Update `docs/GUIDE.md`.
 - **Storage schema** — bump the version, keep an old fixture loading, test round-trip and failure
-  paths, and update `docs/DATA.md`.
+  paths, and update `docs/GAME_DATA.md`.
 - **UI** — add an offscreen test (module-level `pytest.mark.usefixtures("close_qt_windows")` for
   widgets); feed `ViewState` in, assert what is shown. Do not put learning logic in the UI.
 - **Release** — follow [the release pipeline](docs/DEVELOPMENT.md#release-pipeline). Bump once, add
@@ -130,11 +129,9 @@ input. Full rules: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Docs and generated files
 
-- `docs/HOW_IT_WORKS.md` — behaviour.
+- `docs/GUIDE.md` — behaviour and troubleshooting.
 - `docs/DESIGN.md` — why.
-- `docs/TELEMETRY.md` — SDK and game log.
-- `docs/TROUBLESHOOTING.md` — symptom and action.
-- `docs/DATA.md` — file formats and compatibility.
+- `docs/GAME_DATA.md` — game data, SDK, game log, file formats and compatibility.
 - `docs/SETTINGS.md` is generated. **Never hand-edit it**; run
   `uv run python scripts/gen_settings_doc.py`.
 

@@ -55,7 +55,7 @@ class Settings:
     use_game_log: bool = DEFAULTS["use_game_log"]
     # "" = the game's default folder under Saved Games
     game_log_dir: str = DEFAULTS["game_log_dir"]
-    # verbose log for troubleshooting (see docs/TROUBLESHOOTING.md)
+    # verbose log for troubleshooting (see docs/GUIDE.md#logs-and-resetting)
     debug_logging: bool = DEFAULTS["debug_logging"]
     # --- overlay ---
     overlay_always_on_top: bool = DEFAULTS["overlay_always_on_top"]

@@ -26,8 +26,10 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   real fixture bytes are marked binary in Git so a Windows checkout cannot rewrite them.
 - Nightly and Release run `pip-audit` against the locked dependencies, and the weekly Security
   workflow is back on the same `setup-python` release as the other workflows.
-- The release guide is now part of the developer manual instead of a separate page, so the pipeline
-  and the steps that use it live in one place.
+- Documentation is six pages instead of ten: `GUIDE.md` (behaviour and troubleshooting),
+  `GAME_DATA.md` (telemetry, log, files and compatibility), `DESIGN.md`, `DEVELOPMENT.md` (including
+  the release pipeline), `SETTINGS.md`, and the README. The old pages were merged rather than
+  rewritten, so the field evidence and failure policy are unchanged.
 - Every Windows build is started once with a temporary app folder and must write its startup line,
   so a package that cannot launch fails CI instead of being published.
 
@@ -68,7 +70,7 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   invalidated" (always on; it was a way to defeat the product's promise), and "Own runs before
   leaving reference" (fixed at 2). The telemetry rate moved to the Diagnostics tab.
 - `SETTINGS_VERSION` is now 4, so a settings file from 0.5.0 or earlier is archived and the app
-  starts from defaults (see [DATA.md](docs/DATA.md)).
+  starts from defaults (see [GAME_DATA.md](docs/GAME_DATA.md#files)).
 
 ## 0.5.0 - 2026-10-25
 

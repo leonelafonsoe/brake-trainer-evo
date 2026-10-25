@@ -80,7 +80,7 @@ _DOWNLOADS = """### Download
 {rows}
 
 The programs are **not code-signed**, so Windows SmartScreen may warn you the first time. See
-[Troubleshooting](https://github.com/{repo}/blob/main/docs/TROUBLESHOOTING.md#installing-and-running).
+[Troubleshooting](https://github.com/{repo}/blob/main/docs/GUIDE.md#installing-and-running).
 Verify a download against `SHA256SUMS.txt` if you like.
 
 > This project is largely AI-written ("vibe coded") and only play-tested by its maintainer. Expect
@@ -113,7 +113,7 @@ def build_nightly_body(unreleased: str | None, sha: str, repo: str = "OWNER/REPO
         f"## Changes since the last release\n\n{changes}\n\n---\n\n"
         f"Download the `BrakeTrainerEvo-nightly-windows.zip` asset, unzip it and run "
         f"`BrakeTrainerEvo.exe`. See [Troubleshooting](https://github.com/{repo}/blob/main/"
-        "docs/TROUBLESHOOTING.md#installing-and-running) if Windows warns about it.\n"
+        "docs/GUIDE.md#installing-and-running) if Windows warns about it.\n"
     )
 
 

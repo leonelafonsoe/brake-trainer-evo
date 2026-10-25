@@ -1,7 +1,7 @@
 # Design notes
 
 Why the app is built the way it is. Useful if you want to change something, send a pull request,
-or just understand the trade-offs. For behaviour, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
+or just understand the trade-offs. For behaviour, see [GUIDE.md](GUIDE.md).
 
 The idea comes from [Brake Trainer](https://www.overtake.gg/downloads/brake-trainer.32511/) by AugGust for the original Assetto Corsa; this is an independent reimplementation for Assetto Corsa EVO (see the credits in the [README](../README.md#credits)).
 
@@ -79,7 +79,7 @@ points - so a corner is never split, which is exactly the property the survey wa
 shared memory carries no sector data at all in this build (`current_sector_index` only exists in the
 older AC/ACC layout), so the log is the only source, and it is already being followed for cuts. The
 game buffers that log, so the lines can arrive a lap or more after the sectors that needed them;
-those sectors still contribute their braking points (see `early_onsets` in `DATA.md`), because a
+those sectors still contribute their braking points (see `early_onsets` in `GAME_DATA.md`), because a
 braking point is a position on the track and needs no sector line to be useful.
 
 The line itself is not named in the log, but the line's own timestamp says when the car crossed it, so
@@ -165,7 +165,7 @@ drops that sector too.
 If the game's log cannot be found the app says so and falls back to the lap flag alone (one cut per
 lap). When the lap flag drops with no other signal at all, the app logs a warning that names the
 limitation - except when the log is being followed, where every cut is in it anyway. See
-[TELEMETRY.md](TELEMETRY.md).
+[GAME_DATA.md](GAME_DATA.md).
 
 ### A sector result carries a typed outcome
 The engine records why a pass did not count as a `DropReason`, and what happened to one that did

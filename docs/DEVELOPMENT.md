@@ -167,7 +167,7 @@ Boundaries:
    in `tests/test_settings_window.py`.
 5. If the engine reads it while running, handle it in `BrakeEngine.apply_settings` and test the
    live change. Every setting is documented as live; keep that true.
-6. Add the changelog line and update `docs/SETTINGS.md` (generated) or `docs/HOW_IT_WORKS.md`.
+6. Add the changelog line and update `docs/SETTINGS.md` (generated) or `docs/GUIDE.md`.
 
 ### The game-log parser
 
@@ -178,8 +178,8 @@ Boundaries:
    `GameLogTail` path with `poll_once()`.
 4. Keep the line's own timestamp as the attribution time. Never substitute the read time for a
    buffered event.
-5. Update `docs/TELEMETRY.md` (format and caveats) and, if the driver sees a change,
-   `docs/HOW_IT_WORKS.md`.
+5. Update `docs/GAME_DATA.md` (format and caveats) and, if the driver sees a change,
+   `docs/GUIDE.md`.
 
 ### Learning, sectors or cues
 
@@ -189,7 +189,7 @@ Boundaries:
    time. Do not snap to the nearest frame.
 3. Cover the boundary you touch: a sector line, a jump/teleport, a deferred line, a cut, a warm-up
    or a pause.
-4. Update `docs/HOW_IT_WORKS.md` for behaviour and `docs/DESIGN.md` if the reason changes.
+4. Update `docs/GUIDE.md` for behaviour and `docs/DESIGN.md` if the reason changes.
 
 ### Storage or data schema
 
@@ -201,7 +201,7 @@ Boundaries:
    run by time and onsets, not time alone.
 4. Preserve the safety rules: never overwrite an unreadable file, quarantine by move, block saves
    if the move fails, and report a failed write.
-5. Update `docs/DATA.md`.
+5. Update `docs/GAME_DATA.md`.
 
 For settings, bump `SETTINGS_VERSION` when renaming or retiring keys. A file with another version
 is archived and the app starts from defaults; there is no migration code to keep.
@@ -347,11 +347,9 @@ whole thing in a scratch fork. Delete a bad release and its tag from the Release
 
 ## Documentation map
 
-- [HOW_IT_WORKS.md](HOW_IT_WORKS.md) — behaviour.
+- [GUIDE.md](GUIDE.md) — behaviour and troubleshooting.
 - [DESIGN.md](DESIGN.md) — why.
-- [TELEMETRY.md](TELEMETRY.md) — SDK and game log.
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — symptom and action.
-- [DATA.md](DATA.md) — formats and compatibility.
+- [GAME_DATA.md](GAME_DATA.md) — SDK, game log, file formats and compatibility.
 - [SETTINGS.md](SETTINGS.md) — generated settings reference; never hand-edit.
 
 Keep each page owning one job and link instead of repeating a long explanation.
