@@ -36,8 +36,8 @@ def test_a_replayed_split_learns_the_games_sector_lines(store):
     replay = Replay(engine, start=BASE)
     positions = [0.0001, 0.10, 0.20, 0.30, 0.33, 0.40, 0.50, 0.60, 0.66, 0.70, 0.80, 0.90]
     frames = [ReplayFrame(pos) for pos in positions]
-    frames[4] = replace(frames[4], log_line=line_at(SPLIT.format(index=0), 5 * replay.dt))
-    frames[8] = replace(frames[8], log_line=line_at(SPLIT.format(index=1), 9 * replay.dt))
+    frames[4] = replace(frames[4], log_line=line_at(SPLIT.format(index=0), BASE + 5 * replay.dt))
+    frames[8] = replace(frames[8], log_line=line_at(SPLIT.format(index=1), BASE + 9 * replay.dt))
 
     replay.run(frames)
 
