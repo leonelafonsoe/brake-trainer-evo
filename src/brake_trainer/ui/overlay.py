@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, Qt, Signal
+import math
+
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QAction,
     QColor,
     QCursor,
+    QEnterEvent,
     QGuiApplication,
     QMouseEvent,
     QPainter,
+    QPaintEvent,
+    QPen,
+    QPolygonF,
     QScreen,
 )
 from PySide6.QtWidgets import (
@@ -77,20 +83,101 @@ def _text(label: QLabel, text: str) -> None:
         label.setText(text)
 
 
-def _tool_button(text: str, tip: str, name: str, scale: float = 1.0) -> QPushButton:
-    btn = QPushButton(text)
-    btn.setToolTip(tip)
-    btn.setAccessibleName(name)
-    btn.setFixedSize(_px(22, scale), _px(22, scale))
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn.setStyleSheet(
-        f"QPushButton {{ background: transparent; border: none; color: {theme.TEXT_DIM};"
-        f" font-size: {_px(14, scale)}px; }} QPushButton:hover {{ color: {theme.TEXT}; }}"
-    )
-    policy = btn.sizePolicy()
-    policy.setRetainSizeWhenHidden(True)  # hiding them must not shift the layout
-    btn.setSizePolicy(policy)
-    return btn
+class ToolButton(QPushButton):
+    """A small painted icon button.
+
+    The glyphs are drawn rather than taken from a font: Unicode symbols such as ``⏸`` are not in
+    every UI font and clip or disappear when the font size changes with the HUD scale.
+    """
+
+    def __init__(self, kind: str, tip: str, name: str, *, scale: float = 1.0) -> None:
+        super().__init__()
+        self._kind = kind
+        self.setToolTip(tip)
+        self.setAccessibleName(name)
+        self.setFixedSize(_px(22, scale), _px(22, scale))
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+        policy = self.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)  # hiding them must not shift the layout
+        self.setSizePolicy(policy)
+
+    @property
+    def kind(self) -> str:
+        return self._kind
+
+    def set_kind(self, kind: str) -> None:
+        if kind != self._kind:
+            self._kind = kind
+            self.update()
+
+    def enterEvent(self, event: QEnterEvent) -> None:  # noqa: N802 (Qt API)
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:  # noqa: N802 (Qt API)
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 (Qt API)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # QColor does not parse the CSS rgba() string used by the stylesheet; use channels for the
+        # dim state and the hex theme colour when hovered.
+        color = QColor(theme.TEXT) if self.underMouse() else QColor(255, 255, 255, 175)
+        size = float(min(self.width(), self.height()))
+        pen = QPen(color)
+        pen.setWidthF(max(1.0, size * 0.085))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        center = QPointF(self.width() / 2.0, self.height() / 2.0)
+        radius = size * 0.26
+        if self._kind == "pause":
+            bar_w, gap = size * 0.11, size * 0.13
+            painter.fillRect(
+                QRectF(center.x() - gap - bar_w, center.y() - radius, bar_w, radius * 2), color
+            )
+            painter.fillRect(
+                QRectF(center.x() + gap, center.y() - radius, bar_w, radius * 2), color
+            )
+        elif self._kind == "play":
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color)
+            painter.drawPolygon(
+                QPolygonF(
+                    [
+                        QPointF(center.x() - radius * 0.8, center.y() - radius),
+                        QPointF(center.x() - radius * 0.8, center.y() + radius),
+                        QPointF(center.x() + radius, center.y()),
+                    ]
+                )
+            )
+        elif self._kind == "settings":
+            painter.drawEllipse(center, radius, radius)
+            tooth = size * 0.10
+            for i in range(8):
+                angle = math.pi * i / 4.0
+                painter.drawLine(
+                    QPointF(
+                        center.x() + math.cos(angle) * (radius + tooth * 0.4),
+                        center.y() + math.sin(angle) * (radius + tooth * 0.4),
+                    ),
+                    QPointF(
+                        center.x() + math.cos(angle) * (radius + tooth),
+                        center.y() + math.sin(angle) * (radius + tooth),
+                    ),
+                )
+            painter.drawEllipse(center, radius * 0.35, radius * 0.35)
+        else:  # close
+            painter.drawLine(
+                QPointF(center.x() - radius, center.y() - radius),
+                QPointF(center.x() + radius, center.y() + radius),
+            )
+            painter.drawLine(
+                QPointF(center.x() - radius, center.y() + radius),
+                QPointF(center.x() + radius, center.y() - radius),
+            )
 
 
 class OverlayWindow(QWidget):
@@ -140,9 +227,9 @@ class OverlayWindow(QWidget):
         top = QHBoxLayout()
         self._dot = _label("●", size=10, color=theme.MUTED, scale=scale)
         self._title = _label("Brake Trainer", size=11, color=theme.TEXT_DIM, scale=scale)
-        self._learn_btn = _tool_button("⏸", "Pause learning", "Pause learning", scale=scale)
-        self._settings_btn = _tool_button("⚙", "Settings", "Settings", scale=scale)
-        self._quit_btn = _tool_button("✕", "Quit", "Quit", scale=scale)
+        self._learn_btn = ToolButton("pause", "Pause learning", "Pause learning", scale=scale)
+        self._settings_btn = ToolButton("settings", "Settings", "Settings", scale=scale)
+        self._quit_btn = ToolButton("close", "Quit", "Quit", scale=scale)
         self._learn_btn.clicked.connect(
             lambda: self.toggle_learning.emit(not self._settings.learning_enabled)
         )
@@ -213,7 +300,7 @@ class OverlayWindow(QWidget):
             self._build()  # the label fonts and fixed metrics are baked in at build time
         self.setWindowOpacity(settings.overlay_opacity)
         learning = settings.learning_enabled
-        self._learn_btn.setText("⏸" if learning else "▶")
+        self._learn_btn.set_kind("pause" if learning else "play")
         self._learn_btn.setToolTip("Pause learning" if learning else "Resume learning")
         self._learn_btn.setAccessibleName("Pause learning" if learning else "Resume learning")
         self.update()

@@ -237,14 +237,14 @@ def test_a_storage_warning_uses_the_status_line(qapp):
 
 def test_updating_settings_toggles_pause_and_window_flags(qapp):
     window = _window(qapp, Settings(learning_enabled=True, overlay_always_on_top=False))
-    assert window._learn_btn.text() == "⏸"
+    assert window._learn_btn.kind == "pause"
     assert not (window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
 
     window.apply_settings(
         replace(window._settings, learning_enabled=False, overlay_always_on_top=True)
     )
 
-    assert window._learn_btn.text() == "▶"
+    assert window._learn_btn.kind == "play"
     assert window._learn_btn.toolTip() == "Resume learning"
     assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
 
