@@ -121,7 +121,7 @@ pause longer than the history) is the sector dropped as "the lines were learned 
 A new car borrows braking points from another car on the same track. Choosing the *fastest* car
 would hand a slow car the latest braking points; the one with the most data is the most reliable.
 Borrowed points are matched by track position, not by sector number, so they work even when another
-car's data was timed between different lines (for example data from before 0.3.11, which uses equal
+car's data was timed between different lines (for example data from before 0.4.0, which uses equal
 splits). They are used only until the new car has 2 runs of that sector and are never saved into its
 file.
 

@@ -1,7 +1,7 @@
 """Identify the code that is running, for the startup log and the files the app saves.
 
 The app version alone cannot tell two builds apart while a fix is being tested: the same
-``0.3.11`` can be a released executable, a checkout before the fix, or a checkout with the fix and
+``0.4.0`` can be a released executable, a checkout before the fix, or a checkout with the fix and
 uncommitted edits. A build identifier closes that gap. It is provenance only - nothing reads it to
 decide whether a file is compatible. See ``docs/DATA.md``.
 """

@@ -76,7 +76,7 @@ is moved onto the game's line and timed from there. Only when that crossing is g
 reset, or a pause longer than the kept history) is the sector dropped, with "not counted · the lines were
 learned mid-sector", rather than blamed on the pit lane or a reset.
 
-**Data from older versions** (before 0.3.11) keeps the equal splits it was learned with, so a corner can
+**Data from older versions** (before 0.4.0) keeps the equal splits it was learned with, so a corner can
 still be cut by a line. The overlay then shows "equal sector lines" in its quiet summary, and
 Settings -> Data lists it as "equal splits". Delete that entry and drive a lap to learn the game's
 lines.

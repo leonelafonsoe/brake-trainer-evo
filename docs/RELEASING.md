@@ -36,7 +36,9 @@ files:
 | `BrakeTrainerEvo-<version>-windows.zip` | Portable folder build |
 | `SHA256SUMS.txt` | Checksums |
 
-Tags containing a `-` (for example `v0.4.0-rc1`) are published as **pre-releases**.
+Pre-release tags use a hyphen (for example `v0.4.0-rc1`) and are published as **pre-releases**.
+`release_notes.py` also accepts the compact `v0.4.0rc1` form for local checks, but the workflow's
+pre-release flag only recognises the hyphen form, so use the hyphen when tagging.
 
 ### Steps
 
@@ -61,9 +63,10 @@ Tags containing a `-` (for example `v0.4.0-rc1`) are published as **pre-releases
 5. Watch the *Release* run on the Actions tab. When it finishes the release appears on the
    Releases page.
 
-The workflow refuses to publish if the tag does not match the version in the project, or if the
-changelog has no notes for that version (`py scripts/release_notes.py --tag v0.4.0 --check` runs
-the same check locally).
+The workflow refuses to publish if the tag does not match the version in the project, if the
+changelog has no notes for that version, or if `## Unreleased` still has notes (bump first, so the
+release body cannot be stale). `py scripts/release_notes.py --tag v0.4.0 --check` runs the same
+check locally.
 
 ### Trying it safely
 
@@ -78,6 +81,6 @@ whole thing in a scratch fork. Delete a bad release and its tag from the Release
   could be added to `release.yml` later. The licence here is non-commercial, which may affect
   eligibility, so check their terms.
 - The workflows were written without being able to run them. If a step fails on the first run,
-  the log of that step usually shows the cause; the installer step is allowed to fail without
-  stopping the release (the release notes then omit the installer).
+  the log of that step usually shows the cause. A release now fails if the installer cannot be
+  built; fix the build before tagging again rather than shipping a release without one.
 - Fork pull requests run the same checks, but GitHub may ask a maintainer to approve the run first.

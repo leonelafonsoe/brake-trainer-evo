@@ -131,7 +131,7 @@ speed shed" to match your pedal and driving style.
 **A corner sits in the middle of a sector (a sector line cuts a chicane)**
 The app uses the game's own sector lines, so this should not happen: the game puts them at corner
 exits. If it does, the entry is using equal splits - because its lines were never learned (data from
-before 0.3.11, the game log not followed, or a build that writes no splits). The quiet line under the
+before 0.4.0, the game log not followed, or a build that writes no splits). The quiet line under the
 sector bar says "equal sector lines", and Settings -> Data shows "equal splits". Delete *every* entry
 on that track and drive a lap with *Follow the game's log* on: the lines are learned from the
 game's splits. Deleting only one entry is not enough - a new entry takes the lines from any other car's
@@ -195,7 +195,7 @@ Its first line names exactly what produced the log, so a report can be matched t
 guessing:
 
 ```text
-2026-10-24 12:00:00,000 INFO    brake_trainer: startup app=0.3.11 build=2983a85ac7d3 settings_version=3 data_version=1 debug=off log=C:\Users\you\AppData\Roaming\BrakeTrainerEvo\brake_trainer.log
+2026-10-24 12:00:00,000 INFO    brake_trainer: startup app=0.4.0 build=2983a85ac7d3 settings_version=3 data_version=1 debug=off log=C:\Users\you\AppData\Roaming\BrakeTrainerEvo\brake_trainer.log
 ```
 
 `build` is the source checkout's git revision (`-dirty` means it had uncommitted changes),

@@ -54,8 +54,32 @@ def test_changelog_sections_are_found_with_and_without_dates_and_brackets():
 
 
 def test_release_check_accepts_a_matching_tag(project):
+    (project / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## Unreleased\n\n## 0.3.8 - 2026-10-13\n- Added a thing.\n"
+    )
     version, text = notes.check_release("v0.3.8", project)
     assert version == "0.3.8" and "Added a thing" in text
+
+
+def test_release_check_rejects_a_stale_released_section_while_unreleased_has_notes(project):
+    # The fixture still has changes under Unreleased. Tagging the old 0.3.8 section would publish
+    # notes that do not include them, so the check fails instead of shipping stale notes.
+    with pytest.raises(ValueError, match="still has notes under '## Unreleased'"):
+        notes.check_release("v0.3.8", project)
+
+
+def test_the_project_version_and_the_tag_contract_agree():
+    # pyproject.toml and __init__.py must agree, the result must be a tag the workflow accepts,
+    # and that version must have a changelog section to publish.
+    versions = notes.project_versions(ROOT)
+    assert set(versions) == {"pyproject.toml", "__init__.py"}
+    assert len(set(versions.values())) == 1, versions
+    version = next(iter(versions.values()))
+    match = notes.TAG_RE.match(f"v{version}")
+    assert match is not None
+    assert notes.normalize(match.group(1)) == notes.normalize(version)
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert notes.changelog_section(changelog, version)
 
 
 @pytest.mark.parametrize(

@@ -4,174 +4,66 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
-- Fix: the sector bar drew its two inner boundaries at equal thirds of its width, whatever the
-  game's own sector lines were. On tracks with unequal sectors that put them hundreds of metres
-  from the real line (the Red Bull Ring's S1/S2 line is at 26% of the lap, Spa's S2/S3 at 72%), so
-  the bar looked as if the sector changed at a corner it did not. Each segment now spans its
-  sector's real share of the lap, and the segments meet exactly on the game's line with a thin
-  separator marking it. The old 8 px gap between them was 2.9% of the bar - 170 m at Monza - so
-  the braking point for the next corner could fall inside the gap, showing neither sector.
-- Fix: a buffered log line read between two samples that wrap the start/finish line *backwards*
-  within one lap number (a reset, or the car crossing the line the wrong way) was placed at a
-  position in the next lap while keeping the old lap's label, dropping a sector that had not been
-  driven yet. It now falls back to the earlier sample, as it already did for a forward wrap.
-- The live tyre-count feature and its two settings ("Skip sector if tyres off track" and
-  "...once the lap is invalid") are removed. In testing the game did not publish
-  `number_of_tyres_out`, and the game's log already reports every cut; the settings only added a
-  second, unreliable path that could drop a sector the game did not judge. Existing settings files
-  still load: the two keys are ignored.
-- The app version, a build identifier and the save time are now written into `settings.json` and
-  every learned-data file, so a file shared for support can be matched to the build that wrote it.
-  `build` is the source checkout's git revision (`-dirty` when it had uncommitted changes),
-  `packaged` for a frozen executable, or `BRAKE_TRAINER_BUILD` when set. The loaders ignore these
-  fields, so files from older and newer builds still load. The log opens with one structured
-  diagnostics line instead of a bare version banner:
-  `startup app=... build=... settings_version=... data_version=... debug=... log=...`.
-- Learned-data `version` is now the named `DATA_VERSION` constant, and a file written by a newer
-  layout is ignored (and replaced on the next save) instead of being read under fields this build
-  does not know. Files with an older version still load.
-- A settings file from a newer build is no longer rewritten with this build's settings version:
-  its version is left alone (with a warning in the log), so the next run of the newer build does
-  not migrate it a second time.
-- Fix: a cut was dropped in the sector a fixed 500 m *behind* the game's report, which moved
-  reports at Ascari and curve 10 back across the S2/S3 line: at Monza, going wide at curve 10
-  (71–73% of the lap) invalidated S2 instead of S3. The game writes its notification and drops
-  `is_valid_lap` where it judges the cut, and the field logs place both at natural corner exits
-  (Roggia 36–37%, Lesmo 50.6%, Ascari 67–68%, curve 10 71–73%). The app now drops the sector at
-  the event's own position and lap; buffered lines are still attributed from their own timestamp,
-  not from read time. The `cut_give_back_m` setting is retired (an existing key is ignored), and
+## 0.4.0 - 2026-10-24
+
+### Added
+
+- The app now uses the game's own three sectors. Their two inner lines are learned from the game's
+  log and stored per track, so sector times match the game's and the sector bar marks the real
+  lines. A new track settles on equal splits after three laps if the log never brings them.
+- Braking cues and sector times are no longer rounded to the telemetry frame: a line or a sector
+  crossing is placed at the car's interpolated position at the event's own time.
+- Braking points driven before the game's lines arrive are kept and used for cues, instead of
+  leaving a new track's first corners without any.
+- `settings.json` and learned-data files now record the app version, a build identifier and the
+  save time, and the log opens with one structured diagnostics line. A new Diagnostics tab turns
+  on verbose logging of the game's track-limit signals and log lines.
+- Settings -> Data lists files the app could not read, with the reason and where they were moved.
+
+### Changed
+
+- Track limits now invalidate exactly the sectors the game judged. The game's log, its race-cut
+  pair and its one-shot lap flag are recorded against a `(lap, sector)`, so one cut drops one
+  sector and says so once; a second cut in the same lap is still caught.
+- Cut attribution follows the event's own position and time, so a buffered log line read a lap
+  late still drops the sector it happened in. The `cut_give_back_m` setting is retired and
   `settings_version` is now 3.
-- Pin `acevo-sdk` below 0.2.0. That release only releases captured frames after it sees a clean lap
-  boundary, so the live overlay stayed on "Game running — not in a session" until a lap was
-  completed. The app needs every frame; lift the pin when the SDK offers a live-frame path again.
-- Sector lines and sector times are no longer quantised to the telemetry frame. A game-log split is
-  placed at the car's **interpolated** position at the split's own timestamp (the previous code used
-  the last frame at or before it), and a sector now closes at the interpolated crossing instead of at
-  the first frame after the line. At 60 Hz and racing speed a frame is about a metre: the lines sat up
-  to a frame early because the old code used the last frame at or before the split, while a sector
-  time, measured between the first frames after its two lines, could be out by up to a frame in either
-  direction. Interpolating removes that quantisation; the remaining error is the interpolation
-  residual described in `docs/TELEMETRY.md`, usually a few tenths of a metre rather than a guaranteed
-  bound. A game-log split is only placed by interpolating between a
-  normal pair of samples: if the pair wraps the start/finish line inside one lap, or jumps more than
-  5% of a lap (a reset or teleport), the split falls back to the earlier sample rather than inventing
-  a position the car never had. Verbose logging now also audits every later split against the learned
-  line (`splits: audit index 0 ... the app's line was crossed 3.7 ms / 0.2 m after the game's`),
-  which is how a line placement can be checked from an app log plus the matching game log.
-- Fix: a cut read between the first sample after the start/finish line (which still carries the old
-  lap number) and the next was attributed to S1 of the lap that had just ended, greying that sector
-  and taking back its stored run. It now belongs to the lap its own time falls in: at the line that
-  is S1 of the new lap.
-- Fix: a buffered split read that arrived after the car had already crossed the game's line kept the
-  pass in progress on the start/finish line, storing a first sector that spanned the lap line to the
-  read position - too long by the distance already driven. It is now timed from the game's own line,
-  and a crossing asked for outside the two samples falls back to the current sample, not a clamp.
-- Track limits now invalidate exactly the sectors the game judged. Every signal is recorded against a
-  `(lap, sector)`, so a cut seen live by the race-cut pair or the lap flag and again in the log (or
-  re-read after a restart) drops one sector and says so once, while two cuts in different sectors of
-  the same lap each drop their own. The old two-second window could swallow a genuinely different cut
-  reported moments after another. Off-track results read `not counted · <reason>` in the log, and the
-  setting is now called "Follow the game's log" because it also brings the game's sector splits.
-- Fix: the sectors that close while the app is still waiting for the game's sector lines are no longer
-  lost. The game buffers its log, so on a fresh track the lines can be read a lap or more after the
-  sectors that needed them; the samples already kept for late cuts also say when the car crossed each
-  line, so those sectors are timed and stored the moment the lines arrive (never for a sector the game
-  took out, and only while the crossings are still in the five minutes of samples). The sector in
-  progress is moved onto the game's line the same way instead of being dropped, which is what "the
-  lines were learned mid-sector" now means only when a reset or a long pause took the crossing away.
-  If no split ever arrives, the equal splits become the permanent lines and the laps driven while
-  waiting are timed on them at that point, so the fallback does not cost those laps either.
-- The app now uses **the game's own sectors**. Every lap is scored in three, and the two inner lines
-  are learned from the game's log: each timed lap writes a split as the car crosses a line
-  (`Received split: ... index 0/1/2`, the end of the first, second and third sector), and the car's
-  position at that line's own timestamp is the line - the same position-and-time attribution the cut
-  reports already use, since the game buffers this log too. Both lines have to come from one lap and
-  land where a sector line plausibly sits, which keeps a teleport or a reset from placing one. Until the
-  lines are known no lap is counted, because a run timed between lines that then move would be filed
-  under the wrong sector; if no split arrives (the log not followed, or a build that does not write
-  them) the app settles for equal splits after three laps and says so. This replaces the warm-up survey
-  of braking points and steering and the whole line-placement search: no corner is ever split, because
-  the game's lines sit at corner exits (at Monza, just before the Roggia and Ascari braking points), and
-  the app's sector times are now the game's own. "Sectors per lap", its automatic
-  length/minimum/maximum and "Place sector lines on straights" are gone from Settings -> Sectors, along
-  with the steering field the survey read.
-- Fix: a car driven for the first time on a track another car has already driven took the sector lines
-  from it but then still counted nothing until the game's log repeated them - and, after three laps,
-  said it had fallen back to equal splits. The lines are the track's, not the car's, so an entry now
-  takes them and keeps them, and scores from its first lap.
-- Fix: a lap the game invalidates because it began in the pits no longer opens the session by telling
-  the driver that its first sector will not count. That sector is a warm-up drop anyway, so the drop
-  changes nothing; it is only written to the log now, and the reason is kept on the sector's own result
-  ("S1 not counted · warm-up lap"). "The game invalidated the lap at ..." is said only when the sector
-  it takes out would otherwise have counted.
-- Result and track-limit messages say the same thing in fewer words: a run outside the kept times is
-  "not kept" rather than "not faster", a dropped sector is "won't count" rather than "will not count",
-  and a position is just "at 44%" rather than "at 44% of the lap". A sector that already will not count
-  - a warm-up lap, the lines still being found, or one already reported as not counted - no longer gets
-  a second cut announcement; its own result keeps the reason.
-- A deleted or never-driven data entry is no longer logged as an unreadable file when the app reads it
-  back; it is simply empty, as it was before the first run.
-- Fix: the lap the sector lines are learned on no longer loses the sector it had just started. A new
-  track and car begins on stand-in equal splits (the game's own lines can only be read from its log),
-  and the game buffers that log, so the read that brings them often lands a moment after the car crossed
-  the start/finish line: the sector just begun started on that line, which both layouts share, and ends
-  on one of the game's lines, so it is timed correctly and counts. A sector that was already part-way
-  through had started on a stand-in equal line, somewhere else than the game puts its own, so its time
-  is dropped - now saying "not counted · the lines were learned mid-sector" instead of blaming the pit
-  lane or a reset for it.
-- The braking points driven before the sector lines arrive are now kept. The game buffers its log, so
-  the lines can turn up a lap or more after the sectors that needed them, and those sectors could not be
-  timed. Where braking started is a position on the track and needs no sector line to be useful, so it
-  is now held on to (as `early_onsets` in the data file, one entry per pass) and places the cues at once
-  instead of leaving the first corners of a new track without any until a sector had been timed in full.
-  Each kept pass counts as one run, so once a couple of laps have been timed the runs that count
-  out-vote it and it stops mattering. Warm-up laps and laps the game invalidated add nothing.
-- Fix: the overlay no longer opens a session with "S1 won't count · lap invalidated" when that sector
-  was never going to count anyway (a warm-up lap, or the lines still being found) and the flag stays on
-  the sector's own result line. The status line says what is actually true - "Warm-up lap · not
-  learning", then "Waiting for the game's sector lines" once the warm-up laps are over. That waiting is
-  the app's, not the driver's, so it is no longer dressed up as a learning state: learning starts when
-  both are settled, the warm-up laps are done and the game's lines are known. The big distance readout
-  follows the same rule - "warm-up", "waiting…", "paused" or "learning…" instead of always claiming to
-  learn whenever it is empty.
-- Sector results now say how far off the sector's best they were: "S2 39.17 s · good (+0.33 s)",
-  "S2 48.85 s · slower (+10.01 s)", and "best (-0.45 s)" for a new best, measured against the run
-  it replaced. The log line carries the same number. The colours themselves are unchanged: they
-  are a rank (green = made your fastest `top_runs`, purple = new best), not a time threshold.
-- Fix: every off-track moment is dropped from the sector it happened in, including a second one in a
-  lap the game has already invalidated. The game reports each cut in its log, once per cut
-  (`Adding notification UINotificationType_SessionPenalty`); that notification is now the signal the
-  app follows, and it is the only source that shows every cut — the "lap valid" flag drops once per
-  lap. The live "race cut" pair still drops a sector where a build publishes it. New settings:
-  "Follow the game's log" and "Game log folder".
-- Fix: the game buffers its log (a few KB, flushed when full), so a cut can reach the app a minute
-  after it was written - or after the lap it belongs to has ended - and one read can bring a whole
-  lap's cuts at once. Each line's own time is now what a cut is attributed from - the car's position
-  *then*, and the lap that time falls in, taken from a short history of recent samples - instead of
-  the position when the line was read. That keeps every cut in the sector it happened in when several
-  arrive together, and keeps a late one out of the lap being driven: the run its own lap saved is
-  taken back, and the sector of the same number in the current lap is left alone. Before, later cuts
-  in a delayed read were folded into the first and lost, a late cut was dropped one sector too far on,
-  and a cut read after its lap had ended greyed the wrong lap's sector. The verbose log now shows the
-  read lag and the lap per cut, and names a cut it folded away because the lap flag had already
-  caught it - even when the same batch carries later cuts - so every notice in the game's log can be
-  accounted for.
-- A cut the log reports for a lap the sector bar has already moved past is named on the status line
-  ("S3 of the last lap won't count · cut") for a few seconds: there is no colour left on the bar to
-  grey, and the stored run it takes back leaves no trace there either.
-- The "the game reported no off-track for this invalidation" warning is only shown when the game log
-  is not being followed: with the log on, every cut is in it (a few seconds later), so the fallback is
-  noted in the debug log instead of warning about a limitation that does not apply.
-- Fix: a cut report can arrive after the sector it is about. When it does, the app still drops the
-  right sector: it reads the sector back from the report by the configured give-back distance and
-  takes back the run if that sector was already saved, restoring the list it replaced. The clean
-  sectors in between are kept.
-- Verbose (debug) logging for troubleshooting: a new Settings -> Diagnostics tab turns it on (also
-  `--debug` on the command line or `BRAKE_TRAINER_DEBUG=1`), and logs the game's track-limit signals at
-  every change (the race-cut pair, the lap flag and the timing invalid flag) and every cut read from
-  the game's log, with the position, the sector
-  it was reported in and the sector it was attributed to, plus the telemetry regions the SDK attached
-  to. "Open log folder" opens the log for sharing. Off by default.
+- "Follow the game's log" now also brings the game's sector splits, which is why it is no longer
+  only about cuts.
+- A settings file from a newer build keeps its version and any keys this build does not know; a
+  failed settings write is reported instead of being silent.
+- A learned-data file from a newer layout, a corrupt file, or one with a different sector count is
+  moved to `data\quarantine\` instead of being overwritten. If it cannot be moved, the app keeps it
+  and refuses to save over it.
+- The status line says what is actually true during warm-up and while waiting for the game's lines;
+  sector results show their gap to the sector's best.
+- `acevo-sdk` is pinned below 0.2.0, which only releases frames after a clean lap boundary.
+
+### Fixed
+
+- The sector bar's inner boundaries now sit on the game's lines instead of equal thirds, and the
+  gap between segments is gone.
+- A buffered log line read across a backwards start/finish wrap no longer drops a sector of the
+  next lap.
+- A cut read between the first sample after the line and the next belongs to the lap its own time
+  falls in, not to the sector of the lap that ended.
+- A live lap flag that drops in the frame that crosses a line no longer takes out the new sector;
+  with the log on it waits for the log's own time, otherwise it stays with the sector that ended.
+- A late split no longer stores a first sector that spans the start/finish line.
+- Sectors that close while the app is waiting for the game's lines are timed from the kept samples
+  instead of being lost.
+- A car joining a track another car has already learned now takes those lines and scores from its
+  first lap.
+- A lap invalidated because it began in the pits no longer opens the session with "S1 won't count".
+- A deleted or never-driven data entry is no longer logged as an unreadable file.
+
+### Removed
+
+- The live tyre-count feature and its two settings ("Skip sector if tyres off track" and
+  "...once the lap is invalid"). The game did not publish the field in testing, and its log
+  already reports every cut.
+- "Sectors per lap", its automatic length/minimum/maximum, "Place sector lines on straights", the
+  warm-up survey and the steering field it read.
 
 ## 0.3.11 - 2026-10-15
 

@@ -50,7 +50,6 @@ jobs:
 
       - name: Build the installer
         id: installer
-        continue-on-error: true
         run: |
           choco install innosetup --no-progress -y
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.value }}" packaging\installer.iss
@@ -64,8 +63,7 @@ jobs:
 
       - name: Write the release notes
         run: |
-          $flag = if (Test-Path dist\BrakeTrainerEvo-*-setup.exe) { @() } else { @("--no-installer") }
-          python scripts/release_notes.py --tag "${{ github.ref_name }}" --repo "${{ github.repository }}" --out release_notes.md @flag
+          python scripts/release_notes.py --tag "${{ github.ref_name }}" --repo "${{ github.repository }}" --out release_notes.md
 
       - name: Publish the release
         uses: softprops/action-gh-release@v2
