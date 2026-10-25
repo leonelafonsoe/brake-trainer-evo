@@ -20,6 +20,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   cannot drift. The hidden overlay position is explicit rather than inferred.
 - The overlay updates its text and styles only when the value actually changes, instead of on every
   telemetry frame.
+- The installer declares its publisher/support/update URLs and product version, detects a running
+  copy through a named mutex before upgrading, and closes it first. The app creates that mutex.
 - The engine is now a package (`brake_trainer.engine/`) instead of one 1600-line module: session
   and storage, sector passes, sector lines, braking zones and track limits, cues and shared
   constants each live in their own file. The public import path is unchanged and behaviour is

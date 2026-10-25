@@ -24,6 +24,20 @@ from .ui.worker import EngineWorker
 
 log = logging.getLogger("brake_trainer")
 
+# Kept alive for the process lifetime; the installer's AppMutex checks this name.
+_app_mutex: int | None = None
+
+
+def _create_app_mutex() -> None:
+    """Create the named mutex the installer checks before replacing a running program."""
+    global _app_mutex
+    if sys.platform != "win32":
+        return
+    with contextlib.suppress(Exception):
+        import ctypes
+
+        _app_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "BrakeTrainerEvo.App")
+
 
 def _set_taskbar_identity() -> None:
     """Give the process its own Windows taskbar identity, so the taskbar shows our icon (and not
@@ -39,6 +53,7 @@ def _set_taskbar_identity() -> None:
 def main() -> int:
     forced_debug = debug_requested_on_startup(sys.argv)  # --debug / BRAKE_TRAINER_DEBUG
     configure_logging(debug=forced_debug)
+    _create_app_mutex()
     _set_taskbar_identity()
 
     app = QApplication(sys.argv)

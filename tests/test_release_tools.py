@@ -238,3 +238,16 @@ def test_dependencies_are_locked_and_ci_uses_the_frozen_lock():
 
     gates = (ROOT / ".github" / "actions" / "gates" / "action.yml").read_text(encoding="utf-8")
     assert "uv run --frozen --no-sync" in gates
+
+
+def test_the_installer_has_metadata_and_detects_a_running_app():
+    installer = (ROOT / "packaging" / "installer.iss").read_text(encoding="utf-8")
+    app = (ROOT / "src" / "brake_trainer" / "app.py").read_text(encoding="utf-8")
+
+    assert "AppMutex=BrakeTrainerEvo.App" in installer
+    assert "AppPublisherURL=https://github.com/leonelafonsoe/brake-trainer-evo" in installer
+    assert "AppSupportURL=" in installer and "AppUpdatesURL=" in installer
+    assert "VersionInfoProductVersion={#AppVersion}" in installer
+    assert "CloseApplications=yes" in installer
+    # The mutex the installer checks must actually be created by the program.
+    assert "CreateMutexW" in app and "BrakeTrainerEvo.App" in app
