@@ -154,7 +154,8 @@ src/brake_trainer/
   buildinfo.py     which build this is (commit or packaged identifier)
   logsetup.py      logging: rotating file + console, verbose mode
   app.py           wiring, tray icon
-  ui/              overlay, settings window, status line, icon, worker thread, theme
+  ui/              overlay, settings/ (window, form, diagnostics/data/about pages), status line,
+                   icon, worker thread, theme
 tests/             pytest: engine scenarios, storage, config, telemetry, status line, docs
 scripts/           build_exe.py, make_icon.py, gen_settings_doc.py, release_notes.py, bump_version.py
 packaging/         PyInstaller entry point, installer script, icon

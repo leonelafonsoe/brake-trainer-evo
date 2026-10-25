@@ -118,7 +118,8 @@ src/brake_trainer/
   gamelog.py      follows the game's log for splits and cuts
   audio.py        generated beeps
   logsetup.py     rotating log and verbose mode
-  ui/             overlay, settings window, status line, widgets, worker, theme, icon
+  ui/             overlay, settings/ (window, form, diagnostics/data/about pages), status line,
+                  widgets, worker, theme, icon
   app.py          wiring and tray icon
 ```
 
