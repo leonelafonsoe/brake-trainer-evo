@@ -4,6 +4,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.4.2 - 2026-10-25
+
 ### Fixed
 
 - The portable zip and the installer now include the third-party licence texts referenced by
