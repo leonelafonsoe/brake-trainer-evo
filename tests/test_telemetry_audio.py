@@ -12,6 +12,7 @@ from brake_trainer.audio import AudioPlayer, make_tone
 from brake_trainer.config import Settings
 from brake_trainer.models import CueKind
 from brake_trainer.telemetry import (
+    TRACK_LIMITS_NOTE,
     ExitReason,
     GameProbe,
     GameStatus,
@@ -36,6 +37,15 @@ def frame(**over):
     for k, v in over.items():
         setattr(base, k, v)
     return base
+
+
+def test_the_startup_track_limits_note_only_names_current_signals():
+    # The live tyre-count path was removed; the note must not send users looking for a setting that
+    # no longer exists. The log's older tyre-count parser is a different, historical signal.
+    assert "tyres" not in TRACK_LIMITS_NOTE.lower()
+    assert "log" in TRACK_LIMITS_NOTE
+    assert "race-cut" in TRACK_LIMITS_NOTE
+    assert "is_valid_lap" in TRACK_LIMITS_NOTE
 
 
 def test_sample_from_frame():

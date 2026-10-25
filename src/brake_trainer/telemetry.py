@@ -32,10 +32,9 @@ _GFX_RACE_CUT_BYTES = 12  # ...then race_cut_current_delta (float32)
 
 # Said once at start-up, so the app's limits with track limits are never a silent surprise.
 TRACK_LIMITS_NOTE = (
-    "Track limits come from the game: each cut in its log, its race-cut pair and its live count of "
-    "tyres off the track drop the sector they happened in. Its one-shot 'is_valid_lap' flag is the "
-    "fallback when no per-cut signal is available, and then only the sector where the flag fell is "
-    "dropped."
+    "Track limits come from the game: each cut in its log and its race-cut pair drop the sector "
+    "they happened in. Its one-shot 'is_valid_lap' flag is the fallback when no per-cut signal is "
+    "available, and then only the sector where the flag fell is dropped."
 )
 
 
