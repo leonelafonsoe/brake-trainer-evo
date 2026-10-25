@@ -21,6 +21,11 @@ def test_nothing_to_say_when_not_live():
     assert status_line(snap(), ST, live=False) is None
 
 
+def test_a_storage_warning_outranks_the_normal_status():
+    text = "Data file Monza__Car_A moved to quarantine"
+    assert status_line(snap(storage_warning=text), ST, True) == (text, theme.RED)
+
+
 def test_current_sector_that_will_not_count_has_top_priority():
     text, colour = status_line(snap(pass_flag="lap invalidated", warming_up=True), ST, True)
     assert text == "S3 won't count · lap invalidated" and colour == theme.RED
@@ -115,3 +120,10 @@ def test_a_cut_reported_for_a_lap_that_is_gone_is_announced():
     # ... and it stops after a while, giving the line back
     stale = snap(late_cut="S3 of the last lap won't count · cut", late_cut_age=60.0)
     assert status_line(stale, ST, True)[0] == "2 braking points"
+
+
+def test_a_telemetry_failure_is_visible_even_when_not_live():
+    # No sample is arriving, which is exactly when the reason has to be shown: the overlay would
+    # otherwise just say it is waiting for the game.
+    text = "Telemetry failed: capture could not start · see brake_trainer.log"
+    assert status_line(snap(), ST, False, text) == (text, theme.RED)

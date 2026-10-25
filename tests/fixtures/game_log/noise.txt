@@ -1,0 +1,8 @@
+[2026-10-23 01:40:33.380] [gameplay] [info] Zone Exit 1 2 true
+[2026-10-23 01:40:33.395] [gameplay] [info] split now 0 expected split 1 is_end false
+[2026-10-23 01:40:33.395] [gameplay] [info] On Split start false end false id 0 splittime 36666
+[2026-10-23 01:40:35.562] [gameface] [info] UINotification UINotificationType_SessionPenalty 
+[2026-10-23 01:40:35.562] [gameface] [warning] false {PENALTY_CLEARED_KEY} #296 
+ While executing JS :30:23
+[2026-10-23 01:40:35.562] [gameface] [info] hasvalue 0 
+[2026-10-23 01:40:40.895] [gameplay] [info] engagement matrix (P/Q): pairs=0 passFree=0 buildGap=0 bAllows=0 bMovesAside=0 fastCars=0 skipped=0 noRealtime=0

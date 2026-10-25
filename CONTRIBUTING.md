@@ -4,6 +4,10 @@ Bug reports, ideas and pull requests are welcome.
 
 ## Set up
 
+For the longer version — architecture, change recipes and debugging — see
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). If you are working with an AI agent, point it at
+[AGENTS.md](AGENTS.md).
+
 ```powershell
 git clone <your fork>
 cd brake-trainer-evo
@@ -22,9 +26,16 @@ touches Qt.
 ruff format .
 ruff check .
 mypy
-pytest
+pytest -W error
+pytest --cov        # same command as CI, enforcing the coverage floor
 ```
 
+- A warning is an error: `filterwarnings = ["error"]` in `pyproject.toml` turns any warning the
+  suite raises into a failure. Fix the warning; do not filter it away unless it comes from a
+  dependency you cannot control.
+- Every test has a 60-second timeout, so a hang fails the run instead of blocking CI.
+- Coverage has a floor (`fail_under` in `pyproject.toml`). It is a ratchet: raise it as coverage
+  improves, never lower it to make a change pass.
 - Keep the engine (`engine.py`, `storage.py`, `models.py`, `config.py`) free of Qt imports.
 - Add or update tests for behaviour changes. `tests/conftest.py` has a synthetic `Driver` that
   drives an engine around a fake track, which makes most scenarios a few lines.
@@ -32,6 +43,29 @@ pytest
   regenerate the reference: `py scripts/gen_settings_doc.py`.
 - Update `CHANGELOG.md` and, if behaviour changes, `docs/HOW_IT_WORKS.md`.
 - Small, focused pull requests are easier to review than large ones.
+
+## Real logs and stored data as evidence
+
+When a change depends on what the game or an older app version actually wrote, start from the real
+file, not from an assumption. Add the smallest excerpt that proves the case to `tests/fixtures/`:
+
+- `game_log/` for exact parser inputs: one notification block, split line or connection line.
+- `track_data/` for real stored `version: 1` JSON, to keep older files loading and round-tripping.
+- `settings/` for real settings JSON from older versions, to test one-time migrations.
+
+Rules:
+
+- Remove names, Steam IDs, car IDs and paths before committing; never commit a full session log.
+- Keep real lines for parser compatibility and synthetic telemetry for engine behaviour. A game log
+  has no synchronized telemetry, so it cannot replace the `Driver` scenarios in `tests/conftest.py`.
+- Record the game/app build in the fixture README. If the format changes, add a new fixture instead
+  of silently replacing the old one.
+- Treat the app log as evidence for expected messages and positions, not as test input: it is our own
+  output.
+- Prefer one small fixture per behaviour. A growing folder is fine, but do not add a case that only
+  repeats an existing one.
+
+The `README.md` in each fixture folder shows the format and where the data came from.
 
 ## What happens to your pull request
 
@@ -65,8 +99,9 @@ The same applies to issues: AI-written bug reports are fine if you checked that 
 
 ## Reporting a bug
 
-Please include the app version, what you were doing (track, car, session type), what you
-expected, and the relevant lines of `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`.
+Please include the app version and build (both on the log's first, `startup ...` line), what you
+were doing (track, car, session type), what you expected, and the relevant lines of
+`%APPDATA%\BrakeTrainerEvo\brake_trainer.log`.
 
 ## License of contributions
 

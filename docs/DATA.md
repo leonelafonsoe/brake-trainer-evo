@@ -4,16 +4,37 @@ Everything is stored per user in `%APPDATA%\BrakeTrainerEvo\`:
 
 | Path | Content |
 | --- | --- |
-| `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)) and the overlay position |
-| `data\<track>__<car>.json` | What was learned for one track and car |
-| `brake_trainer.log` | Log (rotated, about 0.5 MB x 3) |
+| `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)), the overlay position, and the version that wrote the file |
+| `data\<track>__<car>.json` | What was learned for one track and car, with the version that wrote it. A colliding name adds `--<hash>` (see below) |
+| `data\quarantine\` | Files this build could not read, kept instead of overwritten (see below) |
+| `brake_trainer.log` | Log (rotated, about 1 MB x 3), starting with one diagnostics line: app version, build, settings/data versions, log path and verbose state |
 
 Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy for testing).
+
+## File names
+
+`<track>` and `<car>` are readable slugs of the names stored inside the file: punctuation becomes
+`_`. The identity is the `track` and `car` in the JSON, not the filename. If two different names
+reduce to the same slug (`Car A` and `Car/A` both become `Car_A`), the colliding file gets a short
+hash suffix (`Monza__Car_A--1a2b3c4d5e6f.json`), so one entry can never overwrite another. Files
+written by older builds have no suffix; they still load and are updated in place. Do not rename the
+files by hand: the app finds an entry by the names inside it.
+
+## Settings compatibility
+
+`settings.json` keeps its `settings_version`. A file written by a newer build is loaded with the
+fields this build knows; unknown keys are preserved when the app saves, and the newer version is
+kept, so the newer build does not lose its choices. A file from an older build is migrated once and
+keys this build has retired are dropped. If the file cannot be written, the change still applies for
+the session and the app shows a warning instead of failing silently.
 
 ## Learned data format
 
 ```json
 {
+  "app_version": "0.4.0",
+  "build": "2983a85ac7d3",
+  "saved_at": "2026-10-24T12:00:00+00:00",
   "version": 1,
   "track": "Monza",
   "car": "Ferrari 296 GTB",
@@ -28,9 +49,18 @@ Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy f
 }
 ```
 
+- `app_version`, `build` and `saved_at`: the version, the exact code and when it was saved (UTC).
+  `build` is the source checkout's git revision (`-dirty` when it had uncommitted changes), the
+  commit baked into a packaged executable, or the value of `BRAKE_TRAINER_BUILD` when one was set.
+  These fields are for support and debugging and are ignored when the file is loaded, so files
+  from older and newer builds still load. `settings.json` carries the same three fields.
+- `version`: the learned-data format version (`1`), separate from the app version. Unlike
+  `app_version`, it decides whether the data can be read: a file written by a newer layout is
+  moved to `data\quarantine\` (with a warning in the log) and a fresh entry starts, so the newer
+  file is never overwritten by an older build. Files with an older version still load.
 - `boundaries`: the `n_sectors - 1` inner sector lines (0..1). They are the game's own sector lines,
   learned from its log (see `DESIGN.md`); `null` means they have not been learned yet, so equal splits
-  are in use - that is what files from versions before 0.3.11 use and keep. Settings -> Data shows
+  are in use - that is what files from versions before 0.4.0 use and keep. Settings -> Data shows
   which kind each entry is. The lines are the track's, not the car's, so an entry here is copied from
   another car's file on the same track as soon as it is opened, and only a track no car has learned yet
   waits for the log. To learn the lines again, delete every entry on the track and drive a lap.
@@ -43,8 +73,22 @@ Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy f
   each, so the counted runs out-vote them as they arrive; when the pass they came from is retimed, its
   timed run carries them and the stand-in entry is removed. A sector the game invalidated, or one
   whose crossings are no longer in the kept samples, is never stored from its stand-in entry.
-- Files whose `n_sectors` does not match the app's sector count (3) are ignored and replaced on the
-  next save: files from 0.3.10 and earlier hold a different number of sectors.
+- Files whose `n_sectors` does not match the app's sector count (3) are moved to
+  `data\quarantine\` and a fresh entry starts, rather than overwritten: files from 0.3.10 and
+  earlier hold a different number of sectors. If a file cannot be moved (for example it is locked),
+  the app keeps it in place and refuses to save over it; Settings -> Data marks it read-only.
+- If a learned-data file cannot be written (the disk is full, or the folder is read-only), the
+  previous file is kept, the half-written temporary file is removed, and the status line says the
+  data could not be saved until a later write succeeds. A failed delete is reported the same way,
+  so Settings -> Data never claims something was removed when it was not.
+
+## Deleting learned data
+
+Settings -> Data sends one delete for the selected row. A run is named by its sector, its time and
+its braking points (`onsets`); the time alone is not enough because two runs can share one. If the
+entry changed since the tab was drawn and the named run is no longer there, the delete does nothing
+rather than removing a different run: refresh and try again. Deleting an entry removes its file and
+any older duplicate holding the same track and car.
 
 ## Housekeeping
 
@@ -53,6 +97,7 @@ Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy f
   slipstream), a whole sector, or a whole entry, and press "Delete selected". Deleting an entry asks
   for confirmation. The change is applied by the running app itself, so it is not undone by the app
   saving its own copy.
-- **Start over**: delete the files in `data\`.
+- **Start over**: delete the files in `data\`. Files the app could not read are kept under
+  `data\quarantine\`; delete those too if you do not need them for support.
 - **Reset settings**: delete `settings.json`.
 - **Share or back up data**: copy the files. They are plain JSON.

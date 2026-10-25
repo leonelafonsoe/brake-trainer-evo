@@ -30,15 +30,26 @@ def phase_label(snap: Snapshot, settings: Settings) -> str:
     return "learning…"
 
 
-def status_line(snap: Snapshot, settings: Settings, live: bool) -> tuple[str, str] | None:
+def status_line(
+    snap: Snapshot, settings: Settings, live: bool, error: str = ""
+) -> tuple[str, str] | None:
     """(text, colour) for the line under the sector bar, or None when there is nothing to say.
 
-    Priority: a cut reported for a lap that is already gone > the current sector can't count >
-    learning paused > warm-up or waiting for the game's sector lines > the last sector result (for a
-    few seconds) > borrowed reference > a quiet summary of what is learned.
+    Priority: a telemetry failure > a cut reported for a lap that is already gone > the current
+    sector can't count > learning paused > warm-up or waiting for the game's sector lines > the last
+    sector result (for a few seconds) > borrowed reference > a quiet summary of what is learned.
     """
+    if error:
+        # A failure has to be visible even when no sample is arriving: that is exactly when it
+        # matters, and the overlay would otherwise just say it is waiting.
+        return (error, theme.RED)
     if not live:
         return None
+    if snap.storage_warning:
+        # Learned data could not be read or written. The Data tab has the path and the reason; this
+        # line only needs to stop the driver wondering why the entry looks empty or a lap did not
+        # stick.
+        return (snap.storage_warning, theme.RED)
     if snap.late_cut and snap.late_cut_age is not None and snap.late_cut_age < LATE_CUT_SHOW_S:
         # The sector bar has moved on to another lap, so this is the only place it can appear.
         return (snap.late_cut, theme.RED)

@@ -59,9 +59,17 @@ def check_release(tag: str, root: Path = ROOT) -> tuple[str, str]:
     for name, value in project_versions(root).items():
         if normalize(value) != normalize(version):
             raise ValueError(f"tag {tag} does not match the version in {name} ({value})")
-    notes = changelog_section((root / "CHANGELOG.md").read_text(encoding="utf-8"), version)
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    notes = changelog_section(changelog, version)
     if not notes:
         raise ValueError(f"CHANGELOG.md has no (or an empty) '## {version}' section")
+    if changelog_section(changelog, "Unreleased"):
+        # A non-empty Unreleased next to an existing version section means the notes for this tag
+        # are stale: the changes that were not bumped yet are missing from the release body.
+        raise ValueError(
+            f"CHANGELOG.md still has notes under '## Unreleased'; "
+            f"run scripts/bump_version.py {version} before tagging {tag}"
+        )
     return version, notes
 
 

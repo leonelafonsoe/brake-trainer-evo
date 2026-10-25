@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brake-trainer-evo"
-version = "0.3.11"
+version = "0.4.0"
 description = "Braking-point trainer with audio cues for Assetto Corsa EVO"
 readme = "README.md"
 license = "PolyForm-Noncommercial-1.0.0"
@@ -13,13 +13,24 @@ keywords = ["assetto-corsa-evo", "sim-racing", "telemetry", "braking"]
 classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Games/Entertainment :: Simulation",
 ]
-requires-python = ">=3.10"
-dependencies = ["PySide6>=6.6", "acevo-sdk>=0.1.1"]
+requires-python = ">=3.11"
+# acevo-sdk 0.2.0 withholds frames until a clean lap boundary, which starves the live overlay.
+dependencies = ["PySide6>=6.6", "acevo-sdk>=0.1.1,<0.2.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10", "pyinstaller>=6.6"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5",
+    "pytest-timeout>=2.3",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pyinstaller>=6.6",
+]
 
 [project.gui-scripts]
 brake-trainer = "brake_trainer.app:main"
@@ -31,20 +42,35 @@ where = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["src"]
+addopts = "--strict-markers --strict-config"
+filterwarnings = ["error"]
+xfail_strict = true
+timeout = 60
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
 module = ["acevo", "acevo.*", "winsound"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/brake_trainer"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# A floor, not a target: it stops the suite from quietly losing ground. Raise it as coverage
+# improves; never lower it to make a change pass.
+fail_under = 84

@@ -10,15 +10,18 @@ The icon comes from packaging/icon.ico (regenerate it with scripts/make_icon.py)
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from brake_trainer import __version__  # noqa: E402
+from brake_trainer.buildinfo import BUILD_FILE, build_id  # noqa: E402
 
 NAME = "BrakeTrainerEvo"
 DEFAULT_ICON = ROOT / "packaging" / "icon.ico"
@@ -60,8 +63,17 @@ def main() -> int:
         print(f"(no icon found at {args.icon}; building without one)")
     cmd.append(str(ROOT / "packaging" / "entry.py"))
 
-    print("Running:", " ".join(cmd))
-    result = subprocess.run(cmd, cwd=ROOT, check=False)
+    # A frozen app cannot ask git which commit it came from, so bake the identifier in as data
+    # next to the program. CI sets BRAKE_TRAINER_BUILD to the commit; a local build falls back to
+    # the checkout's git description.
+    build = build_id()
+    print(f"Build: {build}")
+    with tempfile.TemporaryDirectory(prefix="brake-trainer-build-") as meta:
+        build_file = Path(meta) / BUILD_FILE
+        build_file.write_text(f"{build}\n", encoding="utf-8")
+        cmd += ["--add-data", f"{build_file}{os.pathsep}."]
+        print("Running:", " ".join(cmd))
+        result = subprocess.run(cmd, cwd=ROOT, check=False)
     if result.returncode:
         return result.returncode
 

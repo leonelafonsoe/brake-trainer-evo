@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import struct
 import subprocess
@@ -22,6 +23,13 @@ _PROBE_WAITING_S = 3.0  # looking for the game to start
 _PROBE_FALLBACK_S = 1.0  # watching a running game we could not open a handle to
 _GAME_MISSING_CHECKS = 2  # consecutive misses (fallback mode) before the game counts as closed
 _RESTART_DELAY_S = 2.0
+_MAX_RESTART_DELAY_S = 30.0  # cap for the retry backoff after a failure
+_FRAME_ERROR_LIMIT = 3  # consecutive bad frames before the UI is told
+
+# Short user-facing failures: the exception detail goes to the log, not the status line.
+_ERROR_START = "capture could not start"
+_ERROR_READ = "telemetry read failed"
+_ERROR_FRAMES = "telemetry frames could not be read"
 
 # The graphics block carries the game's "race cut" fields, its own record of the last off-track:
 # the time it judged the driver gained, and how far they still have to drive to give it back. The
@@ -32,10 +40,9 @@ _GFX_RACE_CUT_BYTES = 12  # ...then race_cut_current_delta (float32)
 
 # Said once at start-up, so the app's limits with track limits are never a silent surprise.
 TRACK_LIMITS_NOTE = (
-    "Track limits come from the game: each cut in its log, its race-cut pair and its live count of "
-    "tyres off the track drop the sector they happened in. Its one-shot 'is_valid_lap' flag is the "
-    "fallback when no per-cut signal is available, and then only the sector where the flag fell is "
-    "dropped."
+    "Track limits come from the game: each cut in its log and its race-cut pair drop the sector "
+    "they happened in. Its one-shot 'is_valid_lap' flag is the fallback when no per-cut signal is "
+    "available, and then only the sector where the flag fell is dropped."
 )
 
 
@@ -174,7 +181,6 @@ def sample_from_frame(frame: Any) -> Sample | None:
         in_pit=bool(gfx.get("is_in_pit_lane") or gfx.get("is_in_pit")),
         t=_frame_time(frame),
         lap_valid=bool(gfx.get("is_valid_lap", True)),
-        tyres_out=int(phys.get("number_of_tyres_out", 0) or 0),
         cut_gained_ms=gained,
         cut_deadline_m=deadline,
         cut_delta_s=delta,
@@ -185,10 +191,23 @@ def sample_from_frame(frame: Any) -> Sample | None:
 def _default_capture_factory(hz: float) -> Any:
     from acevo import TelemetryCapture
 
+    # See the dependency pin in ``pyproject.toml``: acevo-sdk 0.2.0 starves the live overlay.
+    #
     # The SDK stops capturing after 120 s standing still before the first lap (pits, online
     # lobby). Switch that off; the reader restarts capture if anything else stops it.
     TelemetryCapture.IDLE_TIMEOUT_SECONDS = float("inf")
     return TelemetryCapture(hz=hz)
+
+
+async def _wait_or_stop(stop: asyncio.Event, delay: float) -> bool:
+    """Wait up to ``delay``; return True when stop is requested instead of the timeout."""
+    if delay <= 0:
+        return stop.is_set()
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=delay)
+    except TimeoutError:
+        return False
+    return True
 
 
 class TelemetryReader:
@@ -201,6 +220,7 @@ class TelemetryReader:
         on_message: Callable[[str], None] = lambda text: None,
         on_game_state: Callable[[bool], None] = lambda running: None,
         *,
+        on_error: Callable[[str], None] = lambda text: None,
         capture_factory: Callable[[float], Any] = _default_capture_factory,
         game_probe: Callable[[str], GameProbe] = find_game_process,
         process_watcher: Callable[[int], ProcessWatcher | None] = open_process_watcher,
@@ -211,67 +231,125 @@ class TelemetryReader:
         self._on_sample = on_sample
         self._on_message = on_message
         self._on_game_state = on_game_state
+        self._on_error = on_error
         self._capture_factory = capture_factory
         self._probe = game_probe
         self._open_watcher = process_watcher
         self._on_restart = on_restart
         self._poll_s = poll_s
+        self._bad_frames = 0
+        self._frame_failed = False
 
     async def run(self, stop: asyncio.Event) -> ExitReason:
-        cap = self._capture_factory(self._get_settings().telemetry_hz)
-        await cap.start_capture()
-        self._on_message("Waiting for the game...")
+        """Capture until stopped or the game closes, retrying failures with a backoff.
+
+        A capture that cannot start, a poll that raises, or a burst of unreadable frames must not
+        end the worker: the overlay would wait forever with no explanation. Report the failure,
+        wait (doubling the delay up to a cap), and try again. The game-watch state survives a
+        capture restart, so a retry does not probe for the game again.
+        """
+        delay = _RESTART_DELAY_S
         last_check, seen, missing = 0.0, False, 0
         watcher: ProcessWatcher | None = None
+        cap: Any = None
         logged_regions = False
         try:
             while not stop.is_set():
-                await asyncio.sleep(self._poll_s)
-                if not cap.is_capturing():
-                    self._on_message(f"Telemetry stopped ({cap.get_stop_reason()}); restarting")
-                    await asyncio.sleep(_RESTART_DELAY_S)
-                    cap = self._capture_factory(self._get_settings().telemetry_hz)
-                    await cap.start_capture()
+                if cap is None:
+                    try:
+                        cap = self._capture_factory(self._get_settings().telemetry_hz)
+                        await cap.start_capture()
+                    except Exception:
+                        log.exception("Telemetry failed: %s", _ERROR_START)
+                        self._on_error(_ERROR_START)
+                        if await _wait_or_stop(stop, delay):
+                            break
+                        delay = min(delay * 2, _MAX_RESTART_DELAY_S)
+                        continue
+                    self._on_error("")  # a previous start or read failure is over
+                    self._on_message("Waiting for the game...")
                     logged_regions = False
-                    self._on_restart()
-                    continue
+                    delay = _RESTART_DELAY_S
 
-                frames = cap.get_frames()
-                cap.clear()  # keep memory flat
-                if frames and not logged_regions:
-                    logged_regions = True
-                    self._log_regions(cap)
-                for frame in frames:
-                    sample = sample_from_frame(frame)
-                    if sample is not None:
-                        self._on_sample(sample)
+                try:
+                    await asyncio.sleep(self._poll_s)
+                    if not cap.is_capturing():
+                        self._on_message(f"Telemetry stopped ({cap.get_stop_reason()}); restarting")
+                        await self._stop_capture(cap)
+                        cap = None
+                        self._on_restart()
+                        if await _wait_or_stop(stop, _RESTART_DELAY_S):
+                            break
+                        continue
 
-                # Game exit. With a process handle it is noticed on the next poll (~0.1 s);
-                # without one we fall back to listing processes once a second.
-                if watcher is not None:
-                    if watcher.exited():
-                        return self._game_closed()
-                    continue
-                now = time.monotonic()
-                if now - last_check < (_PROBE_FALLBACK_S if seen else _PROBE_WAITING_S):
-                    continue
-                last_check = now
-                probe = await asyncio.to_thread(self._probe, self._get_settings().game_process)
-                if probe.status is GameStatus.RUNNING:
-                    if not seen:
-                        self._on_message(f"Game detected ({probe.name})")
-                        self._on_game_state(True)
-                    seen, missing = True, 0
-                    watcher = self._open_watcher(probe.pid) if probe.pid else None
-                elif probe.status is GameStatus.ABSENT and seen:
-                    missing += 1
-                    if missing >= _GAME_MISSING_CHECKS:
-                        return self._game_closed()
+                    frames = cap.get_frames()
+                    cap.clear()  # keep memory flat
+                    if frames and not logged_regions:
+                        logged_regions = True
+                        self._log_regions(cap)
+                    self._deliver(frames)
+
+                    # Game exit. With a process handle it is noticed on the next poll (~0.1 s);
+                    # without one we fall back to listing processes once a second.
+                    if watcher is not None:
+                        if watcher.exited():
+                            return self._game_closed()
+                        continue
+                    now = time.monotonic()
+                    if now - last_check < (_PROBE_FALLBACK_S if seen else _PROBE_WAITING_S):
+                        continue
+                    last_check = now
+                    probe = await asyncio.to_thread(self._probe, self._get_settings().game_process)
+                    if probe.status is GameStatus.RUNNING:
+                        if not seen:
+                            self._on_message(f"Game detected ({probe.name})")
+                            self._on_game_state(True)
+                        seen, missing = True, 0
+                        watcher = self._open_watcher(probe.pid) if probe.pid else None
+                    elif probe.status is GameStatus.ABSENT and seen:
+                        missing += 1
+                        if missing >= _GAME_MISSING_CHECKS:
+                            return self._game_closed()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.exception("Telemetry read failed")
+                    self._on_error(_ERROR_READ)
+                    await self._stop_capture(cap)
+                    cap = None
+                    if await _wait_or_stop(stop, delay):
+                        break
+                    delay = min(delay * 2, _MAX_RESTART_DELAY_S)
             return ExitReason.STOPPED
         finally:
             if watcher is not None:
                 watcher.close()
+            if cap is not None:
+                await self._stop_capture(cap)
+
+    @staticmethod
+    async def _stop_capture(cap: Any) -> None:
+        with contextlib.suppress(Exception):
             await cap.stop_capture()
+
+    def _deliver(self, frames: Any) -> None:
+        """Turn frames into samples; one bad frame must not end the session."""
+        for frame in frames:
+            try:
+                sample = sample_from_frame(frame)
+            except Exception:
+                self._bad_frames += 1
+                log.exception("Could not read a telemetry frame")
+                if self._bad_frames == _FRAME_ERROR_LIMIT:
+                    self._frame_failed = True
+                    self._on_error(_ERROR_FRAMES)
+                continue
+            self._bad_frames = 0
+            if self._frame_failed:
+                self._frame_failed = False
+                self._on_error("")  # frames are readable again
+            if sample is not None:
+                self._on_sample(sample)
 
     def _game_closed(self) -> ExitReason:
         self._on_game_state(False)

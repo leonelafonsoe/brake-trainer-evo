@@ -91,7 +91,7 @@ def test_settings_window_data_tree_and_selected_edits(store, qapp):
     entry.child(0).child(0).setSelected(True)  # one run
     entry.child(1).setSelected(True)  # one whole sector
     assert window.selected_edits() == [
-        DeleteRun("Monza", "Car A", 0, 18.0),
+        DeleteRun("Monza", "Car A", 0, 18.0, (0.05,)),
         DeleteSector("Monza", "Car A", 1),
     ]
 

@@ -16,8 +16,15 @@ LENGTH = 5000.0
 class Driver:
     """Drives an engine around a synthetic track with braking zones at given positions."""
 
-    def __init__(self, engine: BrakeEngine, track: str = "Monza", car: str = "Car A") -> None:
+    def __init__(
+        self,
+        engine: BrakeEngine,
+        track: str = "Monza",
+        car: str = "Car A",
+        length: float = LENGTH,
+    ) -> None:
         self.engine, self.track, self.car = engine, track, car
+        self.length = length
         self.t = 0.0
 
     def feed(
@@ -27,25 +34,23 @@ class Driver:
         brake: float,
         pit: bool = False,
         valid: bool = True,
-        tyres_out: int = 0,
         cut_gained_ms: int = 0,
         cut_deadline_m: int = 0,
     ) -> None:
         self.t += DT
         self.engine.update(
             Sample(
-                self.track,
-                self.car,
-                LENGTH,
-                pos % 1.0,
-                brake,
-                speed,
-                pit,
-                self.t,
-                valid,
-                tyres_out,
-                cut_gained_ms,
-                cut_deadline_m,
+                track=self.track,
+                car=self.car,
+                length_m=self.length,
+                pos=pos % 1.0,
+                brake=brake,
+                speed_kmh=speed,
+                in_pit=pit,
+                t=self.t,
+                lap_valid=valid,
+                cut_gained_ms=cut_gained_ms,
+                cut_deadline_m=cut_deadline_m,
             )
         )
 
@@ -57,30 +62,26 @@ class Driver:
         stop: float = 1.0001,
         jitter: float = 0.0,
         invalid_from: float | None = None,
-        off_track: tuple[float, float] | None = None,
-        off_tyres: int = 4,
         cut: tuple[float, float] | None = None,
     ) -> float:
         p = start
         while p < stop:
             speed, brake = speed_fn(p % 1.0), 0.0
             for c in corners:
-                d = ((p % 1.0) - c - jitter) * LENGTH
+                d = ((p % 1.0) - c - jitter) * self.length
                 if 0 <= d < 120:
                     brake, speed = 0.8, min(speed, 200 - d * 0.9)
             valid = invalid_from is None or p < invalid_from
-            out = off_tyres if off_track and off_track[0] <= p < off_track[1] else 0
             down = bool(cut and cut[0] <= p < cut[1])
             self.feed(
                 p,
                 speed,
                 brake,
                 valid=valid,
-                tyres_out=out,
                 cut_gained_ms=250 if down else 0,
                 cut_deadline_m=120 if down else 0,
             )
-            p += speed / 3.6 * DT / LENGTH
+            p += speed / 3.6 * DT / self.length
         return p
 
     def split(self, index: int, at: float | None = None) -> None:
@@ -104,6 +105,21 @@ def qapp():
     app = QApplication.instance() or QApplication([])
     yield app
     app.processEvents()
+
+
+@pytest.fixture
+def close_qt_windows(qapp):
+    """Destroy any top-level window a test made before the interpreter tears Qt down.
+
+    Modules that build widgets mark themselves with
+    ``pytestmark = pytest.mark.usefixtures("close_qt_windows")``. Leaving top-level widgets for
+    the GC mixes Python and C++ destruction order; on exit that can double-free the QApplication.
+    """
+    yield
+    for widget in qapp.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    qapp.processEvents()
 
 
 @pytest.fixture

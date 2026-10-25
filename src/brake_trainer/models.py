@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
+# Bumped when a change to TrackData.to_dict would make an older build misread a file. The loader
+# refuses a newer version instead of filing runs under boundaries or fields it does not understand;
+# the app version in the same file is provenance only. See docs/DATA.md.
+DATA_VERSION = 1
 
-class SectorStatus(str, Enum):
+
+class NewerDataError(ValueError):
+    """The file was written by a newer learned-data layout than this build understands."""
+
+
+class SectorStatus(StrEnum):
     """F1-style sector colouring for the current lap."""
 
     PENDING = "pending"  # not driven yet (or not counted)
@@ -16,15 +25,7 @@ class SectorStatus(str, Enum):
     BEST = "best"  # your fastest run of this sector
 
 
-def group_sizes(n: int, groups: int = 3) -> tuple[int, ...]:
-    """Split ``n`` sectors into up to ``groups`` consecutive groups of near-equal size."""
-    if n <= 0:
-        return ()
-    groups = min(groups, n)
-    return tuple(n // groups + (1 if i < n % groups else 0) for i in range(groups))
-
-
-class CueKind(str, Enum):
+class CueKind(StrEnum):
     WARN = "warn"  # braking point coming up
     HERE = "here"  # braking point is right here
 
@@ -42,7 +43,6 @@ class Sample:
     in_pit: bool
     t: float  # seconds (frame timestamp)
     lap_valid: bool = True  # the game's "lap is still valid" flag
-    tyres_out: int = 0  # tyres currently off the track
     cut_gained_ms: int = 0  # graphics race-cut: ms gained by the last off-track cut
     cut_deadline_m: int = 0  # graphics race-cut: distance left to give that time back
     cut_delta_s: float = 0.0  # graphics race-cut: delta vs the cleanly-driven reference
@@ -95,7 +95,7 @@ class TrackData:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "version": 1,
+            "version": DATA_VERSION,
             "track": self.track,
             "car": self.car,
             "n_sectors": self.n_sectors,
@@ -106,6 +106,9 @@ class TrackData:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> TrackData:
+        version = int(raw.get("version", DATA_VERSION))
+        if version > DATA_VERSION:
+            raise NewerDataError(f"data version {version} is newer than {DATA_VERSION}")
         n = int(raw["n_sectors"])
         sectors = [[SectorRun.from_dict(r) for r in runs] for runs in raw["sectors"]]
         if len(sectors) != n:
@@ -214,6 +217,10 @@ class Snapshot:
     # says it instead.
     late_cut: str = ""
     late_cut_age: float | None = None  # seconds since that report
+    # A learned-data file this build could not read, or a write that failed and has not succeeded
+    # since. The Data tab has the full detail; the status line only needs to tell the driver that
+    # the entry was not loaded (or is read-only) or that what they just drove was not saved.
+    storage_warning: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,3 +230,4 @@ class ViewState:
     snapshot: Snapshot
     game_running: bool = False
     live: bool = False  # telemetry samples are arriving right now
+    error: str = ""  # a telemetry failure the UI should show, or ""

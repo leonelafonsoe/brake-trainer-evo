@@ -54,8 +54,32 @@ def test_changelog_sections_are_found_with_and_without_dates_and_brackets():
 
 
 def test_release_check_accepts_a_matching_tag(project):
+    (project / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## Unreleased\n\n## 0.3.8 - 2026-10-13\n- Added a thing.\n"
+    )
     version, text = notes.check_release("v0.3.8", project)
     assert version == "0.3.8" and "Added a thing" in text
+
+
+def test_release_check_rejects_a_stale_released_section_while_unreleased_has_notes(project):
+    # The fixture still has changes under Unreleased. Tagging the old 0.3.8 section would publish
+    # notes that do not include them, so the check fails instead of shipping stale notes.
+    with pytest.raises(ValueError, match="still has notes under '## Unreleased'"):
+        notes.check_release("v0.3.8", project)
+
+
+def test_the_project_version_and_the_tag_contract_agree():
+    # pyproject.toml and __init__.py must agree, the result must be a tag the workflow accepts,
+    # and that version must have a changelog section to publish.
+    versions = notes.project_versions(ROOT)
+    assert set(versions) == {"pyproject.toml", "__init__.py"}
+    assert len(set(versions.values())) == 1, versions
+    version = next(iter(versions.values()))
+    match = notes.TAG_RE.match(f"v{version}")
+    assert match is not None
+    assert notes.normalize(match.group(1)) == notes.normalize(version)
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert notes.changelog_section(changelog, version)
 
 
 @pytest.mark.parametrize(
@@ -89,6 +113,48 @@ def test_nightly_body_mentions_commit_and_unreleased_changes():
     body = notes.build_nightly_body("- Something new.", "0123456789abcdef", "me/repo")
     assert "0123456" in body and "Something new" in body
     assert "No unreleased changes" in notes.build_nightly_body(None, "abc", "me/repo")
+
+
+def test_every_workflow_that_tests_or_publishes_runs_the_shared_gates():
+    # The nightly used to run a subset of the checks and the release duplicated them, so a change
+    # could pass one path and fail another. Keep one definition of the gates.
+    gates = (ROOT / ".github/actions/gates/action.yml").read_text(encoding="utf-8")
+    assert "ruff format --check ." in gates
+    assert "ruff check ." in gates
+    assert "mypy" in gates
+    assert "pytest -q -W error" in gates
+    assert "--cov" in gates and "coverage.xml" in gates
+    assert "gen_settings_doc.py --check" in gates
+
+    for name in ("ci.yml", "nightly.yml", "release.yml"):
+        workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+        assert "./.github/actions/gates" in workflow, name
+        assert "timeout-minutes:" in workflow, name
+
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "windows-latest" in ci and "matrix" in ci  # the tests run on Windows too
+    assert "coverage-xml" in ci and "coverage.xml" in ci
+
+    # The floor lives with the coverage config, so a local run and CI enforce the same number.
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert "[tool.coverage.run]" in pyproject and "[tool.coverage.report]" in pyproject
+    assert "fail_under = " in pyproject
+
+
+def test_the_release_workflow_fails_closed_and_stamps_the_build():
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "BRAKE_TRAINER_BUILD: ${{ github.sha }}" in workflow
+    assert "SHA256SUMS.txt" in workflow
+    assert "Checksum mismatch" in workflow
+    assert "Missing release asset" in workflow
+    # The old checksum step silently skipped whichever file was absent.
+    assert "-ErrorAction SilentlyContinue |\n            ForEach-Object" not in workflow
+    # The publish list is exact, not a glob that could match an old artifact.
+    assert "dist/BrakeTrainerEvo-${{ steps.version.outputs.value }}-setup.exe" in workflow
+    assert "dist/BrakeTrainerEvo-*-setup.exe" not in workflow
+
+    build = (ROOT / "scripts" / "build_exe.py").read_text(encoding="utf-8")
+    assert "BUILD_FILE" in build and "--add-data" in build  # the commit reaches the frozen app
 
 
 def test_bump_version_updates_everything_and_keeps_an_empty_unreleased(project):

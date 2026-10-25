@@ -256,34 +256,6 @@ TABS: dict[str, list[Spec]] = {
             tip="A sector where the game invalidates your lap (track limits, cuts) is not saved.",
         ),
         Spec(
-            "max_tyres_out",
-            "Skip sector if tyres off track",
-            "int",
-            0,
-            4,
-            1,
-            special="Off",
-            tip=(
-                "The game's live count of tyres off the track, where it publishes it. A sector is "
-                "not saved if this many were off at any moment, also twice in the same lap. Off "
-                "leaves it to the game's race cut and the lap flag."
-            ),
-        ),
-        Spec(
-            "max_tyres_out_after_invalid",
-            "...once the lap is invalid",
-            "int",
-            0,
-            4,
-            1,
-            special="Off",
-            tip=(
-                "The game's lap flag only drops once, so the race cut and the tyre count carry the "
-                "later mistakes. For the rest of an invalidated lap a sector is not saved if this "
-                "many tyres go off the track in it."
-            ),
-        ),
-        Spec(
             "top_runs",
             "Fastest runs kept per sector",
             "int",
@@ -383,7 +355,11 @@ TABS: dict[str, list[Spec]] = {
             5,
             0,
             " Hz",
-            tip="How often telemetry is read. Higher is more precise; 60 is plenty.",
+            tip=(
+                "How often telemetry is read. Higher makes live data a little smoother; 60 is "
+                "plenty. Sector lines are interpolated between samples rather than snapped to "
+                "them, so it can refine the estimate only up to the rate the game publishes."
+            ),
         ),
     ],
     "Diagnostics": [
@@ -393,8 +369,8 @@ TABS: dict[str, list[Spec]] = {
             "bool",
             tip=(
                 "Write extra detail to the log, including the game's track-limit signals (the race "
-                "cut and the live tyre count) and the lap flag at every change. Turn it on, "
-                "reproduce a problem, then share the log file."
+                "cut and the lap flag) at every change. Turn it on, reproduce a problem, then "
+                "share the log file."
             ),
         ),
     ],
@@ -623,11 +599,33 @@ class SettingsWindow(QDialog):
                     points = len(run.onsets)
                     label = "braking point" if points == 1 else "braking points"
                     item = QTreeWidgetItem([f"{run.t:.3f} s", f"{points} {label}"])
-                    item.setData(0, _EDIT_ROLE, DeleteRun(d.track, d.car, index, run.t))
+                    item.setData(
+                        0, _EDIT_ROLE, DeleteRun(d.track, d.car, index, run.t, tuple(run.onsets))
+                    )
                     sector.addChild(item)
                 entry.addChild(sector)
             self._tree.addTopLevelItem(entry)
             entry.setExpanded(entry_edit in expanded)
+        issues = self._store.issues()
+        if issues:
+            group = QTreeWidgetItem([f"Unavailable files ({len(issues)})", "", ""])
+            group.setDisabled(True)
+            for issue in issues:
+                outcome = (
+                    f"moved to {issue.quarantine_path.name}"
+                    if issue.quarantine_path is not None
+                    else "read-only — not overwritten"
+                )
+                item = QTreeWidgetItem(
+                    [f"⚠ {issue.path.stem}", f"{issue.status.value}: {issue.detail}", outcome]
+                )
+                item.setDisabled(True)
+                item.setToolTip(0, str(issue.path))
+                if issue.quarantine_path is not None:
+                    item.setToolTip(2, str(issue.quarantine_path))
+                group.addChild(item)
+            self._tree.addTopLevelItem(group)
+            group.setExpanded(True)
 
     def selected_edits(self) -> list[DataEdit]:
         """The edits for the selected rows. A selected entry covers its sectors and runs."""
@@ -640,7 +638,9 @@ class SettingsWindow(QDialog):
                 covered = covered or id(parent) in chosen
                 parent = parent.parent()
             if not covered:
-                edits.append(item.data(0, _EDIT_ROLE))
+                edit = item.data(0, _EDIT_ROLE)
+                if edit is not None:
+                    edits.append(edit)
         return edits
 
     def _delete_selected(self) -> None:

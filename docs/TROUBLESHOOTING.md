@@ -15,7 +15,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 
 **`pip` is not recognized**
 Python is not on your PATH. Use the launcher instead: `py -m pip install -e ".[dev]"`. If `py` does
-not exist either, install Python 3.10+ from python.org (tick "Add python.exe to PATH") or run
+not exist either, install Python 3.11+ from python.org (tick "Add python.exe to PATH") or run
 `winget install Python.Python.3.12`, then open a new terminal. If typing `python` opens the
 Microsoft Store, Python is not really installed.
 
@@ -84,7 +84,7 @@ The line under the sector bar usually tells you why nothing is being learned:
 | Waiting for the game's sector lines | A new track that no car has learned the lines on: the app is waiting for the game's log to report its sector splits, and counts nothing meanwhile | Drive a lap; if it lasts more than three laps see the entry above |
 | Learning paused | Learning is off | Press the resume button on the overlay |
 | S3 won't count · lap invalidated | The game invalidated the lap for a cut in that sector | Nothing; the next clean sector counts |
-| S3 won't count · off track | The game reported a cut in that sector | If it triggers too often set "Skip sector if tyres off track" and "...once the lap is invalid" to Off |
+| S3 won't count · off track | The game reported a cut in that sector | Nothing; the next clean sector counts. If it looks wrong, turn on verbose logging and share the log |
 | No braking points yet | Nothing learned for this track and car | Drive 2-3 clean laps after the warm-up lap |
 
 An out-lap is one of the warm-up laps above: the game invalidates the lap it began in (a lap started
@@ -101,16 +101,17 @@ mistake. The per-cut event the game writes to its log is what catches those, and
 that log (Settings -> App -> *Follow the game's log*). If the log cannot be found the app
 says so and only the lap flag is left. If a later sector is still saved after a moment the game
 flagged, turn on verbose logging and share the log: it records every track-limit signal with its
-position, sector and the sector the cut was attributed to. See
+position and sector, and every cut from the game's log with its position, lap and dropped sector. See
 [TELEMETRY.md](TELEMETRY.md#track-limits).
 
-**A cut is dropped one sector too late (or too early)**
-The game reports a cut around the corner it happened in, so the position in the report is used as it
-is and no setting is needed (the stored `cut_give_back_m` is `0` by default). If your build reports cuts from
-further back, the stored config value `cut_give_back_m` can be set to read a report that far back
-(larger reads further back; `0` uses the sector the report arrives in). The verbose log prints, per
-cut, the car's position when the report was written, the position attributed and the sector of each,
-so the right value can be read off a single run.
+**A cut is dropped in the wrong sector**
+The app drops the sector where the game's notification or lap flag is written. Those events are
+written where the game judged the cut: at Monza the field logs put them at natural corner exits
+(Roggia 36–37%, Lesmo 50.6%, Ascari 67–68%, curve 10 71–73%), not at a fixed distance behind the
+cut. If a cut still lands in the wrong sector, turn on verbose logging and share the log: it prints,
+per cut, the car's position when the report was written, the lap it belongs to and the sector that
+was dropped. Check that position against the sector lines in the same log before assuming the
+attribution is at fault.
 
 The game buffers its log (a few KB, flushed when full), so a cut can be read a minute after it was
 written - or after the lap it was in has ended - and a whole lap's cuts can arrive at once. The app
@@ -130,7 +131,7 @@ speed shed" to match your pedal and driving style.
 **A corner sits in the middle of a sector (a sector line cuts a chicane)**
 The app uses the game's own sector lines, so this should not happen: the game puts them at corner
 exits. If it does, the entry is using equal splits - because its lines were never learned (data from
-before 0.3.11, the game log not followed, or a build that writes no splits). The quiet line under the
+before 0.4.0, the game log not followed, or a build that writes no splits). The quiet line under the
 sector bar says "equal sector lines", and Settings -> Data shows "equal splits". Delete *every* entry
 on that track and drive a lap with *Follow the game's log* on: the lines are learned from the
 game's splits. Deleting only one entry is not enough - a new entry takes the lines from any other car's
@@ -146,17 +147,27 @@ track's. If it lasts more than three laps, the app settles for equal splits and 
 driven meanwhile are timed on them then) - check *Follow the game's log* and *Game log folder*
 in Settings -> App.
 
+**The sector lines look slightly early or late**
+The app places each line at the car's position when the game's own split was written, interpolated
+between the telemetry frames either side; at 60 Hz it is usually a few tenths of a metre out, though
+the residual depends on speed and on how linear the reported position is. To check it on track, turn
+on verbose logging and look for `splits: audit ...` lines: each later split compares the learned line
+with the game's (`the app's line was crossed 2.1 ms / 0.1 m after the game's`).
+`after` means it is slightly further round the lap, `before` slightly short. A value that stays in
+the metres is worth reporting: share the app log and the matching game log. The game log on its own
+has the split times but not the car's position, so it cannot show where a line was placed.
+
 **"not counted · the lines were learned mid-sector"**
 A new track and car starts on stand-in equal splits, because the game's own lines can only be read from
 its log (no other part of the game exposes them). The log is buffered, so the read that brings them can
 land with a sector already part-way through: that sector was being timed from a stand-in line, which
 sits somewhere else than the game's. Normally the samples still say when the car crossed the game's
 line, so the sector is moved onto it and counts; this note is what remains when that crossing is gone
-(a reset, or a pause longer than the half-hour of samples the app keeps). The sector you were in when
-the lines were learned, and the ones that closed before, are both recovered this way; where you braked
-in them is used either way, so the first cues appear straight away even before a sector has been
-scored. Those stand-in points count as one run each, so once a couple of laps have been timed they are
-out-voted by your own runs and stop mattering.
+(a reset, or a pause longer than the five minutes of samples the app keeps). The sector you were
+in when the lines were learned, and the ones that closed before, are both recovered this way; where
+you braked in them is used either way, so the first cues appear straight away even before a sector
+has been scored. Those stand-in points count as one run each, so once a couple of laps have been
+timed they are out-voted by your own runs and stop mattering.
 
 **The marks look wrong after changing car setup, tyres or conditions**
 Delete that entry in Settings -> Data and relearn. Your fastest 3 runs per sector stay until
@@ -180,12 +191,25 @@ The app always writes a rotating log (about 1 MB per file, 3 older ones kept):
 
 `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`
 
+Its first line names exactly what produced the log, so a report can be matched to a build without
+guessing:
+
+```text
+2026-10-24 12:00:00,000 INFO    brake_trainer: startup app=0.4.0 build=2983a85ac7d3 settings_version=3 data_version=1 debug=off log=C:\Users\you\AppData\Roaming\BrakeTrainerEvo\brake_trainer.log
+```
+
+`build` is the source checkout's git revision (`-dirty` means it had uncommitted changes), the
+commit baked into a packaged executable, or the value of `BRAKE_TRAINER_BUILD` when one was set.
+`settings_version` and `data_version` are the settings and learned-data layouts this build reads and
+writes. `debug` is the verbose state at start-up; turning the setting on afterwards adds
+`Verbose (debug) logging is on (setting)`.
+
 Settings -> Diagnostics -> **Open app log folder** opens it. **Verbose (debug) logging** adds a line
-every time the game's track-limit signals change (the race-cut pair and the live tyre count, where the
-game publishes them, the lap flag and the timing invalid flag) and each time the app reads a cut from
-the game's log, with the position, the sector it was reported in and the sector the cut was attributed
-to. It also records which telemetry regions the SDK attached to. That is the detail a report about a
-kept or dropped sector needs, so the fastest way to report a track-limits problem is:
+every time the game's track-limit signals change (the race-cut pair, the lap flag and the timing
+invalid flag) and each time the app reads a cut from the game's log, with its position, the lap it
+belongs to and the sector that was dropped. It also records which telemetry regions the
+SDK attached to. That is the detail a report about a kept or dropped sector needs, so the fastest way
+to report a track-limits problem is:
 
 1. Turn on "Verbose (debug) logging" (Settings -> Diagnostics), apply, and reproduce the problem
    for a lap or two.

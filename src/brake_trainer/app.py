@@ -9,9 +9,8 @@ from dataclasses import replace
 from typing import Any
 
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from . import __version__
 from .audio import AudioPlayer
 from .config import Settings, SettingsHolder, load_settings, save_settings
 from .logsetup import configure_logging, debug_requested_on_startup, set_debug
@@ -41,9 +40,6 @@ def main() -> int:
     forced_debug = debug_requested_on_startup(sys.argv)  # --debug / BRAKE_TRAINER_DEBUG
     configure_logging(debug=forced_debug)
     _set_taskbar_identity()
-    log.info("Brake Trainer %s starting", __version__)
-    if forced_debug:
-        log.info("Verbose (debug) logging is on")
 
     app = QApplication(sys.argv)
     app.setApplicationName("Brake Trainer EVO")
@@ -52,7 +48,11 @@ def main() -> int:
     app.setQuitOnLastWindowClosed(False)  # the overlay can be hidden; quit explicitly
 
     holder = SettingsHolder(load_settings(settings_path()))
-    set_debug(forced_debug or holder.value.debug_logging)
+    verbose = forced_debug or holder.value.debug_logging
+    set_debug(verbose)
+    if holder.value.debug_logging and not forced_debug:
+        # The startup line already says debug=on when the flag or environment forced it.
+        log.info("Verbose (debug) logging is on (setting)")
     store = TrackStore(data_dir())
     audio = AudioPlayer(lambda: holder.value)
     worker = EngineWorker(holder, store, audio)
@@ -60,10 +60,24 @@ def main() -> int:
     settings_window = SettingsWindow(lambda: holder.value, store)
 
     toggles: dict[str, QAction] = {}  # tray checkboxes by settings field, kept in sync
+    save_warning_shown = False
 
     def apply(settings: Settings) -> None:
+        nonlocal save_warning_shown
         holder.value = settings
-        save_settings(settings, settings_path())
+        if not save_settings(settings, settings_path()) and not save_warning_shown:
+            # Applying still works for this session; make the risk visible instead of losing the
+            # change silently at exit.
+            save_warning_shown = True
+            log.error("Could not save settings to %s", settings_path())
+            QMessageBox.warning(
+                settings_window,
+                "Settings not saved",
+                "The settings could not be written to:\n"
+                f"{settings_path()}\n\n"
+                "They apply for this session, but may be lost when the app exits. "
+                "Check that the folder is writable.",
+            )
         worker.update_settings(settings)
         overlay.apply_settings(settings)
         set_debug(forced_debug or settings.debug_logging)  # takes effect immediately
@@ -121,9 +135,19 @@ def main() -> int:
 
     def shutdown() -> None:
         log.info("Shutting down")
+        if not save_settings(holder.value, settings_path()):
+            log.error("Could not save settings to %s", settings_path())
         worker.request_stop()
-        worker.wait(5000)
-        save_settings(holder.value, settings_path())
+        if not worker.wait(5000):
+            # A live QThread must not be destroyed when main() returns. terminate() is a last
+            # resort: it can skip the engine's final flush, so say so rather than hiding it.
+            log.error(
+                "Telemetry worker did not stop within 5 s; terminating it "
+                "(its final data flush may be lost)"
+            )
+            worker.terminate()
+            if not worker.wait(1000):
+                log.error("Telemetry worker is still running after terminate(); exiting anyway")
 
     app.aboutToQuit.connect(shutdown)
 

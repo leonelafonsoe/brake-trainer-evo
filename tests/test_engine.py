@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import json
+import logging
+
+import pytest
+
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine, build_zones
-from brake_trainer.models import CueKind, SectorRun
+from brake_trainer.models import DATA_VERSION, CueKind, Sample, SectorRun, TrackData
+from brake_trainer.timeline import crossing_between
 
-from .conftest import LENGTH, Driver
+from .conftest import DT, LENGTH, Driver
 
 CORNERS = [0.20, 0.50, 0.80]
 
@@ -96,16 +102,68 @@ def test_settings_change_rebuilds_zones(make_engine):
     assert driver.engine.snapshot().n_sectors == N_SECTORS
 
 
-def test_group_sizes():
-    from brake_trainer.models import group_sizes
+def test_a_new_reference_car_takes_effect_without_a_session_change(make_engine):
+    from dataclasses import replace
 
-    assert group_sizes(0) == ()
-    assert group_sizes(1) == (1,)
-    assert group_sizes(2) == (1, 1)
-    assert group_sizes(3) == (1, 1, 1)
-    assert group_sizes(6) == (2, 2, 2)
-    assert group_sizes(8) == (3, 3, 2)
-    assert sum(group_sizes(7)) == 7
+    a = Driver(make_engine(), car="Car A")
+    for _ in range(4):
+        a.lap(CORNERS)
+    a.engine.flush()
+    b = Driver(make_engine(), car="Car B")
+    for _ in range(4):
+        b.lap([c - 0.03 for c in CORNERS])
+    b.engine.flush()
+
+    c = Driver(make_engine(reference_car="Car A"), car="Car C")
+    c.feed(0.0001, 100.0, 0.0)
+    assert c.engine.snapshot().reference_car == "Car A"
+
+    c.engine.apply_settings(replace(c.engine.settings, reference_car="Car B"))
+
+    snap = c.engine.snapshot()  # no further sample: the change is already live
+    assert snap.reference_car == "Car B"
+    assert [round(z, 2) for z in snap.zones] == [round(x - 0.03, 2) for x in CORNERS]
+
+
+def test_reducing_top_runs_keeps_only_the_fastest_stored_runs(store):
+    from dataclasses import replace
+
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0, top_runs=5), store)
+    driver = Driver(engine)
+    for speed in (205, 200, 195, 190, 185, 180, 175):
+        driver.lap(CORNERS, speed_fn=lambda p, v=speed: v)
+    engine.flush()
+    before = store.load("Monza", "Car A", N_SECTORS)
+    assert all(len(runs) == 5 for runs in before.sectors)
+    fastest = [sorted(r.t for r in runs) for runs in before.sectors]
+
+    engine.apply_settings(replace(engine.settings, top_runs=2))
+
+    after = store.load("Monza", "Car A", N_SECTORS)
+    assert all(len(runs) == 2 for runs in after.sectors)
+    assert [[r.t for r in runs] for runs in after.sectors] == [times[:2] for times in fastest]
+    assert engine.snapshot().zones  # rebuilt from what is left
+
+
+def test_turning_the_game_log_off_stops_waiting_for_its_sector_lines(store):
+    from dataclasses import replace
+
+    messages: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=True, warmup_laps=0), store, on_message=messages.append
+    )
+    driver = Driver(engine)
+    driver.feed(0.0001, 100.0, 0.0)
+    assert engine._learning_lines  # a fresh entry waits for the game's own lines
+
+    engine.apply_settings(replace(engine.settings, use_game_log=False))
+
+    assert not engine._learning_lines
+    assert any("turned off" in m for m in messages)
+    assert engine.snapshot().boundaries == (0.0, 1 / 3, 2 / 3, 1.0)
+
+    engine.apply_settings(replace(engine.settings, use_game_log=True))
+    assert engine._learning_lines  # nothing stored yet, so it can wait again
 
 
 def test_sector_colours_follow_the_results(make_engine):
@@ -204,9 +262,7 @@ def test_sector_straddling_a_pause_is_not_stored(store):
 
 def _fast_lap_results(store, **lap_kwargs):
     results = []
-    # The lookback is pinned (a 500 m report is 0.1 of this 5000 m lap): these tests exercise the
-    # read-back, not the shipped default, which is far smaller.
-    settings = Settings(use_game_log=False, warmup_laps=0, cut_give_back_m=500.0)
+    settings = Settings(use_game_log=False, warmup_laps=0)
     engine = BrakeEngine(settings, store, on_sector=results.append)
     driver = Driver(engine)
     for _ in range(4):
@@ -218,9 +274,9 @@ def _fast_lap_results(store, **lap_kwargs):
     return {r.sector: r for r in results}, best_before, best_after
 
 
-def test_the_lap_flag_is_read_back_to_the_sector_the_cut_happened_in(store):
-    # The game reports a cut only after its give-back window (500 m, 0.1 of this 5000 m lap), so a
-    # flag that drops in the middle of S2 is really about a cut in S1, just after its line.
+def test_the_lap_flag_drops_the_sector_where_it_fell(store):
+    # The flag falls in the middle of S2 (1/3..2/3). That is the sector the game judged, so S2 is
+    # the one that must not count; S1 was already driven cleanly and keeps its faster run.
     by_sector, before, after = _fast_lap_results(store, invalid_from=0.52)
     assert by_sector[1].duration is None and "invalidated" in by_sector[1].note
     assert after[1] == before[1]  # the faster-but-invalid sector was not stored
@@ -228,15 +284,44 @@ def test_the_lap_flag_is_read_back_to_the_sector_the_cut_happened_in(store):
     assert by_sector[2].accepted and after[2] < before[2]  # later sectors were driven cleanly
 
 
-def test_a_flag_that_drops_after_the_cut_sector_closed_takes_its_run_back(store):
-    # The cut is in S2; by the time the game reports it the car is in S3 and S2 has been saved.
+def test_a_lap_flag_in_s3_does_not_take_back_the_s2_run_before_it(store):
+    # The flag falls in S3. The sector that must not count is S3; S2's faster, clean run stays.
     by_sector, before, after = _fast_lap_results(store, invalid_from=0.70)
-    assert after[1] == before[1]  # S2's faster run was taken back
-    assert by_sector[2].accepted and after[2] < before[2]  # clean S3 kept
+    assert by_sector[2].duration is None and "invalidated" in by_sector[2].note
+    assert after[2] == before[2]  # the faster-but-invalid S3 was not stored
+    assert by_sector[1].accepted and after[1] < before[1]  # S2's clean run is kept
 
 
-def test_sector_with_all_tyres_off_track_is_not_saved(store):
-    by_sector, before, after = _fast_lap_results(store, off_track=(0.45, 0.46))
+def test_a_lap_flag_on_the_frame_that_crosses_the_line_drops_the_lap_being_ended(store):
+    # The flag goes down between the last sample of a lap and the first one after the line. The
+    # position has already moved into S1 of the new lap, but the car has not driven that sector
+    # yet: the flag belongs to the S3 that just ended.
+    results = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
+    )
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    before = [runs[0].t for runs in store.load("Monza", "Car A", 3).sectors]
+    results.clear()
+
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.999)
+    driver.feed(0.9998, 215.0, 0.0, valid=True)  # the last sample of the lap
+    driver.feed(0.0001, 215.0, 0.0, valid=False)  # the line and the flag in one frame
+    lap = engine._lap_no - 1  # the lap that just ended
+    assert (lap, 2) in engine._invalid_sectors  # its S3, where the cut was
+    assert (lap + 1, 0) not in engine._invalid_sectors  # not S1 of the new lap
+    after = [runs[0].t for runs in store.load("Monza", "Car A", 3).sectors]
+    assert after[2] == before[2]  # the faster S3 was taken back
+
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.0002, stop=1.0001)
+    by_sector = {r.sector: r for r in results}
+    assert by_sector[0].accepted  # the new lap's S1 is clean
+
+
+def test_sector_with_a_race_cut_is_not_saved(store):
+    by_sector, before, after = _fast_lap_results(store, cut=(0.45, 0.46))
     assert by_sector[1].duration is None and "off track" in by_sector[1].note
     assert after[1] == before[1]
     assert after[0] < before[0] and after[2] < before[2]
@@ -244,15 +329,13 @@ def test_sector_with_all_tyres_off_track_is_not_saved(store):
 
 def test_validity_checks_can_be_switched_off(store):
     results = []
-    settings = Settings(
-        use_game_log=False, warmup_laps=0, skip_invalid_sectors=False, max_tyres_out=0
-    )
+    settings = Settings(use_game_log=False, warmup_laps=0, skip_invalid_sectors=False)
     engine = BrakeEngine(settings, store, on_sector=results.append)
     driver = Driver(engine)
     for _ in range(3):
         driver.lap(CORNERS)
     results.clear()
-    driver.lap(CORNERS, invalid_from=0.5, off_track=(0.45, 0.46))
+    driver.lap(CORNERS, invalid_from=0.5)
     assert all(r.duration is not None for r in results if r.sector in (0, 1, 2))
 
 
@@ -294,6 +377,90 @@ def test_warm_up_laps_can_be_switched_off_and_cues_still_play(store, cues):
     assert CueKind.WARN in cues
 
 
+def test_a_failed_save_is_shown_until_a_save_succeeds(store, monkeypatch):
+    from brake_trainer.storage import StoreResult
+
+    messages: list[str] = []
+    warnings: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0),
+        store,
+        on_message=messages.append,
+        on_warning=warnings.append,
+    )
+    driver = Driver(engine)
+    failing = {"on": True}
+    real_save = store.save
+
+    def save(data):
+        if failing["on"]:
+            return StoreResult(ok=False, detail="No space left on device")
+        return real_save(data)
+
+    monkeypatch.setattr(store, "save", save)
+    for _ in range(4):
+        driver.lap(CORNERS)
+
+    snap = engine.snapshot()
+    assert snap.storage_warning == "Could not save learned data · see the log"
+    assert warnings == ["Could not save learned data: No space left on device"]
+    assert not store.load("Monza", "Car A", N_SECTORS).total_runs()  # nothing was written
+
+    failing["on"] = False
+    engine.flush()
+
+    assert engine.snapshot().storage_warning == ""
+    assert messages.count("Learned data can be saved again") == 1
+    assert store.load("Monza", "Car A", N_SECTORS).total_runs() > 0
+
+
+def test_a_failed_data_edit_is_reported_and_keeps_the_warning_up(store, monkeypatch):
+    from brake_trainer.storage import DeleteSector, StoreResult
+
+    warnings: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0), store, on_warning=warnings.append
+    )
+    driver = Driver(engine)
+    driver.feed(0.1, 100.0, 0.0)
+    monkeypatch.setattr(
+        store, "apply", lambda edit: StoreResult(ok=False, detail="Permission denied")
+    )
+
+    engine.queue_edit(DeleteSector("Monza", "Car A", 0))
+
+    assert engine.apply_pending() is False  # a failed edit changed nothing
+    assert engine.snapshot().storage_warning
+    assert warnings == ["Could not save learned data: Permission denied"]
+
+
+def test_a_newer_data_file_is_quarantined_not_overwritten(store):
+    path = store.directory / "Monza__Car_A.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = TrackData.empty("Monza", "Car A", N_SECTORS).to_dict()
+    raw["version"] = DATA_VERSION + 1
+    original = json.dumps(raw)
+    path.write_text(original, encoding="utf-8")
+
+    warnings: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0),
+        store,
+        on_warning=warnings.append,
+    )
+    driver = Driver(engine)
+    driver.feed(0.1, 100.0, 0.0)
+    engine.flush()  # the shutdown save must not overwrite the newer file
+
+    quarantined = list(store.quarantine_directory.glob("Monza__Car_A.newer-*.json"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_text(encoding="utf-8") == original
+    assert path.exists()  # a fresh entry starts in its place
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == DATA_VERSION
+    assert engine.snapshot().storage_warning
+    assert warnings
+
+
 def test_stored_data_without_sector_lines_keeps_equal_splits(store):
     from brake_trainer.models import TrackData
 
@@ -324,6 +491,124 @@ def test_the_games_splits_set_the_sector_lines(store):
     assert list(snap.boundaries) == [0.0, 0.25, 0.60, 1.0]
     assert not snap.warming_up
     assert store.load("Monza", "Car A", N_SECTORS).boundaries == [0.25, 0.60]  # persisted
+
+
+def test_a_split_is_placed_at_its_own_time_not_the_sample_before_it(store):
+    # The game writes the split between two telemetry frames. The line is where the car was at the
+    # line's timestamp, not where it was at the previous frame: at racing speed the difference is
+    # about a metre, which is enough to see on track.
+    engine = BrakeEngine(Settings(warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.20, 300.0, 0.0)
+    first = driver.t
+    driver.feed(0.22, 300.0, 0.0)
+    driver.split(0, at=(first + driver.t) / 2)
+
+    driver.feed(0.58, 300.0, 0.0)
+    second = driver.t
+    driver.feed(0.60, 300.0, 0.0)
+    driver.split(1, at=(second + driver.t) / 2)
+
+    bounds = engine.snapshot().boundaries
+    assert abs(bounds[1] - 0.21) < 1e-9  # halfway between 0.20 and 0.22
+    assert abs(bounds[2] - 0.59) < 1e-9
+
+
+def test_a_sector_closes_at_the_line_not_at_the_next_sample(store):
+    # Crossing a line between two frames must start the new sector at the crossing, otherwise every
+    # sector time is long by up to one frame and the sector bar changes a frame late.
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.32, 200.0, 0.0)  # the pass starts here, at t = DT
+    driver.feed(0.36, 200.0, 0.0)  # 1/3 is crossed a third of the way through this frame
+
+    snap = engine.snapshot()
+    assert snap.sector == 1
+    assert abs(snap.sector_elapsed - (2 / 3) * DT) < 1e-9
+
+
+def test_a_cut_between_samples_is_attributed_from_the_interpolated_position(store):
+    # The line at 1/3 falls between these two frames. Interpolating puts the cut at 0.34 (S2); the
+    # previous frame's position, 0.32, would blame S1.
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.32, 200.0, 0.0)
+    first = driver.t
+    driver.feed(0.36, 200.0, 0.0)
+    engine.report_infraction("off track", (first + driver.t) / 2)
+
+    snap = engine.snapshot()
+    assert snap.sector == 1
+    assert snap.pass_flag == "off track"  # S2, where 0.34 is
+
+
+@pytest.mark.parametrize(("game_line", "side"), [(0.19, "after"), (0.21, "before")])
+def test_the_split_audit_measures_the_learned_line_against_the_games(
+    store, caplog, game_line, side
+):
+    # Once the lines are known, every later split is the game saying exactly when it crossed its
+    # own line. Comparing that with the app's learned position is the check for a misplaced line.
+    engine = BrakeEngine(Settings(warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.10, 300.0, 0.0)
+    driver.feed(0.20, 300.0, 0.0)
+    driver.split(0)
+    driver.feed(0.50, 300.0, 0.0)
+    driver.feed(0.60, 300.0, 0.0)
+    driver.split(1)
+    assert list(engine.snapshot().boundaries[1:-1]) == [0.20, 0.60]
+
+    # One full lap at a constant 200 km/h, then samples that bracket both the game's line and the
+    # app's 0.20 line. 0.01 of this 5000 m lap is 50 m, which is 0.9 s at 200 km/h.
+    p = driver.lap([], speed_fn=lambda p: 200.0, start=0.0001, stop=1.18)
+    samples: list[tuple[float, float]] = []
+    while p % 1.0 < 0.215:
+        driver.feed(p % 1.0, 200.0, 0.0)
+        samples.append((driver.t, p % 1.0))
+        p += 200.0 / 3.6 * DT / LENGTH
+
+    def crossing(line: float) -> float:
+        for (t0, p0), (t1, p1) in zip(samples, samples[1:], strict=False):
+            if p0 < line <= p1:
+                return t0 + (t1 - t0) * ((line - p0) / (p1 - p0))
+        raise AssertionError(f"the samples do not cross {line}")
+
+    with caplog.at_level(logging.DEBUG, logger="brake_trainer.engine"):
+        engine.report_split(0, crossing(game_line))
+
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert f"900.0 ms / 50.0 m {side} the game's" in text
+
+
+def test_a_split_read_at_info_does_no_history_work_once_the_lines_are_known(
+    store, caplog, monkeypatch
+):
+    # The audit is verbose-only, so with the lines already learned an INFO-level split must not
+    # even look up the car: nothing about it is going to be logged.
+    engine = BrakeEngine(Settings(warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.10, 300.0, 0.0)
+    driver.feed(0.20, 300.0, 0.0)
+    driver.split(0)
+    driver.feed(0.50, 300.0, 0.0)
+    driver.feed(0.60, 300.0, 0.0)
+    driver.split(1)
+    assert list(engine.snapshot().boundaries[1:-1]) == [0.20, 0.60]
+
+    calls: list[float] = []
+    lookup = engine._at_time
+
+    def spy(at: float):
+        calls.append(at)
+        return lookup(at)
+
+    monkeypatch.setattr(engine, "_at_time", spy)
+
+    with caplog.at_level(logging.INFO, logger="brake_trainer.engine"):
+        engine.report_split(0, driver.t)
+
+    assert calls == []
+    assert not any("splits: audit" in record.getMessage() for record in caplog.records)
 
 
 def test_the_sector_that_began_on_the_line_counts_once_the_lines_are_learned(store):
@@ -374,6 +659,99 @@ def test_a_sector_already_running_when_the_lines_are_learned_is_re_timed(store):
     assert re_timed.duration is not None and re_timed.accepted
     # S3 is the last 40% of the lap (0.60..1.0), not the stand-in last third
     assert abs(re_timed.duration - 0.40 * full) < 0.2
+
+
+def test_a_late_split_read_after_the_car_passed_the_new_line_re_times_from_that_line(store):
+    # The buffered read can land after the car has already crossed the game's first line: here it is
+    # at 0.32, past the game's 0.30 but before the stand-in equal split at 1/3. The pass in progress
+    # began on the start/finish line, which both layouts share, but the car has already left the
+    # sector that began there under the new lines. Keeping it would close it at the next sample
+    # (the 0.30 line is behind the car, so there is nothing left to interpolate) and store the whole
+    # lap line..0.32 as S1. It is re-timed from the game's 0.30 line instead, where the car really
+    # began the sector it is now in.
+    dt = 1 / 60
+    speed = 250.0
+    step = speed / 3.6 * dt / LENGTH
+    results: list = []
+    engine = BrakeEngine(
+        Settings(warmup_laps=0, use_game_log=True), store, on_sector=results.append
+    )
+    t, p = 0.0, 0.0001
+
+    def sample() -> tuple[float, float]:
+        """Advance one 60 Hz frame; returns (previous time, previous position)."""
+        nonlocal t, p
+        before_t, before_p = t, p % 1.0
+        t += dt
+        p += step
+        engine.update(
+            Sample("Monza", "Car A", LENGTH, p % 1.0, 0.0, speed, False, t, True, 0, 0, 0)
+        )
+        return before_t, before_p
+
+    def drive_to(target: float) -> None:
+        while p < target:
+            sample()
+
+    # Lap 0 to the buffered read on lap 1: record when the samples bracket the game's lines.
+    crossing: dict[tuple[int, float], float] = {}
+    lap = 0
+    while p < 1.0001 + 0.32:
+        before_t, before_p = sample()
+        after_p = p % 1.0
+        if after_p < before_p:  # the start/finish line: lap 0 ends and lap 1 begins
+            lap += 1
+            continue
+        for line in (0.30, 0.60):
+            if before_p < line <= after_p and (lap, line) not in crossing:
+                share = (line - before_p) / (after_p - before_p)
+                crossing[lap, line] = before_t + (t - before_t) * share
+
+    # Lap 1: past the game's first line, then the buffered log's two splits are read.
+    assert engine._sector == 0  # still on the stand-in lines: equal thirds
+    engine.report_split(0, crossing[0, 0.30])
+    engine.report_split(1, crossing[0, 0.60])
+    bounds = engine.snapshot().boundaries
+    assert abs(bounds[1] - 0.30) < 1e-9 and abs(bounds[2] - 0.60) < 1e-9
+
+    sample()  # the frame in which the unfixed code saw the sector change and closed S1
+    run = engine._pass
+    assert engine._sector == 1
+    assert run is not None and abs(run.start_pos - bounds[1]) < 1e-9
+    # The sector in progress is timed from the game's 0.30 line, not from the lap line.
+    assert abs(run.t0 - crossing[1, 0.30]) < 1e-6
+    # Nothing was stored for the S1 the car had already left: no run spanning lap line..0.32.
+    saved = store.load("Monza", "Car A", N_SECTORS)
+    assert saved is not None and saved.sectors[0] == []
+
+    # The sectors after it are timed between the game's lines, and the next lap is clean.
+    results.clear()
+    drive_to(2.0001 + 0.32)
+    timed = [(r.sector, r.duration) for r in results if r.duration is not None]
+    assert [sector for sector, _ in timed] == [1, 2, 0]
+    half = 0.30 * LENGTH / (speed / 3.6)
+    assert abs(timed[0][1] - half) < 1e-3  # the 0.30..0.60 sector
+    assert abs(timed[1][1] - 0.40 * LENGTH / (speed / 3.6)) < 1e-3  # the 0.60..1.0 sector
+    assert abs(timed[2][1] - half) < 1e-3  # the following lap's 0.0..0.30 sector
+
+
+def test_line_crossing_does_not_clamp_a_line_that_is_not_between_the_samples():
+    # The caller is meant to pass a line the car actually crossed between the samples. If it does
+    # not - the line is behind the earlier sample, or ahead of the later one, or an inner line is
+    # asked for in the frame that wraps the start/finish line - there is no crossing to place. The
+    # current sample is the no-crossing answer; clamping the share would put it at a sample where
+    # the car was on the wrong side of the line.
+    assert crossing_between(1.0, 0.32, 2.0, 0.34, 0.30) == 2.0
+    assert crossing_between(1.0, 0.10, 2.0, 0.20, 0.30) == 2.0
+    assert crossing_between(1.0, 0.98, 2.0, 0.02, 0.30) == 2.0  # the wrap, not 0.30
+    assert crossing_between(1.0, 0.20, 2.0, 0.30, 0.0) == 2.0  # no start/finish wrap
+    # A line that really is between the samples is still interpolated.
+    assert crossing_between(1.0, 0.20, 2.0, 0.30, 0.25) == 1.5
+    # The start/finish line is crossed by the wrap, halfway through this frame.
+    assert crossing_between(0.0, 0.98, 1.0, 0.02, 0.0) == pytest.approx(0.5)
+    # With no positive time span there is nothing to interpolate: the current sample is the answer.
+    assert crossing_between(2.0, 0.20, 1.0, 0.30, 0.25) == 1.0
+    assert crossing_between(2.0, 0.20, 2.0, 0.30, 0.25) == 2.0
 
 
 def test_laps_before_the_lines_are_known_are_not_counted(store):
@@ -500,6 +878,40 @@ def test_a_stray_split_is_not_taken_for_a_sector_line(store):
     assert engine.snapshot().warming_up
 
 
+def test_a_split_read_inside_a_teleport_frame_is_learned_at_the_earlier_sample(store):
+    # 0.30 -> 0.45 in one frame is a teleport: the car never drove the track between them, so a
+    # split written mid-frame belongs to the earlier sample. Interpolating would invent 0.375 and
+    # learn a line the car never crossed.
+    engine = BrakeEngine(Settings(warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.30, 200.0, 0.0)
+    early = driver.t
+    driver.feed(0.45, 200.0, 0.0)
+    late = driver.t
+    driver.split(0, (early + late) / 2)
+    assert engine._splits[0][0] == 0.30
+
+    driver.feed(0.60, 200.0, 0.0)
+    driver.split(1)
+    assert list(engine.snapshot().boundaries[1:-1]) == [0.30, 0.60]
+
+
+def test_at_time_on_a_sample_timestamp_snaps_to_that_sample(store):
+    # A log line can carry exactly the timestamp of a telemetry frame. At an older sample's time
+    # the car is that sample; at the latest one it is the current state. Neither needs interpolating
+    # and neither may be missed.
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
+    driver = Driver(engine)
+    driver.feed(0.30, 200.0, 0.0)
+    older = driver.t
+    driver.feed(0.301, 200.0, 0.0)
+
+    found = engine._at_time(older)
+    assert found is not None and found.pos == 0.30
+    latest = engine._at_time(driver.t)
+    assert latest is not None and latest.pos == 0.301
+
+
 def test_one_split_alone_does_not_move_the_lines(store):
     # Both lines have to come from the same lap, so a second sector's split is never paired with a
     # first sector's one from another lap.
@@ -615,88 +1027,9 @@ def test_snapshot_flags_old_equal_split_data(store):
     assert engine.snapshot().equal_lines is True
 
 
-def _two_excursion_results(store, off_tyres: int = 4, **settings):
-    """A faster lap: the game invalidates it in the first sector, tyres off in the second."""
-    results = []
-    engine = BrakeEngine(
-        Settings(use_game_log=False, warmup_laps=0, **settings), store, on_sector=results.append
-    )
-    driver = Driver(engine)
-    for _ in range(4):
-        driver.lap(CORNERS)
-    results.clear()
-    driver.lap(
-        CORNERS,
-        speed_fn=lambda p: 215,
-        stop=1.003,
-        invalid_from=0.3,  # the lap flag drops in S1
-        off_track=(0.50, 0.51),  # a mistake in S2, after the flag is already down
-        off_tyres=off_tyres,
-    )
-    return {r.sector: r for r in results}
-
-
-def test_a_second_mistake_in_a_later_sector_is_dropped_too(store):
-    # S1: the game invalidates the lap; S2: all four tyres off. The live tyre count catches the
-    # second one, which the one-shot lap flag cannot.
-    by_sector = _two_excursion_results(store)
-    assert "invalidated" in by_sector[0].note
-    assert by_sector[1].duration is None and "off track" in by_sector[1].note
-    assert by_sector[2].accepted  # the sector without a mistake is kept
-
-
-def test_a_smaller_excursion_is_dropped_once_the_lap_is_invalid(store):
-    # The flag has already dropped, so a two-tyre cut in a later sector is caught by the lower
-    # "...once the lap is invalid" limit instead.
-    by_sector = _two_excursion_results(store, off_tyres=2)
-    assert by_sector[1].duration is None and "off track" in by_sector[1].note
-    assert by_sector[2].accepted  # a clean sector after the mistake is still kept
-
-
-def test_the_same_excursion_is_kept_while_the_lap_is_still_valid(store):
-    # No flag has dropped, so only the strict limit (all four tyres) applies.
-    results = []
-    engine = BrakeEngine(
-        Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
-    )
-    driver = Driver(engine)
-    for _ in range(4):
-        driver.lap(CORNERS)
-    results.clear()
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=1.003, off_track=(0.50, 0.51), off_tyres=2)
-    assert {r.sector: r for r in results}[1].accepted
-
-
-def test_the_after_invalid_limit_can_be_switched_off(store):
-    by_sector = _two_excursion_results(store, off_tyres=3, max_tyres_out_after_invalid=0)
-    assert by_sector[1].accepted  # only the strict limit applies after the lap is invalid
-
-
-def test_the_tyre_check_can_be_switched_off(store):
-    results = []
-    engine = BrakeEngine(
-        Settings(use_game_log=False, warmup_laps=0, max_tyres_out=0, max_tyres_out_after_invalid=0),
-        store,
-        on_sector=results.append,
-    )
-    driver = Driver(engine)
-    for _ in range(4):
-        driver.lap(CORNERS)
-    results.clear()
-    driver.lap(
-        CORNERS,
-        speed_fn=lambda p: 215,
-        stop=1.003,
-        invalid_from=0.3,  # the lap is invalid, but both tyre checks are Off
-        off_track=(0.50, 0.51),
-        off_tyres=4,
-    )
-    assert {r.sector: r for r in results}[1].accepted
-
-
 def test_a_second_off_is_caught_by_the_games_race_cut_signal(store):
     # The one-shot lap flag drops in S1. The race-cut pair the game fills in for a second
-    # off-track in S2 lets that sector be dropped too, with no tyres-out event involved.
+    # off-track in S2 lets that sector be dropped too.
     results = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
@@ -782,13 +1115,12 @@ def test_a_cut_is_reported_as_not_visible_in_memory(store):
     assert len(warnings) == 1 and "no race cut" in warnings[0]
 
 
-def test_no_cut_warning_when_four_tyres_were_seen_first(store):
+def test_no_cut_warning_when_a_race_cut_was_seen_first(store):
     driver, warnings = _warnings_engine(store)
     driver.lap(
         CORNERS,
         invalid_from=0.5,
-        off_track=(0.45, 0.46),  # four tyres off before the lap flag drops
-        off_tyres=4,
+        cut=(0.45, 0.46),  # the race-cut pair is up before the lap flag drops
         stop=1.003,
     )
     assert warnings == []
@@ -851,7 +1183,7 @@ def test_a_lap_flag_on_a_sector_that_would_count_is_announced(store):
 
 def test_snapshot_reports_why_the_sector_will_not_count(store):
     engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0), store)
-    Driver(engine).feed(0.65, 150.0, 0.0, tyres_out=4)
+    Driver(engine).feed(0.65, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=120)
     assert engine.snapshot().pass_flag == "off track"
 
 
@@ -862,13 +1194,9 @@ def test_verbose_logging_traces_the_track_limit_signals(store, caplog):
     driver = Driver(engine)
     with caplog.at_level(logging.DEBUG, logger="brake_trainer.engine"):
         driver.feed(0.10, 150.0, 0.0)
-        driver.feed(0.11, 150.0, 0.0, tyres_out=4)
-        driver.feed(0.12, 150.0, 0.0, tyres_out=0)
         driver.feed(0.13, 150.0, 0.0, cut_gained_ms=250, cut_deadline_m=120)
         driver.feed(0.14, 150.0, 0.0)
     text = "\n".join(record.getMessage() for record in caplog.records)
-    assert "tyres_out 0 -> 4" in text
-    assert "tyres_out 4 -> 0" in text
     assert "race_cut up" in text and "gained=250 ms" in text
     assert "race_cut clear" in text
     assert "lap_valid None -> True" in text

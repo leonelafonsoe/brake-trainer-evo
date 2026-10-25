@@ -8,7 +8,7 @@ A companion app for **Assetto Corsa EVO** that learns where *you* brake on every
 then beeps as you approach those points. A small transparent HUD shows the details.
 
 ![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-informational)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-informational)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey)
 
 <img src="docs/images/overlay-learning.png" alt="The overlay while driving" width="420">
@@ -39,8 +39,8 @@ then beeps as you approach those points. A small transparent HUD shows the detai
   and a status line. It can stay on top of the game.
 - **Settings window** for everything: sounds, detection thresholds, sectors, overlay look. The Data
   tab lets you delete a single run, a sector or a whole track and car. An About tab has the credits.
-- **Has its own icon** (taskbar, tray, installer) and closes within a second of the game exiting.
-- Closes itself when the game exits. Tray icon, persistent settings, logs.
+- **Has its own icon** (taskbar, tray, installer).
+- **Closes itself when the game exits**, and keeps a tray icon, your settings and rotating logs.
 
 ## Download
 
@@ -51,12 +51,13 @@ Get a build from the [Releases page](https://github.com/leonelafonsoe/brake-trai
 - **Nightly**: a pre-release rebuilt after every change to `main`, for trying the newest code.
 
 The programs are not code-signed, so Windows SmartScreen may warn the first time (see
-[Troubleshooting](docs/TROUBLESHOOTING.md#installing-and-running)). Each release lists its
-changes and has `SHA256SUMS.txt` to verify the files.
+[Troubleshooting](docs/TROUBLESHOOTING.md#installing-and-running)). Each versioned release lists its
+changes and has `SHA256SUMS.txt` to verify the installer and zip. The rolling Nightly pre-release
+has only the portable zip.
 
 ## Quick start (from source)
 
-Requirements: Windows 10/11, Python 3.10 or newer, Assetto Corsa EVO.
+Requirements: Windows 10/11, Python 3.11 or newer, Assetto Corsa EVO.
 
 ```powershell
 git clone https://github.com/leonelafonsoe/brake-trainer-evo
@@ -101,7 +102,7 @@ The folder build is recommended. Settings, learned data and logs live in
 | Top line | Track and car, with a dot: grey = waiting for the game, amber = game running, green = live |
 | NEXT BRAKE | Distance to the next learned braking point. White, then amber when the warning is due, red at the point |
 | BRAKE | Your live brake pedal, with your speed |
-| Sector bar | Three groups of segments, one per game sector. Grey = not driven, yellow = slower than your kept runs, green = among your fastest, purple = your fastest. A white outline marks the current sector |
+| Sector bar | One segment per game sector, sized to that sector's real share of the lap, with a thin separator on the game's line. Grey = not driven, yellow = slower than your kept runs, green = among your fastest, purple = your fastest. A white outline marks the current sector |
 | Status line | What matters right now: a sector that won't count, learning paused, warm-up, the last sector result, the reference car, or a summary |
 
 <table>
@@ -128,6 +129,7 @@ the top centre of the main screen.
 | [Settings reference](docs/SETTINGS.md) | Every setting with defaults, ranges and what it does |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Installation problems, no overlay, no sound, nothing learned |
 | [Design notes](docs/DESIGN.md) | Architecture and the reasoning behind the main decisions |
+| [Development](docs/DEVELOPMENT.md) | Setup, checks, architecture map and change recipes |
 | [Telemetry notes](docs/TELEMETRY.md) | Which game data is used, SDK quirks, caveats |
 | [Data files](docs/DATA.md) | Where files live and the format of the learned data |
 | [About this project](docs/ABOUT.md) | How it was made (AI-written), what was verified and how |
@@ -141,9 +143,14 @@ src/brake_trainer/
   models.py        data types
   config.py        settings (frozen dataclass, validated, JSON)
   engine.py        braking-point learning and cues (pure logic)
+  timeline.py      position history and interpolated line crossings
   storage.py       per track + car persistence
   telemetry.py     acevo-sdk adapter, restart watchdog, game-exit detection
+  gamelog.py       follows the game's log for sector splits and cuts
   audio.py         generated beeps (no audio files)
+  metadata.py      app/build/save provenance for stored files
+  paths.py         per-user app, data and log folders
+  buildinfo.py     which build this is (commit or packaged identifier)
   logsetup.py      logging: rotating file + console, verbose mode
   app.py           wiring, tray icon
   ui/              overlay, settings window, status line, icon, worker thread, theme
@@ -168,7 +175,9 @@ pytest              # tests
 py scripts/gen_settings_doc.py   # regenerate docs/SETTINGS.md after changing settings
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution rules and
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for setup, checks and change recipes. If you use an AI
+agent, [AGENTS.md](AGENTS.md) is the short working guide. Pull requests are welcome.
 
 ## Limitations
 
@@ -178,10 +187,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
   a truth.
 - A braking zone very close to the start/finish line can wobble between the last and first
   sector. More in [Design notes](docs/DESIGN.md#known-limitations-and-ideas).
-- Track limits follow the game. It reports each cut around the corner it happened in, so the position
-  in the report is used as it is (the stored `cut_give_back_m` is `0` by default; a non-zero value
-  reads a report that far back for older data) and the run is taken back if that sector was already
-  saved. The game buffers its log (a few KB, flushed when full), so a cut can be read a minute later,
+- Track limits follow the game. A cut notification and the lap flag are written where the game
+  judged the cut, so the app drops the sector at that position and takes its run back if it was
+  already saved.
+  The game buffers its log (a few KB, flushed when full), so a cut can be read a minute later,
   or after the lap it belongs to has ended, and several can arrive at once; each line's own time is
   what the app attributes from, so every one still lands in its own sector of its own lap, and one
   for a lap that is over is named on the status line. An infraction it judges from something it does

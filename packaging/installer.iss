@@ -1,7 +1,7 @@
 ; Inno Setup script for the Windows installer (https://jrsoftware.org/isinfo.php).
 ;
 ; Build the folder version first (py scripts/build_exe.py), then:
-;   ISCC.exe /DAppVersion=0.3.8 packaging\installer.iss
+;   ISCC.exe /DAppVersion=0.4.0 packaging\installer.iss
 ; The installer is written to dist\BrakeTrainerEvo-<version>-setup.exe.
 ; The GitHub release workflow does both steps for you.
 
