@@ -27,12 +27,15 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
-          cache: pip
 
-      - run: python -m pip install -e ".[dev]"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --frozen --extra dev
 
       - name: Check the tag, the version and the changelog
-        run: python scripts/release_notes.py --tag "${{ github.ref_name }}" --check
+        run: uv run --frozen --no-sync python scripts/release_notes.py --tag "${{ github.ref_name }}" --check
 
       - name: Lint, types, tests
         uses: ./.github/actions/gates
@@ -40,7 +43,7 @@ jobs:
       - name: Build the executable
         env:
           BRAKE_TRAINER_BUILD: ${{ github.sha }}
-        run: python scripts/build_exe.py
+        run: uv run --frozen --no-sync python scripts/build_exe.py
 
       - name: Read the version
         id: version

@@ -11,10 +11,8 @@ For the longer version — architecture, change recipes and debugging — see
 ```powershell
 git clone <your fork>
 cd brake-trainer-evo
-py -m venv .venv
-.venv\Scripts\Activate.ps1          # or call .venv\Scripts\python.exe directly
-pip install -e ".[dev]"
-pre-commit install                  # optional: run the fast checks on every commit
+uv sync --extra dev                 # creates .venv from uv.lock
+uv run pre-commit install           # optional: run the fast checks on every commit
 ```
 
 You do not need Windows or the game to run the tests: the engine is pure Python and the
@@ -24,11 +22,11 @@ touches Qt.
 ## Before opening a pull request
 
 ```powershell
-ruff format .
-ruff check .
-mypy
-pytest -W error
-pytest --cov        # same command as CI, enforcing the coverage floor
+uv run ruff format .
+uv run ruff check .
+uv run mypy
+uv run pytest -W error
+uv run pytest --cov        # same command as CI, enforcing the coverage floor
 ```
 
 - A warning is an error: `filterwarnings = ["error"]` in `pyproject.toml` turns any warning the
@@ -41,7 +39,7 @@ pytest --cov        # same command as CI, enforcing the coverage floor
 - Add or update tests for behaviour changes. `tests/conftest.py` has a synthetic `Driver` that
   drives an engine around a fake track, which makes most scenarios a few lines.
 - If you add a setting, add it to `Settings`, to the `TABS` table in `settings_spec.py`, and
-  regenerate the reference: `py scripts/gen_settings_doc.py`.
+  regenerate the reference: `uv run python scripts/gen_settings_doc.py`.
 - Update `CHANGELOG.md` and, if behaviour changes, `docs/HOW_IT_WORKS.md`.
 - Small, focused pull requests are easier to review than large ones.
 

@@ -21,25 +21,25 @@ runs:
     - name: Formatting
       if: inputs.static == 'true'
       shell: bash
-      run: ruff format --check .
+      run: uv run --frozen --no-sync ruff format --check .
     - name: Lint
       if: inputs.static == 'true'
       shell: bash
-      run: ruff check .
+      run: uv run --frozen --no-sync ruff check .
     - name: Types
       if: inputs.static == 'true'
       shell: bash
-      run: mypy
+      run: uv run --frozen --no-sync mypy
     - name: Generated settings reference
       if: inputs.static == 'true'
       shell: bash
-      run: python scripts/gen_settings_doc.py --check
+      run: uv run --frozen --no-sync python scripts/gen_settings_doc.py --check
     - name: Tests
       if: inputs.tests == 'true' && inputs.coverage != 'true'
       shell: bash
-      run: pytest -q -W error
+      run: uv run --frozen --no-sync pytest -q -W error
     - name: Tests with coverage
       if: inputs.tests == 'true' && inputs.coverage == 'true'
       shell: bash
       # The floor lives in pyproject.toml, so a local run enforces the same number as CI.
-      run: pytest -q -W error --cov --cov-report=term-missing --cov-report=xml
+      run: uv run --frozen --no-sync pytest -q -W error --cov --cov-report=term-missing --cov-report=xml

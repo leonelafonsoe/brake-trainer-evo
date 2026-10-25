@@ -21,20 +21,18 @@ run on Linux and macOS.
 
 ```powershell
 # Windows
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+uv sync --extra dev
+uv run pre-commit install
 ```
 
 ```bash
 # Linux/macOS — the offscreen Qt platform is required by the UI tests
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --extra dev
+uv run pre-commit install
 export QT_QPA_PLATFORM=offscreen
 ```
 
-Run it from source with `python -m brake_trainer` (or `brake-trainer`).
+Run it from source with `uv run python -m brake_trainer` (or `uv run brake-trainer`).
 
 ## Gates
 
@@ -42,14 +40,15 @@ Run all of these before calling a change done. They are the same gates CI, Night
 use (`.github/actions/gates/action.yml`):
 
 ```bash
-pre-commit run --all-files
-ruff format --check .
-ruff check .
-mypy
-pytest -q -W error
-pytest -q -W error --cov          # enforces the coverage floor
-python scripts/gen_settings_doc.py --check
-python scripts/release_notes.py --tag v0.4.2 --check
+uv sync --frozen --extra dev
+uv run pre-commit run --all-files
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy
+uv run pytest -q -W error
+uv run pytest -q -W error --cov   # enforces the coverage floor
+uv run python scripts/gen_settings_doc.py --check
+uv run python scripts/release_notes.py --tag v0.4.2 --check
 ```
 
 - A warning is an error (`filterwarnings = ["error"]`). Fix the warning; do not filter it away.
@@ -135,7 +134,7 @@ input. Full rules: [CONTRIBUTING.md](CONTRIBUTING.md).
 - `docs/TROUBLESHOOTING.md` — symptom and action.
 - `docs/DATA.md` — file formats and compatibility.
 - `docs/SETTINGS.md` is generated. **Never hand-edit it**; run
-  `python scripts/gen_settings_doc.py`.
+  `uv run python scripts/gen_settings_doc.py`.
 
 Link instead of duplicating a long explanation, and keep each page owning one job.
 

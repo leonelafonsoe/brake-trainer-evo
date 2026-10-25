@@ -54,7 +54,7 @@ pre-release flag only recognises the hyphen form, so use the hyphen when tagging
    `## Unreleased` into `## <version> - <date>`, leaving a new empty `## Unreleased`):
 
    ```powershell
-   py scripts/bump_version.py 0.4.0
+   uv run python scripts/bump_version.py 0.4.0
    ```
 
 3. Review the diff, commit it (a small pull request is fine), and merge to `main`.
@@ -76,7 +76,7 @@ names. The executable is stamped with the tag's commit, so `build=` in the log a
 file identifies the exact code even when the version number is reused. The workflow refuses to
 publish if the tag does not match the version in the project, if the changelog has no notes for that
 version, or if `## Unreleased` still has notes (bump first, so the release body cannot be stale).
-`py scripts/release_notes.py --tag v0.4.0 --check` runs the same check locally.
+`uv run python scripts/release_notes.py --tag v0.4.0 --check` runs the same check locally.
 
 ### Trying it safely
 

@@ -13,31 +13,28 @@ Linux and macOS.
 # Windows
 git clone <your fork>
 cd brake-trainer-evo
-py -m venv .venv
-.venv\Scripts\Activate.ps1          # or call .venv\Scripts\python.exe directly
-pip install -e ".[dev]"
+uv sync --extra dev                 # creates .venv from uv.lock
 ```
 
 ```bash
 # Linux/macOS
 git clone <your fork>
 cd brake-trainer-evo
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pre-commit install                  # optional: mirror the checks on every commit
+uv sync --extra dev
+uv run pre-commit install           # optional: mirror the checks on every commit
 export QT_QPA_PLATFORM=offscreen    # the UI tests must not need a display
 ```
 
-The `dev` extra installs pytest, coverage, ruff, mypy and PyInstaller. The runtime dependencies are
-PySide6 and `acevo-sdk` (pinned below 0.2.0; see the comment in `pyproject.toml`).
+The `dev` extra installs pytest, coverage, ruff, mypy and PyInstaller. `uv.lock` pins the exact
+resolved versions; CI uses `uv sync --frozen --extra dev`. The runtime dependencies are PySide6 and
+`acevo-sdk` (pinned below 0.2.0; see the comment in `pyproject.toml`).
 
 ## Run from source
 
 ```bash
-python -m brake_trainer
-# or, after installation:
-brake-trainer
+uv run python -m brake_trainer
+# or:
+uv run brake-trainer
 ```
 
 On Linux and macOS the UI runs, but telemetry and audio are Windows-only: the game's shared
@@ -46,7 +43,7 @@ memory, `tasklist` and `winsound` are not available. Use the tests to exercise t
 To keep test data out of your real profile, point the app at a scratch folder:
 
 ```bash
-BRAKE_TRAINER_HOME=/tmp/brake-trainer-dev python -m brake_trainer
+BRAKE_TRAINER_HOME=/tmp/brake-trainer-dev uv run python -m brake_trainer
 ```
 
 ## Checks
@@ -54,18 +51,19 @@ BRAKE_TRAINER_HOME=/tmp/brake-trainer-dev python -m brake_trainer
 Run the same gates as CI (`.github/actions/gates/action.yml`):
 
 ```bash
-pre-commit run --all-files     # ruff, formatting, YAML/TOML, whitespace, mypy
-ruff format --check .
-ruff check .
-mypy
-pytest -q -W error
-pytest -q -W error --cov          # coverage with the floor from pyproject.toml
-python scripts/gen_settings_doc.py --check
-python scripts/release_notes.py --tag v0.4.2 --check
+uv sync --frozen --extra dev
+uv run pre-commit run --all-files  # ruff, formatting, YAML/TOML, whitespace, mypy
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy
+uv run pytest -q -W error
+uv run pytest -q -W error --cov    # coverage with the floor from pyproject.toml
+uv run python scripts/gen_settings_doc.py --check
+uv run python scripts/release_notes.py --tag v0.4.2 --check
 ```
 
-Use `ruff format .` to apply formatting, and `python scripts/gen_settings_doc.py` to regenerate the
-settings reference after changing a setting.
+Use `uv run ruff format .` to apply formatting, and `uv run python scripts/gen_settings_doc.py` to
+regenerate the settings reference after changing a setting.
 
 - **Warnings are errors.** `filterwarnings = ["error"]` makes any warning fail the run. Fix the
   cause; do not filter it away unless a dependency cannot be fixed.
@@ -150,7 +148,7 @@ Boundaries:
    bounds, step, suffix, help).
 2. Add the matching typed field to `Settings` in `src/brake_trainer/config.py`, using
    `DEFAULTS["name"]`.
-3. Regenerate the reference: `python scripts/gen_settings_doc.py`.
+3. Regenerate the reference: `uv run python scripts/gen_settings_doc.py`.
 4. Add the registry/kind/range assertions in `tests/test_settings_spec.py` and the form assertions
    in `tests/test_settings_window.py`.
 5. If the engine reads it while running, handle it in `BrakeEngine.apply_settings` and test the
@@ -210,10 +208,10 @@ preserved, retired keys from older files are dropped.
 Follow [RELEASING.md](RELEASING.md). The short version:
 
 1. Put the user-facing changes under `## Unreleased` in `CHANGELOG.md`.
-2. `python scripts/bump_version.py X.Y.Z` (updates `pyproject.toml`, `__init__.py` and the
+2. `uv run python scripts/bump_version.py X.Y.Z` (updates `pyproject.toml`, `__init__.py` and the
    changelog date/section).
 3. Run every gate above, including
-   `python scripts/release_notes.py --tag vX.Y.Z --check`.
+   `uv run python scripts/release_notes.py --tag vX.Y.Z --check`.
 4. Commit, tag `vX.Y.Z` and push the tag. Pre-releases use the hyphen form (`v0.4.0-rc1`).
 5. Watch the Release workflow; it fails closed if the installer, zip or checksums are missing or
    do not verify.
