@@ -9,6 +9,7 @@ import sys
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
+from . import __version__
 from .audio import AudioPlayer
 from .config import SettingsHolder, load_settings, save_settings
 from .controller import AppController
@@ -63,6 +64,9 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("Brake Trainer EVO")
+    app.setApplicationVersion(__version__)
+    app.setStyle("Fusion")  # a consistent base for the dark QSS on Windows
+    app.setPalette(theme.palette())
     app.setStyleSheet(theme.STYLE)
     app.setWindowIcon(app_icon())
     app.setQuitOnLastWindowClosed(False)  # the overlay can be hidden; quit explicitly

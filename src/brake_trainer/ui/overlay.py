@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QGuiApplication, QMouseEvent, QPainter
+from PySide6.QtCore import QPoint, QRect, Qt, Signal
+from PySide6.QtGui import QAction, QColor, QCursor, QGuiApplication, QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -57,9 +57,10 @@ def _text(label: QLabel, text: str) -> None:
         label.setText(text)
 
 
-def _tool_button(text: str, tip: str) -> QPushButton:
+def _tool_button(text: str, tip: str, name: str) -> QPushButton:
     btn = QPushButton(text)
     btn.setToolTip(tip)
+    btn.setAccessibleName(name)
     btn.setFixedSize(22, 22)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setStyleSheet(
@@ -104,9 +105,9 @@ class OverlayWindow(QWidget):
         top = QHBoxLayout()
         self._dot = _label("●", size=10, color=theme.MUTED)
         self._title = _label("Brake Trainer", size=11, color=theme.TEXT_DIM)
-        self._learn_btn = _tool_button("⏸", "Pause learning")
-        self._settings_btn = _tool_button("⚙", "Settings")
-        self._quit_btn = _tool_button("✕", "Quit")
+        self._learn_btn = _tool_button("⏸", "Pause learning", "Pause learning")
+        self._settings_btn = _tool_button("⚙", "Settings", "Settings")
+        self._quit_btn = _tool_button("✕", "Quit", "Quit")
         self._learn_btn.clicked.connect(
             lambda: self.toggle_learning.emit(not self._settings.learning_enabled)
         )
@@ -174,6 +175,7 @@ class OverlayWindow(QWidget):
         learning = settings.learning_enabled
         self._learn_btn.setText("⏸" if learning else "▶")
         self._learn_btn.setToolTip("Pause learning" if learning else "Resume learning")
+        self._learn_btn.setAccessibleName("Pause learning" if learning else "Resume learning")
         self.update()
         if (old.overlay_always_on_top, old.overlay_click_through) != (
             settings.overlay_always_on_top,
@@ -253,8 +255,8 @@ class OverlayWindow(QWidget):
     # ------------------------------------------------------------------ window behaviour
 
     def move_to_default(self) -> None:
-        """Top-centre of the primary screen."""
-        screen = QGuiApplication.primaryScreen()
+        """Top-centre of the screen under the cursor, so a game on a second monitor is covered."""
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if screen is None:
             return
         self.adjustSize()
@@ -263,10 +265,14 @@ class OverlayWindow(QWidget):
 
     def place(self, x: int | None, y: int | None) -> None:
         """Restore a saved position, or use the default if it is unset or off every screen."""
-        if x is not None and y is not None and QGuiApplication.screenAt(QPoint(x + 20, y + 20)):
-            self.move(x, y)
-        else:
-            self.move_to_default()
+        if x is not None and y is not None:
+            self.adjustSize()
+            rect = QRect(x, y, self.width(), self.height())
+            screen = QGuiApplication.screenAt(rect.center())
+            if screen is not None and screen.availableGeometry().intersects(rect):
+                self.move(x, y)
+                return
+        self.move_to_default()
 
     def reset_position(self) -> None:
         self.move_to_default()

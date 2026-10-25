@@ -61,14 +61,23 @@ class SettingsWindow(FormMixin, DiagnosticsPageMixin, DataPageMixin, AboutPageMi
 
         buttons = QHBoxLayout()
         reset = QPushButton("Reset to defaults")
+        reset.setObjectName("reset")
+        reset.setAutoDefault(False)
         reset.clicked.connect(lambda: self.load(Settings()))
         warn, here = QPushButton("Test warning"), QPushButton("Test brake-now")
+        warn.setAutoDefault(False)
+        here.setAutoDefault(False)
         warn.clicked.connect(lambda: self.test_cue.emit(CueKind.WARN))
         here.clicked.connect(lambda: self.test_cue.emit(CueKind.HERE))
         apply_btn = QPushButton("Apply")
+        apply_btn.setObjectName("apply")
         apply_btn.setProperty("primary", True)
+        # Enter applies. Without this Qt would make the first button in tab order (Reset) default,
+        # so pressing Enter in a field could throw the form away.
+        apply_btn.setDefault(True)
         apply_btn.clicked.connect(self._apply)
         close = QPushButton("Close")
+        close.setAutoDefault(False)
         close.clicked.connect(self.close)
         for b in (reset, warn, here):
             buttons.addWidget(b)

@@ -18,6 +18,10 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   worker's game-log callbacks and idle tick now have integration tests too.
 - A legacy learned-data filename is resolved once per identity instead of being re-read on every
   sector save.
+- The UI now uses a dark Fusion palette with visible focus and disabled states, so native controls
+  match the rest of the window. Apply is the default dialog button (Enter no longer risks Reset),
+  the overlay buttons have accessible names, and the default overlay position follows the screen
+  under the cursor.
 
 ### Fixed
 

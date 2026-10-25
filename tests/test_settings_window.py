@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QSpinBox,
 )
 
@@ -58,6 +59,16 @@ def test_the_data_tab_refreshes_only_while_visible(qapp, store, monkeypatch):
     monkeypatch.setattr(window, "isVisible", lambda: True)
     window.refresh_data_if_visible()
     assert calls == [1]
+
+
+def test_apply_is_the_default_button_and_reset_is_not(qapp, store):
+    window = _window(qapp, store)
+    apply_btn = window.findChild(QPushButton, "apply")
+    reset = window.findChild(QPushButton, "reset")
+
+    assert apply_btn is not None and apply_btn.isDefault()
+    # Enter in a field must not become "Reset to defaults", which would throw the form away.
+    assert reset is not None and not reset.autoDefault()
 
 
 def test_the_form_round_trips_every_visible_setting(qapp, store):

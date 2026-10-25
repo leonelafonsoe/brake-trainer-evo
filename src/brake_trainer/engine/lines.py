@@ -7,11 +7,11 @@ from bisect import bisect_right
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ..models import DropReason, OutcomeKind, SectorOutcome, SectorResult, SectorRun, SectorStatus
-from ..outcomes import LINES_REASONS, render_outcome
+from ..models import DropReason, SectorResult, SectorRun, SectorStatus
+from ..outcomes import LINES_REASONS, outcome_for_run, render_outcome
 from ..timeline import CarAt, clamp_pos
 from .constants import _HISTORY_S, _LINE_MATCH, _LINES_WAIT_LAPS
-from .passes import _LapRun, _LostPass, _Pass
+from .passes import _LapRun, _LostPass, _Pass, keep_fastest
 
 if TYPE_CHECKING:
     from .engine import BrakeEngine
@@ -370,22 +370,14 @@ class LinesMixin:
         runs = data.sectors[idx]
         previous_best = min((r.t for r in runs), default=None)
         stored = SectorRun(duration, onsets)
-        kept = sorted([*runs, stored], key=lambda r: r.t)[: self._settings.top_runs]
-        accepted = any(r is stored for r in kept)
+        kept, accepted, status = keep_fastest(runs, stored, self._settings.top_runs)
         if accepted:
             data.sectors[idx] = kept
             self._lap_runs[(entry.lap, idx)] = _LapRun(stored, runs, entry.end)
-        status = (
-            SectorStatus.BEST
-            if kept[0] is stored
-            else SectorStatus.GOOD
-            if accepted
-            else SectorStatus.SLOWER
-        )
         if entry.lap == self._status_lap and 0 <= idx < len(self._status):
             self._status[idx] = status
         changed = self._forget_early(entry.run.onsets) or accepted
-        outcome = SectorOutcome(OutcomeKind.KEPT if accepted else OutcomeKind.NOT_KEPT)
+        outcome = outcome_for_run(accepted, learning=True)
         log.debug(
             "lines: S%d of lap %d timed after the fact: %.2f s (%s)",
             idx + 1,
