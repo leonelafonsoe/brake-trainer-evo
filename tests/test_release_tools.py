@@ -123,6 +123,7 @@ def test_every_workflow_that_tests_or_publishes_runs_the_shared_gates():
     assert "ruff check ." in gates
     assert "mypy" in gates
     assert "pytest -q -W error" in gates
+    assert "--cov" in gates and "coverage.xml" in gates
     assert "gen_settings_doc.py --check" in gates
 
     for name in ("ci.yml", "nightly.yml", "release.yml"):
@@ -132,6 +133,12 @@ def test_every_workflow_that_tests_or_publishes_runs_the_shared_gates():
 
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "windows-latest" in ci and "matrix" in ci  # the tests run on Windows too
+    assert "coverage-xml" in ci and "coverage.xml" in ci
+
+    # The floor lives with the coverage config, so a local run and CI enforce the same number.
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert "[tool.coverage.run]" in pyproject and "[tool.coverage.report]" in pyproject
+    assert "fail_under = " in pyproject
 
 
 def test_the_release_workflow_fails_closed_and_stamps_the_build():

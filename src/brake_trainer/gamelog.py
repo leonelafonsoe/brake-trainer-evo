@@ -272,43 +272,58 @@ class GameLogTail:
         self._undated_warned = True
         self._on_message("Ignoring game-log lines without a timestamp")
 
+    async def _read_and_report(self) -> None:
+        """Read whatever the current file has and report the events that are new."""
+        assert self._path is not None
+        lines = await asyncio.to_thread(self._read_new)
+        if lines:
+            # The game buffers its log: this can be a dozen lines or a whole minute of them. Each
+            # carries its own time, which is what the engine attributes from.
+            log.debug("gamelog: read %d new lines", len(lines))
+        for line in lines:
+            event = parse_line(line, self._state)
+            if event is None or not self._live:
+                continue
+            at = line_time(line)
+            if at is None:
+                # Guessing with the read time would file a buffered event under the position the
+                # car has now, minutes later. Say so once and drop it.
+                self._warn_undated()
+                log.warning("gamelog: no timestamp on a line, skipping it: %r", line[:120])
+                continue
+            if event.cut:
+                self._on_cut(event.cut, at)
+            if event.split >= 0:
+                self._on_split(event.split, at)
+        self._live = True  # everything that existed at the start has been read
+
+    async def poll_once(self) -> None:
+        """Scan for the newest log and read anything new.
+
+        :meth:`run` uses this on its rescan interval. Tests call it directly, so a file change and
+        its effect are one step apart instead of racing a sleep.
+        """
+        latest = await asyncio.to_thread(newest_log, self._dir)
+        if latest is None:
+            if not self._warned:
+                self._warned = True
+                self._on_message(f"No game log found in {self._dir} (set it in Settings)")
+        elif latest != self._path:
+            self._warned = False
+            self._switch_to(latest)
+        if self._path is not None:
+            await self._read_and_report()
+
     async def run(self, stop: asyncio.Event) -> None:
         last_scan = 0.0
         while not stop.is_set():
             now = time.monotonic()
             if self._path is None or now - last_scan >= self._rescan_s:
                 last_scan = now
-                latest = await asyncio.to_thread(newest_log, self._dir)
-                if latest is None:
-                    if not self._warned:
-                        self._warned = True
-                        self._on_message(f"No game log found in {self._dir} (set it in Settings)")
-                elif latest != self._path:
-                    self._warned = False
-                    self._switch_to(latest)
-            if self._path is not None:
-                lines = await asyncio.to_thread(self._read_new)
-                if lines:
-                    # The game buffers its log: this can be a dozen lines or a whole minute of
-                    # them. Each carries its own time, which is what the engine attributes from.
-                    log.debug("gamelog: read %d new lines", len(lines))
-                for line in lines:
-                    event = parse_line(line, self._state)
-                    if event is None or not self._live:
-                        continue
-                    at = line_time(line)
-                    if at is None:
-                        # Guessing with the read time would file a buffered event under the
-                        # position the car has now, minutes later. Say so once and drop it.
-                        self._warn_undated()
-                        log.warning("gamelog: no timestamp on a line, skipping it: %r", line[:120])
-                        continue
-                    if event.cut:
-                        self._on_cut(event.cut, at)
-                    if event.split >= 0:
-                        self._on_split(event.split, at)
-                self._live = True  # everything that existed at the start has been read
-            with contextlib.suppress(asyncio.TimeoutError):  # builtin TimeoutError only from 3.11
+                await self.poll_once()
+            elif self._path is not None:
+                await self._read_and_report()
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=self._poll_s)
 
 

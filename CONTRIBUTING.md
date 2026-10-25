@@ -22,9 +22,16 @@ touches Qt.
 ruff format .
 ruff check .
 mypy
-pytest
+pytest -W error
+pytest --cov        # same command as CI, enforcing the coverage floor
 ```
 
+- A warning is an error: `filterwarnings = ["error"]` in `pyproject.toml` turns any warning the
+  suite raises into a failure. Fix the warning; do not filter it away unless it comes from a
+  dependency you cannot control.
+- Every test has a 60-second timeout, so a hang fails the run instead of blocking CI.
+- Coverage has a floor (`fail_under` in `pyproject.toml`). It is a ratchet: raise it as coverage
+  improves, never lower it to make a change pass.
 - Keep the engine (`engine.py`, `storage.py`, `models.py`, `config.py`) free of Qt imports.
 - Add or update tests for behaviour changes. `tests/conftest.py` has a synthetic `Driver` that
   drives an engine around a fake track, which makes most scenarios a few lines.

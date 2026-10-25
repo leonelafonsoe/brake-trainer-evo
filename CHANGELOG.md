@@ -47,6 +47,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - A release now fails closed: it stops if the installer cannot be built, if the portable zip, the
   installer or the checksum file is missing or empty, or if a checksum does not match. The
   executable is stamped with the commit it was built from, so `build=` identifies the exact code.
+- The test suite now treats warnings as errors, has a per-test timeout and enforces a coverage
+  floor, so a regression in the code the tests reach fails the pull request.
 
 ### Fixed
 

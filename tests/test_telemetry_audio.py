@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import io
 import struct
+import threading
+import time
 import wave
 from types import SimpleNamespace
 
@@ -20,6 +22,16 @@ from brake_trainer.telemetry import (
     find_game_process,
     sample_from_frame,
 )
+
+
+async def _wait(condition, timeout: float = 3.0) -> bool:
+    """Poll a condition instead of sleeping for a guessed duration."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if condition():
+            return True
+        await asyncio.sleep(0.01)
+    return False
 
 
 def frame(**over):
@@ -206,17 +218,23 @@ async def test_reader_falls_back_to_polling_without_a_handle(monkeypatch):
 async def test_reader_unknown_probe_never_closes(monkeypatch):
     _fast(monkeypatch)
     probes = iter([GameProbe(GameStatus.RUNNING, "x", 0)] + [GameProbe(GameStatus.UNKNOWN)] * 1000)
+    seen = {"n": 0}
+
+    def probe(_):
+        seen["n"] += 1
+        return next(probes)
+
     stop = asyncio.Event()
     reader = TelemetryReader(
         lambda: Settings(),
         lambda s: None,
         capture_factory=FakeCapture,
-        game_probe=lambda _: next(probes),
+        game_probe=probe,
         process_watcher=lambda pid: None,
         poll_s=0.001,
     )
     task = asyncio.create_task(reader.run(stop))
-    await asyncio.sleep(0.3)
+    assert await _wait(lambda: seen["n"] >= 3)
     assert not task.done()
     stop.set()
     assert await task is ExitReason.STOPPED
@@ -246,14 +264,18 @@ def test_make_tone_is_valid_wav_and_volume_scales():
 
 def test_audio_player_respects_enabled_flag():
     played = []
+    done = threading.Event()
+
+    def backend(wav: bytes) -> None:
+        played.append(wav)
+        done.set()
+
     holder = {"st": Settings(sound_enabled=False)}
-    player = AudioPlayer(lambda: holder["st"], backend=played.append)
+    player = AudioPlayer(lambda: holder["st"], backend=backend)
     player.play(CueKind.WARN)
     assert played == []
     player.play(CueKind.HERE, force=True)
-    import time
-
-    time.sleep(0.1)
+    assert done.wait(1)  # the cue runs on its own thread; wait for it, do not sleep
     assert len(played) == 1
 
 
@@ -279,7 +301,7 @@ async def test_reader_reports_a_capture_start_failure_and_recovers(monkeypatch):
         poll_s=0.001,
     )
     task = asyncio.create_task(reader.run(stop))
-    await asyncio.sleep(0.1)
+    assert await _wait(lambda: "" in errors)
     stop.set()
 
     assert await task is ExitReason.STOPPED
@@ -314,7 +336,7 @@ async def test_reader_reports_a_read_failure_and_recovers(monkeypatch):
         poll_s=0.001,
     )
     task = asyncio.create_task(reader.run(stop))
-    await asyncio.sleep(0.1)
+    assert await _wait(lambda: "" in errors)
     stop.set()
 
     assert await task is ExitReason.STOPPED
@@ -348,7 +370,7 @@ async def test_reader_reports_bad_frames_and_recovers(monkeypatch):
         poll_s=0.001,
     )
     task = asyncio.create_task(reader.run(stop))
-    await asyncio.sleep(0.2)
+    assert await _wait(lambda: bool(samples) and "" in errors)
     stop.set()
 
     assert await task is ExitReason.STOPPED

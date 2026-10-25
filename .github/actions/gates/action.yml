@@ -10,6 +10,10 @@ inputs:
     description: Run the test suite.
     required: false
     default: "true"
+  coverage:
+    description: Measure coverage, enforce the floor and write coverage.xml.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -31,6 +35,11 @@ runs:
       shell: bash
       run: python scripts/gen_settings_doc.py --check
     - name: Tests
-      if: inputs.tests == 'true'
+      if: inputs.tests == 'true' && inputs.coverage != 'true'
       shell: bash
       run: pytest -q -W error
+    - name: Tests with coverage
+      if: inputs.tests == 'true' && inputs.coverage == 'true'
+      shell: bash
+      # The floor lives in pyproject.toml, so a local run enforces the same number as CI.
+      run: pytest -q -W error --cov --cov-report=term-missing --cov-report=xml

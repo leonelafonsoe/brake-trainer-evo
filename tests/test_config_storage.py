@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -298,6 +299,32 @@ def test_a_delete_that_cannot_remove_the_file_is_reported(store):
     assert result.detail
 
 
+def test_quarantine_never_overwrites_an_earlier_file(store, monkeypatch):
+    # Two files quarantined in the same second would otherwise get the same name, and the second
+    # move would replace the first one's evidence. The counter keeps both.
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 24, 12, 0, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(storage_module, "datetime", FrozenDatetime)
+    path = store.directory / "Monza__Car_A.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json", encoding="utf-8")
+    folder = store.quarantine_directory
+    folder.mkdir(parents=True, exist_ok=True)
+    earlier = folder / "Monza__Car_A.corrupt-20261024-120000.json"
+    earlier.write_text("the first one", encoding="utf-8")
+
+    store.load("Monza", "Car A", 3)
+
+    assert earlier.read_text(encoding="utf-8") == "the first one"
+    assert {p.name for p in folder.glob("Monza__Car_A.corrupt-*")} == {
+        "Monza__Car_A.corrupt-20261024-120000.json",
+        "Monza__Car_A.corrupt-20261024-120000-1.json",
+    }
+
+
 def test_store_roundtrip(store):
     store.save(_data("Car A", 2))
     assert store.load("Monza", "Car A", 3).total_runs() == 2
@@ -311,6 +338,9 @@ def test_store_reference_selection(store):
     assert ref is not None and ref.car == "Ferrari 296"  # most data wins
     named = store.find_reference("Monza", "New Car", 3, preferred="bmw")
     assert named is not None and named.car == "BMW M4"
+    # A preferred car that is not stored falls back to the best entry instead of returning nothing.
+    missing = store.find_reference("Monza", "New Car", 3, preferred="porsche")
+    assert missing is not None and missing.car == "Ferrari 296"
     assert store.find_reference("Spa", "New Car", 3) is None
     assert store.find_reference("Monza", "Ferrari 296", 3).car != "Ferrari 296"
 
@@ -325,3 +355,10 @@ def test_store_delete_clear_and_corrupt_files(store):
     assert list(store.quarantine_directory.glob("junk.corrupt-*.json"))
     assert store.delete("Monza", "A")
     assert store.clear() == 1
+
+
+def test_deleting_an_entry_that_is_already_gone_is_a_successful_no_op(store):
+    result = store.delete("Monza", "Never driven")
+
+    assert result.ok and not result.changed
+    assert not result.detail

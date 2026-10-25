@@ -129,6 +129,8 @@ def test_a_violation_is_all_four_tyres_out_two_metres_or_more_for_the_player():
     assert not parse_line(limits(PLAYER, 3, 3.0), state)  # not all four tyres
     assert not parse_line(limits(PLAYER, 4, 12.52), state)  # teleported to the pits
     assert not parse_line(limits(AI, 4, 3.0), state)  # someone else's car
+    # A limits line this build cannot read is ignored, not guessed at.
+    assert not parse_line("[t] Limits: car broken tyres out changed", state)
 
 
 def test_the_player_is_the_car_with_a_steam_id_and_unknown_cars_are_ignored():
@@ -155,35 +157,33 @@ async def test_tail_reports_only_new_cuts_and_follows_newer_logs(tmp_path: Path)
     old = tmp_path / "old.txt"
     old.write_text("\n".join([CONNECT, NOTIFICATION]) + "\n", encoding="utf-8")
     hits: list[tuple[str, float]] = []
-    tail = GameLogTail(
-        tmp_path, lambda reason, at: hits.append((reason, at)), poll_s=0.01, rescan_s=0.02
-    )
-    stop = asyncio.Event()
-    task = asyncio.create_task(tail.run(stop))
-    await asyncio.sleep(0.3)
+    tail = GameLogTail(tmp_path, lambda reason, at: hits.append((reason, at)))
+    await tail.poll_once()
     assert hits == []  # history is not replayed
 
     with old.open("a", encoding="utf-8") as fh:
         fh.write(limits(AI, 4, 3.0) + "\n")  # not the player
         fh.write(NOTIFICATION[:30])  # a line written in two pieces
-        fh.flush()
-        await asyncio.sleep(0.1)
-        assert hits == []
+    await tail.poll_once()
+    assert hits == []
+
+    with old.open("a", encoding="utf-8") as fh:
         fh.write(NOTIFICATION[30:] + "\n")
-    assert await _wait(lambda: len(hits) == 1)
+    await tail.poll_once()
+    assert len(hits) == 1
     # The time is the line's own, not when it was read: the game buffers this log.
     assert hits[0][1] == datetime(2026, 10, 16, 20, 41, 38, 703000).timestamp()
 
     new = tmp_path / "new.txt"  # the game was restarted
     new.write_text(CONNECT + "\n" + NOTIFICATION + "\n", encoding="utf-8")
     os.utime(new, (time.time() + 5, time.time() + 5))
-    await asyncio.sleep(0.3)
+    await tail.poll_once()
     assert len(hits) == 1  # its first content is history too
+
     with new.open("a", encoding="utf-8") as fh:
         fh.write(NOTIFICATION + "\n")
-    assert await _wait(lambda: len(hits) == 2)
-    stop.set()
-    await asyncio.wait_for(task, 2)
+    await tail.poll_once()
+    assert len(hits) == 2
 
 
 async def test_tail_reports_the_sector_splits_it_reads(tmp_path: Path):
@@ -194,20 +194,51 @@ async def test_tail_reports_the_sector_splits_it_reads(tmp_path: Path):
         tmp_path,
         lambda reason, at: None,
         on_split=lambda index, at: splits.append((index, at)),
-        poll_s=0.01,
     )
-    stop = asyncio.Event()
-    task = asyncio.create_task(tail.run(stop))
-    await asyncio.sleep(0.15)
+    await tail.poll_once()
     assert splits == []  # history is not replayed
 
     with log.open("a", encoding="utf-8") as fh:
         fh.write(SPLIT + "\n")
-    assert await _wait(lambda: len(splits) == 1)
+    await tail.poll_once()
+    assert len(splits) == 1
     assert splits[0][0] == 1
     assert splits[0][1] == datetime(2026, 10, 16, 20, 41, 0, 0).timestamp()
+
+
+async def test_run_reads_new_lines_and_stops_when_asked(tmp_path: Path):
+    # poll_once() is the test seam; run() is what the worker actually uses. Keep the loop itself
+    # covered, including the fast path that only reads and does not rescan the folder.
+    log = tmp_path / "log.txt"
+    log.write_text(CONNECT + "\n", encoding="utf-8")
+    hits: list[tuple[str, float]] = []
+    tail = GameLogTail(
+        tmp_path, lambda reason, at: hits.append((reason, at)), poll_s=0.01, rescan_s=10.0
+    )
+    stop = asyncio.Event()
+    task = asyncio.create_task(tail.run(stop))
+    assert await _wait(lambda: tail._live)
+    assert hits == []  # history is not replayed
+
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(NOTIFICATION + "\n")
+    assert await _wait(lambda: len(hits) == 1)
     stop.set()
     await asyncio.wait_for(task, 2)
+
+
+async def test_a_log_that_disappears_between_scans_is_ignored(tmp_path: Path):
+    # The game can rotate or delete its log while the reader is between scans. That is a missed
+    # read, not a crash.
+    log = tmp_path / "log.txt"
+    log.write_text(CONNECT + "\n", encoding="utf-8")
+    tail = GameLogTail(tmp_path, lambda reason, at: None)
+    await tail.poll_once()
+
+    log.unlink()
+    await tail.poll_once()
+
+    assert tail._path == log  # it keeps the path it knew; the next scan picks up a new file
 
 
 def test_a_line_time_is_read_from_the_line_and_missing_ones_are_not_guessed():
@@ -222,14 +253,8 @@ async def test_tail_without_a_log_folder_just_says_so(tmp_path: Path):
         tmp_path / "missing",
         lambda reason, at: None,
         messages.append,
-        poll_s=0.01,
-        rescan_s=0.01,
     )
-    stop = asyncio.Event()
-    task = asyncio.create_task(tail.run(stop))
-    await asyncio.sleep(0.15)
-    stop.set()
-    await asyncio.wait_for(task, 2)
+    await tail.poll_once()
     assert any("No game log found" in m for m in messages)
 
 
@@ -243,24 +268,20 @@ async def test_a_larger_replacement_file_is_read_from_the_top_not_the_old_offset
     original = CONNECT + "\n"
     log.write_text(original, encoding="utf-8")
     hits: list[tuple[str, float]] = []
-    tail = GameLogTail(
-        tmp_path, lambda reason, at: hits.append((reason, at)), poll_s=0.01, rescan_s=0.02
-    )
-    stop = asyncio.Event()
-    task = asyncio.create_task(tail.run(stop))
-    assert await _wait(lambda: tail._live)
+    tail = GameLogTail(tmp_path, lambda reason, at: hits.append((reason, at)))
+    await tail.poll_once()
+    assert tail._live
 
     replacement = tmp_path / "next.txt"
     replacement.write_text(original + NOTIFICATION + "\n" + "x" * 200 + "\n", encoding="utf-8")
     os.replace(replacement, log)  # a new inode, larger than the old file
-    await asyncio.sleep(0.15)
+    await tail.poll_once()
     assert hits == []  # the new file's existing content is history too
 
     with log.open("a", encoding="utf-8") as fh:
         fh.write(NOTIFICATION + "\n")
-    assert await _wait(lambda: len(hits) == 1)
-    stop.set()
-    await asyncio.wait_for(task, 2)
+    await tail.poll_once()
+    assert len(hits) == 1
 
 
 async def test_only_the_start_of_a_large_log_is_read(tmp_path: Path, monkeypatch):
@@ -270,20 +291,16 @@ async def test_only_the_start_of_a_large_log_is_read(tmp_path: Path, monkeypatch
     log = tmp_path / "log.txt"
     log.write_text(CONNECT + "\n" + "x" * 500 + "\n" + NOTIFICATION + "\n", encoding="utf-8")
     hits: list[tuple[str, float]] = []
-    tail = GameLogTail(
-        tmp_path, lambda reason, at: hits.append((reason, at)), poll_s=0.01, rescan_s=0.02
-    )
-    stop = asyncio.Event()
-    task = asyncio.create_task(tail.run(stop))
-    assert await _wait(lambda: tail._live)
+    tail = GameLogTail(tmp_path, lambda reason, at: hits.append((reason, at)))
+    await tail.poll_once()
+    assert tail._live
     assert tail._offset == log.stat().st_size  # the rest of the history was skipped
     assert hits == []
 
     with log.open("a", encoding="utf-8") as fh:
         fh.write(NOTIFICATION + "\n")
-    assert await _wait(lambda: len(hits) == 1)
-    stop.set()
-    await asyncio.wait_for(task, 2)
+    await tail.poll_once()
+    assert len(hits) == 1
 
 
 async def test_an_undated_event_is_skipped_and_warned_about_once(tmp_path: Path):
@@ -293,24 +310,23 @@ async def test_an_undated_event_is_skipped_and_warned_about_once(tmp_path: Path)
     log.write_text(CONNECT + "\n", encoding="utf-8")
     hits: list[tuple[str, float]] = []
     messages: list[str] = []
-    tail = GameLogTail(
-        tmp_path, lambda reason, at: hits.append((reason, at)), messages.append, poll_s=0.01
-    )
-    stop = asyncio.Event()
-    task = asyncio.create_task(tail.run(stop))
-    assert await _wait(lambda: tail._live)
+    tail = GameLogTail(tmp_path, lambda reason, at: hits.append((reason, at)), messages.append)
+    await tail.poll_once()
+    assert tail._live
 
     with log.open("a", encoding="utf-8") as fh:
-        fh.write("[gameface] [info] Adding notification UINotificationType_SessionPenalty\n")
-    await asyncio.sleep(0.1)
+        fh.write(
+            "[gameface] [info] Adding notification UINotificationType_SessionPenalty\n"
+            "[gameface] [info] Adding notification UINotificationType_SessionPenalty\n"
+        )
+    await tail.poll_once()
     assert hits == []
     assert messages.count("Ignoring game-log lines without a timestamp") == 1
 
     with log.open("a", encoding="utf-8") as fh:
         fh.write(NOTIFICATION + "\n")
-    assert await _wait(lambda: len(hits) == 1)
-    stop.set()
-    await asyncio.wait_for(task, 2)
+    await tail.poll_once()
+    assert len(hits) == 1
 
 
 class FakeTail:
