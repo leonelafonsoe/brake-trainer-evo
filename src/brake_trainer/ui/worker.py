@@ -180,8 +180,12 @@ class EngineWorker(QThread):
     async def _ticker(self) -> None:
         while True:
             await asyncio.sleep(0.5)
-            self._engine.apply_pending()  # edits requested while no samples arrive
-            self._emit()
+            self._tick()
+
+    def _tick(self) -> None:
+        """Apply edits and publish state while no samples arrive (e.g. paused in the pits)."""
+        self._engine.apply_pending()
+        self._emit()
 
     def _emit(self) -> None:
         now = time.monotonic()

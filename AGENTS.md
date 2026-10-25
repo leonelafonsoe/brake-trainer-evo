@@ -69,8 +69,9 @@ Keep these boundaries; they are what makes the app testable and the data safe.
   Inject side effects so tests can run without a game or a display.
 - **Provenance** — `metadata` and the build/version from `buildinfo` assemble what a saved file
   records.
-- **UI** — `ui/*` and `app`. Thin. `ui/status.py` keeps the status-line decision as a pure
-  function so it is testable without Qt.
+- **UI** — `ui/*`, `controller` and `app`. Thin. `ui/status.py` keeps the status-line decision as a
+  pure function and `controller.py` keeps the settings/shutdown policy Qt-free, so both are testable
+  without a display.
 
 More detail and the thread diagram: [docs/DESIGN.md](docs/DESIGN.md).
 

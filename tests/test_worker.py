@@ -264,6 +264,55 @@ def test_a_data_edit_requested_by_the_ui_is_applied_on_the_next_pending_pass(qap
     assert changed == [1]
 
 
+def test_a_game_log_cut_reaches_the_engine_and_publishes_state(qapp, store):
+    worker = _worker(store)
+    states: list = []
+    worker.state.connect(states.append)
+    driver = Driver(worker._engine)
+    driver.feed(0.10, 200.0, 0.0)
+    driver.feed(0.16, 200.0, 0.0)
+
+    worker._on_cut("the game reported a cut", driver.t)
+
+    assert worker._engine.snapshot().pass_flag == "off track"
+    _pump(qapp, lambda: bool(states), "a state after the cut")
+    assert states[-1].snapshot.pass_flag == "off track"
+
+
+def test_a_game_log_split_teaches_the_engine(qapp, store):
+    holder = SettingsHolder(Settings(use_game_log=True, warmup_laps=0))
+    audio = AudioPlayer(lambda: holder.value, backend=lambda _wav: None)
+    worker = EngineWorker(holder, store, audio)
+    states: list = []
+    worker.state.connect(states.append)
+    driver = Driver(worker._engine)
+    for pos in (0.10, 0.20, 0.25):
+        driver.feed(pos, 300.0, 0.0)
+    worker._on_split(0, driver.t)
+    for pos in (0.60, 0.65):
+        driver.feed(pos, 300.0, 0.0)
+    worker._on_split(1, driver.t)
+
+    assert list(worker._engine.snapshot().boundaries[1:-1]) == [0.25, 0.65]
+    _pump(qapp, lambda: bool(states), "a state after the splits")
+    assert not states[-1].snapshot.warming_up
+
+
+def test_the_idle_tick_applies_edits_and_publishes_state(qapp, store):
+    data = TrackData.empty("Monza", "Car A", 3)
+    data.sectors[0] = [SectorRun(18.0, [0.05])]
+    assert store.save(data)
+    worker = _worker(store)
+    states: list = []
+    worker.state.connect(states.append)
+    worker.request_edit(DeleteSector("Monza", "Car A", 0))
+
+    worker._tick()
+
+    assert store.load("Monza", "Car A", 3).sectors[0] == []
+    _pump(qapp, lambda: bool(states), "a state from the idle tick")
+
+
 def test_a_sector_delete_requested_by_the_ui_passes_through_the_worker(qapp, store):
     data = TrackData.empty("Monza", "Car A", 3)
     data.sectors[0] = [SectorRun(18.0, [0.05])]

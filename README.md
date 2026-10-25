@@ -154,6 +154,7 @@ src/brake_trainer/
   paths.py         per-user app, data and log folders
   buildinfo.py     which build this is (commit or packaged identifier)
   logsetup.py      logging: rotating file + console, verbose mode
+  controller.py    settings application and shutdown policy (no Qt)
   app.py           wiring, tray icon
   ui/              overlay, settings/ (window, form, diagnostics/data/about pages), status line,
                    icon, worker thread, theme

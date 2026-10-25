@@ -357,6 +357,33 @@ def test_quarantine_never_overwrites_an_earlier_file(store, monkeypatch):
     }
 
 
+def test_a_legacy_name_is_resolved_only_once_per_identity(store, monkeypatch):
+    # Every sector close saves. Now that a legacy file is read to check whose it is, that read must
+    # happen when the name is resolved, not on every save.
+    write_path = _data("Car A", 1, 18.0)
+    legacy = store.directory / "Monza__Car_A.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps(write_path.to_dict()), encoding="utf-8")
+
+    calls: list[Path] = []
+    original = store._stored_names
+    monkeypatch.setattr(store, "_stored_names", lambda p: calls.append(p) or original(p))
+
+    assert store.save(_data("Car A", 2, 19.0))
+    assert store.save(_data("Car A", 3, 20.0))
+
+    assert calls == [legacy]
+
+
+def test_deleting_an_entry_forgets_its_resolved_path(store):
+    assert store.save(_data("Car A", 1))
+    assert store.delete("Monza", "Car A").changed
+    assert store.load("Monza", "Car A", 3).total_runs() == 0
+
+    assert store.save(_data("Car A", 2))
+    assert store.load("Monza", "Car A", 3).total_runs() == 2
+
+
 def test_two_names_that_slug_the_same_do_not_share_a_file(store):
     # "Car A" and "Car/A" both become Car_A. The second identity must not overwrite the first.
     assert store.save(_data("Car A", 1, 18.0))

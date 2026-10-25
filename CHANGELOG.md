@@ -13,6 +13,11 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - CI installs the lock with `uv sync --locked`, so a stale `uv.lock` fails instead of being silently
   ignored. Dependabot now tracks the `uv` ecosystem, pre-commit hooks run in CI, and Nightly and
   Release enforce the coverage floor.
+- The settings-application and shutdown policy moved out of `app.py` into a Qt-free `AppController`,
+  so the save-failure warning, tray sync, dialog reload and worker shutdown are tested directly. The
+  worker's game-log callbacks and idle tick now have integration tests too.
+- A legacy learned-data filename is resolved once per identity instead of being re-read on every
+  sector save.
 
 ### Fixed
 
