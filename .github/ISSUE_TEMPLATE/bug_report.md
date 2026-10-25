@@ -3,7 +3,7 @@ name: Bug report
 about: Something does not work as expected
 ---
 
-**Version** (Settings window title / `pyproject.toml`):
+**App and build** (`app=` and `build=` from the first `startup ...` line of the log):
 
 **What happened**
 

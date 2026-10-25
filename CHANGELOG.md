@@ -10,6 +10,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   before a commit, and `.editorconfig` keeps editors consistent. Real fixture files are excluded
   from whitespace fixes.
 - Dependabot keeps the Python dependencies and the pinned GitHub Actions current.
+- A `SECURITY.md` explains private vulnerability reporting, and the issue templates now include a
+  feature request and ask bug reports for the `app=`/`build=` startup line.
 
 ### Changed
 
