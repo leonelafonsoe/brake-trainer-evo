@@ -40,7 +40,7 @@ pytest --cov        # same command as CI, enforcing the coverage floor
 - Keep the engine (`engine/`, `storage.py`, `models.py`, `config.py`) free of Qt imports.
 - Add or update tests for behaviour changes. `tests/conftest.py` has a synthetic `Driver` that
   drives an engine around a fake track, which makes most scenarios a few lines.
-- If you add a setting, add it to `Settings`, to the `TABS` table in `ui/settings_window.py`, and
+- If you add a setting, add it to `Settings`, to the `TABS` table in `settings_spec.py`, and
   regenerate the reference: `py scripts/gen_settings_doc.py`.
 - Update `CHANGELOG.md` and, if behaviour changes, `docs/HOW_IT_WORKS.md`.
 - Small, focused pull requests are easier to review than large ones.

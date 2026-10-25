@@ -22,6 +22,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   identical.
 - GitHub Actions are pinned to commit SHAs, and PySide6 is bounded below 7 so a major upgrade cannot
   land unreviewed.
+- The settings window is now a `ui/settings/` package (window shell, form, diagnostics, data and
+  about pages). The behaviour and the `ui.settings_window` import path are unchanged, so existing
+  callers and tests keep working.
 
 ## 0.4.2 - 2026-10-25
 

@@ -17,7 +17,7 @@ from brake_trainer.config import Settings
 from brake_trainer.models import SectorRun, TrackData
 from brake_trainer.settings_spec import TABS, SettingSpec
 from brake_trainer.storage import DeleteEntry, DeleteRun, DeleteSector
-from brake_trainer.ui import settings_window as settings_module
+from brake_trainer.ui.settings import data_page as data_page_module
 from brake_trainer.ui.settings_window import SettingsWindow, _get, _set
 
 pytestmark = pytest.mark.usefixtures("close_qt_windows")
@@ -154,7 +154,7 @@ def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
     top.setSelected(True)
 
     monkeypatch.setattr(
-        settings_module.QMessageBox,
+        data_page_module.QMessageBox,
         "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.No,
     )
@@ -162,7 +162,7 @@ def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
     assert requested == []  # cancelled: nothing is deleted
 
     monkeypatch.setattr(
-        settings_module.QMessageBox,
+        data_page_module.QMessageBox,
         "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
