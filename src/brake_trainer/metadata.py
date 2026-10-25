@@ -7,7 +7,7 @@ ignore these keys, so a file from an older or newer build still reads as before.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from . import __version__
@@ -19,5 +19,5 @@ def save_metadata() -> dict[str, Any]:
     return {
         "app_version": __version__,
         "build": build_id(),
-        "saved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }

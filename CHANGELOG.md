@@ -41,6 +41,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - The status line says what is actually true during warm-up and while waiting for the game's lines;
   sector results show their gap to the sector's best.
 - `acevo-sdk` is pinned below 0.2.0, which only releases frames after a clean lap boundary.
+- Python 3.11 or newer is required (3.10 is past end of life). Pull requests and the nightly build
+  run the same gates, with the tests also on Windows, so a platform-only failure is caught before
+  it ships.
 
 ### Fixed
 

@@ -14,14 +14,17 @@ flowchart LR
 
 ## 1. Pull requests (`ci.yml`)
 
-Every pull request runs lint, format check, mypy and pytest on Linux, then builds the Windows
-program. The build is attached to the workflow run as an artifact (kept 14 days) so anyone can
-download and try the change. Nothing is published.
+Every pull request runs the shared gates (`.github/actions/gates`) on Linux: format check, lint,
+mypy and the generated settings reference. The tests run on Linux with Python 3.11 and 3.12 and on
+Windows with 3.12, then the Windows program is built. The build is attached to the workflow run as
+an artifact (kept 14 days) so anyone can download and try the change. Nothing is published, and a
+failure on any operating system blocks the build.
 
 ## 2. Nightly (`nightly.yml`)
 
 On every push to `main` (for example a merged pull request) a pre-release called **Nightly (latest
-main)** is refreshed: the `nightly` tag moves to the new commit and the asset
+main)** is refreshed. It runs the same gates as CI first, so a nightly cannot publish code that
+would fail a pull request; then the `nightly` tag moves to the new commit and the asset
 `BrakeTrainerEvo-nightly-windows.zip` is replaced. Its description lists the `## Unreleased`
 section of the changelog. It is for trying new code; it may be unstable.
 

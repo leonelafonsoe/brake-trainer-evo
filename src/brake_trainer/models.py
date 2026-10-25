@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 # Bumped when a change to TrackData.to_dict would make an older build misread a file. The loader
@@ -16,7 +16,7 @@ class NewerDataError(ValueError):
     """The file was written by a newer learned-data layout than this build understands."""
 
 
-class SectorStatus(str, Enum):
+class SectorStatus(StrEnum):
     """F1-style sector colouring for the current lap."""
 
     PENDING = "pending"  # not driven yet (or not counted)
@@ -25,7 +25,7 @@ class SectorStatus(str, Enum):
     BEST = "best"  # your fastest run of this sector
 
 
-class CueKind(str, Enum):
+class CueKind(StrEnum):
     WARN = "warn"  # braking point coming up
     HERE = "here"  # braking point is right here
 

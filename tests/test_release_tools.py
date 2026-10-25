@@ -115,6 +115,25 @@ def test_nightly_body_mentions_commit_and_unreleased_changes():
     assert "No unreleased changes" in notes.build_nightly_body(None, "abc", "me/repo")
 
 
+def test_every_workflow_that_tests_or_publishes_runs_the_shared_gates():
+    # The nightly used to run a subset of the checks and the release duplicated them, so a change
+    # could pass one path and fail another. Keep one definition of the gates.
+    gates = (ROOT / ".github/actions/gates/action.yml").read_text(encoding="utf-8")
+    assert "ruff format --check ." in gates
+    assert "ruff check ." in gates
+    assert "mypy" in gates
+    assert "pytest -q -W error" in gates
+    assert "gen_settings_doc.py --check" in gates
+
+    for name in ("ci.yml", "nightly.yml", "release.yml"):
+        workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+        assert "./.github/actions/gates" in workflow, name
+        assert "timeout-minutes:" in workflow, name
+
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "windows-latest" in ci and "matrix" in ci  # the tests run on Windows too
+
+
 def test_bump_version_updates_everything_and_keeps_an_empty_unreleased(project):
     bump.bump(project, "0.3.9", date(2026, 10, 14))
     text = (project / "CHANGELOG.md").read_text()

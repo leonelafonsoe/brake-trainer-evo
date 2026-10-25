@@ -1,0 +1,36 @@
+name: Quality gates
+description: Format, lint, type-check, check the generated docs and run the tests.
+
+inputs:
+  static:
+    description: Run the format, lint, type and generated-docs gates.
+    required: false
+    default: "true"
+  tests:
+    description: Run the test suite.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Formatting
+      if: inputs.static == 'true'
+      shell: bash
+      run: ruff format --check .
+    - name: Lint
+      if: inputs.static == 'true'
+      shell: bash
+      run: ruff check .
+    - name: Types
+      if: inputs.static == 'true'
+      shell: bash
+      run: mypy
+    - name: Generated settings reference
+      if: inputs.static == 'true'
+      shell: bash
+      run: python scripts/gen_settings_doc.py --check
+    - name: Tests
+      if: inputs.tests == 'true'
+      shell: bash
+      run: pytest -q -W error

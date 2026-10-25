@@ -18,6 +18,7 @@ concurrency:
 jobs:
   release:
     runs-on: windows-latest
+    timeout-minutes: 30
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
@@ -26,6 +27,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - run: python -m pip install -e ".[dev]"
 
@@ -33,11 +35,7 @@ jobs:
         run: python scripts/release_notes.py --tag "${{ github.ref_name }}" --check
 
       - name: Lint, types, tests
-        run: |
-          ruff check .
-          ruff format --check .
-          mypy
-          pytest -q
+        uses: ./.github/actions/gates
 
       - name: Build the executable
         run: python scripts/build_exe.py

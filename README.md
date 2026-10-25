@@ -8,7 +8,7 @@ A companion app for **Assetto Corsa EVO** that learns where *you* brake on every
 then beeps as you approach those points. A small transparent HUD shows the details.
 
 ![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-informational)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-informational)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey)
 
 <img src="docs/images/overlay-learning.png" alt="The overlay while driving" width="420">
@@ -56,7 +56,7 @@ changes and has `SHA256SUMS.txt` to verify the files.
 
 ## Quick start (from source)
 
-Requirements: Windows 10/11, Python 3.10 or newer, Assetto Corsa EVO.
+Requirements: Windows 10/11, Python 3.11 or newer, Assetto Corsa EVO.
 
 ```powershell
 git clone https://github.com/leonelafonsoe/brake-trainer-evo

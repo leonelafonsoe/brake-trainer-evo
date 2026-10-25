@@ -205,7 +205,7 @@ async def _wait_or_stop(stop: asyncio.Event, delay: float) -> bool:
         return stop.is_set()
     try:
         await asyncio.wait_for(stop.wait(), timeout=delay)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return False
     return True
 

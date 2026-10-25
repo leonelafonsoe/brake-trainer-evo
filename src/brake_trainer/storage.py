@@ -8,8 +8,8 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 
 from .metadata import save_metadata
@@ -38,7 +38,7 @@ class StoreResult:
         return self.changed
 
 
-class LoadStatus(str, Enum):
+class LoadStatus(StrEnum):
     """Why a learned-data file could or could not be used."""
 
     OK = "ok"
@@ -136,7 +136,7 @@ class TrackStore:
         try:
             folder = self.quarantine_directory
             folder.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             target = folder / f"{path.stem}.{status.value}-{stamp}{path.suffix}"
             counter = 1
             while target.exists():

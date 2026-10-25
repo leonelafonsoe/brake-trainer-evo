@@ -15,7 +15,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 
 **`pip` is not recognized**
 Python is not on your PATH. Use the launcher instead: `py -m pip install -e ".[dev]"`. If `py` does
-not exist either, install Python 3.10+ from python.org (tick "Add python.exe to PATH") or run
+not exist either, install Python 3.11+ from python.org (tick "Add python.exe to PATH") or run
 `winget install Python.Python.3.12`, then open a new terminal. If typing `python` opens the
 Microsoft Store, Python is not really installed.
 
