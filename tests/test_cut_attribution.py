@@ -65,6 +65,11 @@ MONZA_CUTS = [
     pytest.param(0.716, 2, id="ascari-71.6"),
     pytest.param(0.726, 2, id="ascari-72.6"),
     pytest.param(0.363, 1, id="lesmo-36.3"),
+    # 2026-10-25 field session, app 0.5.0 / game 0.9.1: deliberate cuts at Lesmo, Ascari and
+    # Parabolica. This pins the S2/S3 boundary and the start/finish-seam case as well.
+    pytest.param(0.506, 1, id="field-lesmo-50.6"),
+    pytest.param(0.514, 1, id="field-lesmo-51.4"),
+    pytest.param(0.957, 2, id="field-parabolica-95.7"),
 ]
 
 
