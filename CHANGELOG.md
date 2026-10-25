@@ -4,6 +4,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.4.1 - 2026-10-24
+
 ### Fixed
 
 - The portable zip and the installer now include `LICENSE` and `THIRD_PARTY_NOTICES.md` beside the

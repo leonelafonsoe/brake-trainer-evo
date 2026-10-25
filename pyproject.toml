@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brake-trainer-evo"
-version = "0.4.0"
+version = "0.4.1"
 description = "Braking-point trainer with audio cues for Assetto Corsa EVO"
 readme = "README.md"
 license = "PolyForm-Noncommercial-1.0.0"
