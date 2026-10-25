@@ -239,6 +239,7 @@ class BrakeEngine:
         self._last_result_t = 0.0
         self._late_cut = ""  # a cut reported for a lap the sector bar no longer shows
         self._late_cut_t = 0.0
+        self._storage_warning = ""  # a learned-data file that could not be read
         self._bounds: list[float] = []
         # The game's sector lines, still being learned from its split lines: while this is up the
         # laps are not counted, since a run timed between lines that then move would be filed wrong.
@@ -330,6 +331,7 @@ class BrakeEngine:
 
         delta, jump = 0.0, False
         prev_pos, prev_t = self._prev_pos, self._prev_t
+        prev_lap = self._lap_no
         if prev_pos is not None:
             delta = wrap_delta(pos - prev_pos)  # signed, wrap-safe
             jump = abs(delta) > JUMP_LAP
@@ -369,7 +371,9 @@ class BrakeEngine:
                 self._flag("warm-up lap")
             if self._learning_lines:
                 self._flag("finding the sector lines")
-            self._check_track_limits(s, pos)
+            self._check_track_limits(
+                s, pos, None if jump or prev_pos is None else (prev_pos, prev_lap)
+            )
             if not self._settings.learning_enabled:
                 self._pass.paused = True
 
@@ -420,6 +424,7 @@ class BrakeEngine:
             last_result=self._last_result,
             late_cut=self._late_cut,
             late_cut_age=(s.t - self._late_cut_t) if self._late_cut else None,
+            storage_warning=self._storage_warning,
         )
 
     def _pass_flag(self) -> str:
@@ -468,10 +473,12 @@ class BrakeEngine:
             self._key, self._n = key, n
             self._status = [SectorStatus.PENDING] * n
             self._laps_done = 0
+            self._storage_warning = ""
             self._data = self._store.load(s.track, s.car, n)
             self._ref = self._store.find_reference(s.track, s.car, n, self._settings.reference_car)
             self._clear_tracking()
             lines_from = self._store.share_lines(self._data)
+            self._note_storage_issues()
             self._setup_bounds()
             self._rebuild_zones()
             self._on_message(
@@ -499,6 +506,24 @@ class BrakeEngine:
         elif self._reload:
             self._rebuild_zones()
         self._reload = False
+
+    def _note_storage_issues(self) -> None:
+        """Log unsafe data files once and keep a short version for the status line."""
+        issues = self._store.take_issues()
+        if not issues:
+            return
+        for issue in issues:
+            outcome = (
+                f"moved to {issue.quarantine_path}"
+                if issue.quarantine_path is not None
+                else "read-only; it will not be overwritten"
+            )
+            self._on_warning(f"Learned data {issue.path.name}: {issue.detail} ({outcome})")
+        first = issues[0]
+        if first.quarantine_path is not None:
+            self._storage_warning = f"Data file {first.path.stem} moved to quarantine"
+        else:
+            self._storage_warning = f"Data file {first.path.stem} is read-only"
 
     def _using_ref(self, i: int) -> bool:
         """Is sector ``i`` still using borrowed braking points?
@@ -601,7 +626,9 @@ class BrakeEngine:
         if self._pass is not None:
             self._pass.flagged.discard(reason)
 
-    def _check_track_limits(self, s: Sample, pos: float) -> None:
+    def _check_track_limits(
+        self, s: Sample, pos: float, prev: tuple[float, int] | None = None
+    ) -> None:
         """Track limits and other infractions, from the game's telemetry.
 
         The game's own signals, in the frames the app already reads:
@@ -623,11 +650,14 @@ class BrakeEngine:
         log. Each is attributed to a ``(lap, sector)`` and only the first one to reach it acts, so
         the same cut never drops two sectors (nor says so twice), while two cuts in different
         sectors of one lap each drop their own.
+
+        ``prev`` is the previous sample's position and lap, when the app has one and the car did
+        not teleport into this one; the one-shot flag uses it to see a sector line in the frame.
         """
         if log.isEnabledFor(logging.DEBUG):  # verbose mode: trace the signals as they change
             self._trace_track_limits(s, pos)
         self._check_race_cut(s, pos)
-        self._check_lap_flag(s, pos)
+        self._check_lap_flag(s, pos, prev)
 
     def _check_race_cut(self, s: Sample, pos: float) -> None:
         """The game's per-excursion track-limits signal: the race-cut pair.
@@ -664,18 +694,22 @@ class BrakeEngine:
             return
         self._on_message(f"Off the track at {pos:.0%}: S{idx + 1} won't count")
 
-    def _check_lap_flag(self, s: Sample, pos: float) -> None:
+    def _check_lap_flag(self, s: Sample, pos: float, prev: tuple[float, int] | None = None) -> None:
         """The one-shot lap flag: drop the sector the infraction happened in.
 
         The flag drops where the game judged the cut, and the log notification for the same cut
-        names the same spot, so the event's own position is the sector to drop.
+        names the same spot, so the event's own position is the sector to drop - except in the
+        frame that crosses a sector line, where the position has already moved on (see
+        :meth:`_flag_attribution`).
         """
         if not self._settings.skip_invalid_sectors or s.lap_valid or self._lap_valid is False:
             return
         fresh = bool(self._lap_valid)  # a fresh drop, not the state the app found at start-up
-        where = pos
+        found = self._flag_attribution(pos, prev)
+        if found is None:
+            return
+        where, lap = found
         idx = self._sector_of(where)
-        lap = self._lap_no
         # A pass that already will not count - a warm-up lap, the lines still being learned, or one
         # that began mid-sector - makes this drop a no-op. Say nothing rather than announce a loss
         # the driver has been told about already: the game invalidates an out-lap's opening sector
@@ -703,7 +737,7 @@ class BrakeEngine:
         self._on_message(
             f"The game invalidated the lap at {where:.0%}: {self._drop_text(where, took_back)}"
         )
-        if self._lap_saw_off or self._lap_warned:
+        if lap != self._lap_no or self._lap_saw_off or self._lap_warned:
             return
         self._lap_warned = True
         if self._settings.use_game_log:
@@ -712,6 +746,34 @@ class BrakeEngine:
             log.debug("limits: lap flag dropped with no cut seen yet; the log may still explain it")
         else:
             self._on_warning(_CUT_WARNING)
+
+    def _flag_attribution(
+        self, pos: float, prev: tuple[float, int] | None
+    ) -> tuple[float, int] | None:
+        """Where and on which lap a fresh one-shot flag belongs, or None to leave it to the log.
+
+        The flag has no timestamp: the app only sees that it went down between the previous sample
+        and this one. When that frame crossed a sector line, the position after the line is not
+        evidence that the infraction happened there - at the start/finish line it would drop S1 of
+        a lap the car has not driven yet. The game's log names the cut's own time, so with the log
+        on the live flag defers to it rather than guessing a sector the log may attribute
+        elsewhere. Without the log, the earlier sample is the safe choice: it is the sector the
+        car was in when the flag went down.
+        """
+        if prev is None:
+            return pos, self._lap_no
+        prev_pos, prev_lap = prev
+        crossed = prev_lap != self._lap_no or self._sector_of(prev_pos) != self._sector_of(pos)
+        if not crossed:
+            return pos, self._lap_no
+        if self._settings.use_game_log:
+            log.debug(
+                "limits: lap flag fell in the frame that crossed a sector line at %.1f%%; "
+                "the log will place it",
+                pos * 100.0,
+            )
+            return None
+        return prev_pos, prev_lap
 
     def report_infraction(self, reason: str, at: float) -> None:
         """The game's log reported a cut; drop the sector it happened in.

@@ -249,7 +249,7 @@ def _engine(store, boundaries=None, length=LENGTH, **settings):
     results: list = []
     messages: list[str] = []
     engine = BrakeEngine(
-        Settings(use_game_log=False, warmup_laps=0, **settings),
+        Settings(**{"use_game_log": False, "warmup_laps": 0, **settings}),
         store,
         on_sector=results.append,
         on_message=messages.append,
@@ -516,6 +516,27 @@ def test_a_cut_reported_in_the_frame_that_wraps_the_line_stays_in_the_laps_last_
     assert (lap - 1, 2) in engine._invalid_sectors  # still that lap's S3
     assert (lap - 1, 0) not in engine._invalid_sectors  # not a second sector, its S1
     assert not any("S1" in m and "previous lap" in m for m in messages)
+
+
+def test_a_live_lap_flag_on_the_crossing_sample_leaves_the_sector_to_the_log(store):
+    # The flag goes down between the last sample of a lap and the first one after the line. The
+    # live signal has no timestamp, so with the log on it defers: the log's line names the cut's
+    # own time and can tell the lap's S3 from the new lap's S1.
+    engine, driver, results, _ = _engine(store, boundaries=[1 / 3, 2 / 3], use_game_log=True)
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.999)
+    driver.feed(0.9998, 215.0, 0.0, valid=True)  # the last sample of the lap
+    cut_t = driver.t
+    driver.feed(0.0001, 215.0, 0.0, valid=False)  # the line and the flag in one frame
+    lap = engine._lap_no  # the new lap
+    assert (lap, 0) not in engine._invalid_sectors  # the live flag did not guess S1
+
+    engine.report_infraction("off track", cut_t)
+    assert (lap - 1, 2) in engine._invalid_sectors  # the log's time puts it in the old S3
+    assert (lap, 0) not in engine._invalid_sectors
+
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.0002, stop=1.0001)
+    by_sector = {r.sector: r for r in results}
+    assert by_sector[0].accepted  # the new lap's first sector still counts
 
 
 def test_a_cut_read_after_the_line_stays_in_the_new_laps_first_sector(store):

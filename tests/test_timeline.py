@@ -63,6 +63,24 @@ def test_lap_start_finds_the_wrap_sample_that_still_carries_the_old_lap():
 
 
 def test_crossing_returns_none_when_the_crossing_is_no_longer_kept():
-    timeline = _timeline((10.0, 0.40, 4), (11.0, 0.50, 4))
+    timeline = _timeline((10.0, 0.44, 4), (11.0, 0.46, 4))
     assert timeline.crossing(4, 0.45) == pytest.approx(10.5)
     assert timeline.crossing(3, 0.45) is None
+
+
+def test_crossing_does_not_invent_a_time_across_a_forward_teleport():
+    # A reset or teleport from 0.20 to 0.80 in one frame is not a pass through 0.45: the car never
+    # drove it, so interpolating there would file a run under a time that never happened.
+    timeline = _timeline((1.0, 0.20, 4), (2.0, 0.80, 4))
+    assert timeline.crossing(4, 0.45) is None
+
+
+def test_crossing_does_not_invent_a_time_across_a_backward_teleport():
+    timeline = _timeline((1.0, 0.80, 4), (2.0, 0.20, 4))
+    assert timeline.crossing(4, 0.45) is None
+
+
+def test_crossing_keeps_a_normal_fast_crossing_below_the_jump_limit():
+    # The guard is for teleports, not for a fast car: a move this side of JUMP_LAP still crosses.
+    timeline = _timeline((1.0, 0.20, 4), (2.0, 0.24, 4))
+    assert timeline.crossing(4, 0.22) == pytest.approx(1.5)

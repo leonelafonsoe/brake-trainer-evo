@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import logging
 
 import pytest
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine, build_zones
-from brake_trainer.models import CueKind, Sample, SectorRun
+from brake_trainer.models import DATA_VERSION, CueKind, Sample, SectorRun, TrackData
 from brake_trainer.timeline import crossing_between
 
 from .conftest import DT, LENGTH, Driver
@@ -227,6 +228,34 @@ def test_a_lap_flag_in_s3_does_not_take_back_the_s2_run_before_it(store):
     assert by_sector[1].accepted and after[1] < before[1]  # S2's clean run is kept
 
 
+def test_a_lap_flag_on_the_frame_that_crosses_the_line_drops_the_lap_being_ended(store):
+    # The flag goes down between the last sample of a lap and the first one after the line. The
+    # position has already moved into S1 of the new lap, but the car has not driven that sector
+    # yet: the flag belongs to the S3 that just ended.
+    results = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
+    )
+    driver = Driver(engine)
+    for _ in range(4):
+        driver.lap(CORNERS)
+    before = [runs[0].t for runs in store.load("Monza", "Car A", 3).sectors]
+    results.clear()
+
+    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.999)
+    driver.feed(0.9998, 215.0, 0.0, valid=True)  # the last sample of the lap
+    driver.feed(0.0001, 215.0, 0.0, valid=False)  # the line and the flag in one frame
+    lap = engine._lap_no - 1  # the lap that just ended
+    assert (lap, 2) in engine._invalid_sectors  # its S3, where the cut was
+    assert (lap + 1, 0) not in engine._invalid_sectors  # not S1 of the new lap
+    after = [runs[0].t for runs in store.load("Monza", "Car A", 3).sectors]
+    assert after[2] == before[2]  # the faster S3 was taken back
+
+    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.0002, stop=1.0001)
+    by_sector = {r.sector: r for r in results}
+    assert by_sector[0].accepted  # the new lap's S1 is clean
+
+
 def test_sector_with_a_race_cut_is_not_saved(store):
     by_sector, before, after = _fast_lap_results(store, cut=(0.45, 0.46))
     assert by_sector[1].duration is None and "off track" in by_sector[1].note
@@ -282,6 +311,33 @@ def test_warm_up_laps_can_be_switched_off_and_cues_still_play(store, cues):
     cues.clear()
     Driver(other).lap(CORNERS)  # warm-up lap on a known track: cues still play
     assert CueKind.WARN in cues
+
+
+def test_a_newer_data_file_is_quarantined_not_overwritten(store):
+    path = store.directory / "Monza__Car_A.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = TrackData.empty("Monza", "Car A", N_SECTORS).to_dict()
+    raw["version"] = DATA_VERSION + 1
+    original = json.dumps(raw)
+    path.write_text(original, encoding="utf-8")
+
+    warnings: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0),
+        store,
+        on_warning=warnings.append,
+    )
+    driver = Driver(engine)
+    driver.feed(0.1, 100.0, 0.0)
+    engine.flush()  # the shutdown save must not overwrite the newer file
+
+    quarantined = list(store.quarantine_directory.glob("Monza__Car_A.newer-*.json"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_text(encoding="utf-8") == original
+    assert path.exists()  # a fresh entry starts in its place
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == DATA_VERSION
+    assert engine.snapshot().storage_warning
+    assert warnings
 
 
 def test_stored_data_without_sector_lines_keeps_equal_splits(store):

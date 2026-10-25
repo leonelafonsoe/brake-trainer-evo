@@ -144,8 +144,10 @@ class PositionTimeline:
         """When the car crossed ``line`` during ``lap``, interpolated between two samples.
 
         ``line`` is a lap fraction: 0.0 starts the lap and 1.0 ends it (and starts the next one).
-        None when that crossing is no longer in the kept history: guessing would file a run under
-        a time the car never drove.
+        A pair whose positions jump more than :data:`JUMP_LAP` is a reset or a teleport, not
+        driving: the car never passed through the line between those samples, so it is not a
+        crossing. None when that crossing is no longer in the kept history: guessing would file a
+        run under a time the car never drove.
         """
         if line <= 0.0:
             return self.lap_start(lap)
@@ -158,6 +160,7 @@ class PositionTimeline:
                 and previous is not None
                 and previous.lap == lap
                 and previous.pos < line <= point.pos
+                and abs(wrap_delta(point.pos - previous.pos)) <= JUMP_LAP
             ):
                 span = point.pos - previous.pos
                 if span > 0.0:
