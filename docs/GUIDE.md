@@ -290,6 +290,10 @@ default position by itself.
 Raise "Background opacity" in Settings -> Overlay, or lower the game's brightness at the top of the
 screen. The text has a soft shadow, but a fully transparent window cannot guarantee contrast.
 
+**The overlay is too small or too large**
+Use Settings -> Overlay -> "HUD scale" (0.75–2.00). It scales the text, margins, bars and buttons
+together; 1.00 is the normal size.
+
 ### Sound
 
 **No beeps**

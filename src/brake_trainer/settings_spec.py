@@ -250,6 +250,22 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Part of a car name. Empty = the car with the most data on that track.",
     ),
     SettingSpec(
+        name="hud_scale",
+        kind="float",
+        default=1.0,
+        tab="Overlay",
+        label="HUD scale",
+        lo=0.75,
+        hi=2.0,
+        step=0.05,
+        decimals=2,
+        suffix="×",
+        tip=(
+            "Scale the overlay text and layout. 1.00 is the normal size; use 1.25-1.50 on a"
+            " high-DPI screen."
+        ),
+    ),
+    SettingSpec(
         name="overlay_always_on_top",
         kind="bool",
         default=True,

@@ -31,26 +31,38 @@ from .widgets import BarWidget, SectorBar
 _APPROACH_WINDOW_M = 400.0  # the approach bar starts filling this far from the point
 
 
-def _shadow(widget: QWidget) -> None:
+def _px(value: float, scale: float) -> int:
+    """A base pixel size at the requested HUD scale, never below one pixel."""
+    return max(1, round(value * scale))
+
+
+def _shadow(widget: QWidget, scale: float) -> None:
     """Soft dark shadow so text stays readable on a fully transparent background."""
     fx = QGraphicsDropShadowEffect(widget)
-    fx.setBlurRadius(8)
-    fx.setOffset(0, 1)
+    fx.setBlurRadius(_px(8, scale))
+    fx.setOffset(0, _px(1, scale))
     fx.setColor(QColor(0, 0, 0, 230))
     widget.setGraphicsEffect(fx)
 
 
 def _label(
-    text: str = "", *, size: int = 12, color: str = theme.TEXT, bold: bool = False
+    text: str = "",
+    *,
+    size: int = 12,
+    color: str = theme.TEXT,
+    bold: bool = False,
+    scale: float = 1.0,
 ) -> QLabel:
     lab = QLabel(text)
-    lab.setStyleSheet(f"color:{color}; font-size:{size}px; font-weight:{'600' if bold else '400'};")
-    _shadow(lab)
+    lab.setStyleSheet(
+        f"color:{color}; font-size:{_px(size, scale)}px; font-weight:{'600' if bold else '400'};"
+    )
+    _shadow(lab, scale)
     return lab
 
 
-def _caption(text: str) -> QLabel:
-    return _label(text, size=10, color=theme.TEXT_DIM, bold=True)
+def _caption(text: str, scale: float = 1.0) -> QLabel:
+    return _label(text, size=10, color=theme.TEXT_DIM, bold=True, scale=scale)
 
 
 def _style(widget: QWidget, css: str) -> None:
@@ -65,15 +77,15 @@ def _text(label: QLabel, text: str) -> None:
         label.setText(text)
 
 
-def _tool_button(text: str, tip: str, name: str) -> QPushButton:
+def _tool_button(text: str, tip: str, name: str, scale: float = 1.0) -> QPushButton:
     btn = QPushButton(text)
     btn.setToolTip(tip)
     btn.setAccessibleName(name)
-    btn.setFixedSize(22, 22)
+    btn.setFixedSize(_px(22, scale), _px(22, scale))
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setStyleSheet(
         f"QPushButton {{ background: transparent; border: none; color: {theme.TEXT_DIM};"
-        f" font-size: 14px; }} QPushButton:hover {{ color: {theme.TEXT}; }}"
+        f" font-size: {_px(14, scale)}px; }} QPushButton:hover {{ color: {theme.TEXT}; }}"
     )
     policy = btn.sizePolicy()
     policy.setRetainSizeWhenHidden(True)  # hiding them must not shift the layout
@@ -97,7 +109,9 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # A HUD must never pull keyboard focus from the game when it appears or changes flags.
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setFixedWidth(300)
+        self._content: QWidget | None = None
+        self._outer = QVBoxLayout(self)
+        self._outer.setContentsMargins(0, 0, 0, 0)
         self._build()
         self._apply_flags()
         app = QGuiApplication.instance()
@@ -108,17 +122,27 @@ class OverlayWindow(QWidget):
 
     # ------------------------------------------------------------------ layout
 
+    def _px(self, value: float) -> int:
+        return _px(value, self._settings.hud_scale)
+
     def _build(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 10, 14, 12)
-        root.setSpacing(5)
+        self.setFixedWidth(self._px(300))
+        old, self._content = self._content, QWidget(self)
+        if old is not None:
+            self._outer.removeWidget(old)
+            old.deleteLater()
+        self._outer.addWidget(self._content)
+        scale = self._settings.hud_scale
+        root = QVBoxLayout(self._content)
+        root.setContentsMargins(self._px(14), self._px(10), self._px(14), self._px(12))
+        root.setSpacing(self._px(5))
 
         top = QHBoxLayout()
-        self._dot = _label("●", size=10, color=theme.MUTED)
-        self._title = _label("Brake Trainer", size=11, color=theme.TEXT_DIM)
-        self._learn_btn = _tool_button("⏸", "Pause learning", "Pause learning")
-        self._settings_btn = _tool_button("⚙", "Settings", "Settings")
-        self._quit_btn = _tool_button("✕", "Quit", "Quit")
+        self._dot = _label("●", size=10, color=theme.MUTED, scale=scale)
+        self._title = _label("Brake Trainer", size=11, color=theme.TEXT_DIM, scale=scale)
+        self._learn_btn = _tool_button("⏸", "Pause learning", "Pause learning", scale=scale)
+        self._settings_btn = _tool_button("⚙", "Settings", "Settings", scale=scale)
+        self._quit_btn = _tool_button("✕", "Quit", "Quit", scale=scale)
         self._learn_btn.clicked.connect(
             lambda: self.toggle_learning.emit(not self._settings.learning_enabled)
         )
@@ -134,32 +158,32 @@ class OverlayWindow(QWidget):
         self._set_buttons_visible(False)
 
         nxt = QHBoxLayout()
-        nxt.addWidget(_caption("NEXT BRAKE"))
+        nxt.addWidget(_caption("NEXT BRAKE", scale=scale))
         nxt.addStretch(1)
-        self._distance = _label("—", size=20, bold=True)
+        self._distance = _label("—", size=20, bold=True, scale=scale)
         # The phase words use a smaller font; a fixed height keeps the row (and the window) still.
-        self._distance.setFixedHeight(24)
+        self._distance.setFixedHeight(self._px(24))
         self._distance.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         nxt.addWidget(self._distance)
         root.addLayout(nxt)
-        self._approach = BarWidget(height=4)
+        self._approach = BarWidget(height=self._px(4))
         root.addWidget(self._approach)
 
         row = QHBoxLayout()
-        row.addWidget(_caption("BRAKE"))
-        self._brake = BarWidget(height=6)
+        row.addWidget(_caption("BRAKE", scale=scale))
+        self._brake = BarWidget(height=self._px(6))
         row.addWidget(self._brake, 1)
-        self._speed = _label("0 km/h", size=11)
-        self._speed.setMinimumWidth(62)
+        self._speed = _label("0 km/h", size=11, scale=scale)
+        self._speed.setMinimumWidth(self._px(62))
         self._speed.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self._speed)
         root.addLayout(row)
 
-        self._sectors = SectorBar(height=9)
-        root.addSpacing(2)
+        self._sectors = SectorBar(height=self._px(9))
+        root.addSpacing(self._px(2))
         root.addWidget(self._sectors)
 
-        self._ref = _label("", size=10, color=theme.TEXT_DIM)
+        self._ref = _label("", size=10, color=theme.TEXT_DIM, scale=scale)
         root.addWidget(self._ref)
 
     def _set_buttons_visible(self, visible: bool) -> None:
@@ -185,6 +209,8 @@ class OverlayWindow(QWidget):
     def apply_settings(self, settings: Settings) -> None:
         old = self._settings
         self._settings = settings
+        if old.hud_scale != settings.hud_scale:
+            self._build()  # the label fonts and fixed metrics are baked in at build time
         self.setWindowOpacity(settings.overlay_opacity)
         learning = settings.learning_enabled
         self._learn_btn.setText("⏸" if learning else "▶")
@@ -205,11 +231,11 @@ class OverlayWindow(QWidget):
         self._state = state
         snap = state.snapshot
         if not state.game_running and not state.live:
-            _style(self._dot, f"color:{theme.MUTED}; font-size:10px;")
+            _style(self._dot, f"color:{theme.MUTED}; font-size:{self._px(10)}px;")
             _text(self._title, "Waiting for Assetto Corsa EVO…")
         else:
             color = theme.GREEN if state.live else theme.AMBER
-            _style(self._dot, f"color:{color}; font-size:10px;")
+            _style(self._dot, f"color:{color}; font-size:{self._px(10)}px;")
             if snap.track and state.live:
                 title = f"{snap.track} · {snap.car}"
                 _text(self._title, title if len(title) <= 36 else title[:35] + "…")
@@ -236,7 +262,10 @@ class OverlayWindow(QWidget):
         else:
             text, colour = line
             _text(self._ref, text)
-            _style(self._ref, f"color:{colour}; font-size:10px; font-weight:400;")
+            _style(
+                self._ref,
+                f"color:{colour}; font-size:{self._px(10)}px; font-weight:400;",
+            )
             if self._ref.toolTip() != state.error:
                 self._ref.setToolTip(state.error)
             if self._ref.isHidden():
@@ -247,12 +276,12 @@ class OverlayWindow(QWidget):
         style = "color:{c}; font-size:{s}px; font-weight:{w};"
         if not state.live:
             _text(self._distance, "—")
-            _style(self._distance, style.format(c=theme.TEXT_DIM, s=20, w=700))
+            _style(self._distance, style.format(c=theme.TEXT_DIM, s=self._px(20), w=700))
             self._approach.set_value(0)
             return
         if snap.next_zone_m is None:
             _text(self._distance, phase_label(snap, st))
-            _style(self._distance, style.format(c=theme.TEXT_DIM, s=14, w=600))
+            _style(self._distance, style.format(c=theme.TEXT_DIM, s=self._px(14), w=600))
             self._approach.set_value(0)
             return
         dist = snap.next_zone_m
@@ -263,7 +292,7 @@ class OverlayWindow(QWidget):
         else:
             color = theme.TEXT
         _text(self._distance, f"{dist:.0f} m")
-        _style(self._distance, style.format(c=color, s=20, w=700))
+        _style(self._distance, style.format(c=color, s=self._px(20), w=700))
         self._approach.set_value(1 - min(dist, _APPROACH_WINDOW_M) / _APPROACH_WINDOW_M, color)
 
     # ------------------------------------------------------------------ window behaviour
