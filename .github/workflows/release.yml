@@ -48,6 +48,9 @@ jobs:
           BRAKE_TRAINER_BUILD: ${{ github.sha }}
         run: uv run --locked --no-sync python scripts/build_exe.py
 
+      - name: Smoke-test the packaged app
+        run: uv run --locked --no-sync python scripts/smoke_test_exe.py dist/BrakeTrainerEvo/BrakeTrainerEvo.exe
+
       - name: Read the version
         id: version
         run: |

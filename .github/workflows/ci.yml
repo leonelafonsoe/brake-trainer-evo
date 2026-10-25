@@ -100,6 +100,8 @@ jobs:
         env:
           BRAKE_TRAINER_BUILD: ${{ github.sha }}
         run: uv run --locked --no-sync python scripts/build_exe.py
+      - name: Smoke-test the packaged app
+        run: uv run --locked --no-sync python scripts/smoke_test_exe.py dist/BrakeTrainerEvo/BrakeTrainerEvo.exe
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: BrakeTrainerEvo-windows-${{ github.sha }}

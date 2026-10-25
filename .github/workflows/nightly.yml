@@ -45,6 +45,9 @@ jobs:
           BRAKE_TRAINER_BUILD: ${{ github.sha }}
         run: uv run --locked --no-sync python scripts/build_exe.py
 
+      - name: Smoke-test the packaged app
+        run: uv run --locked --no-sync python scripts/smoke_test_exe.py dist/BrakeTrainerEvo/BrakeTrainerEvo.exe
+
       - name: Name the asset
         run: Copy-Item (Get-ChildItem dist\BrakeTrainerEvo-*-windows.zip).FullName dist\BrakeTrainerEvo-nightly-windows.zip
 

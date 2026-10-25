@@ -28,6 +28,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   workflow is back on the same `setup-python` release as the other workflows.
 - The release guide is now part of the developer manual instead of a separate page, so the pipeline
   and the steps that use it live in one place.
+- Every Windows build is started once with a temporary app folder and must write its startup line,
+  so a package that cannot launch fails CI instead of being published.
 
 ### Fixed
 

@@ -281,8 +281,10 @@ Every pull request runs the shared gates (`.github/actions/gates`) on Linux: pre
 check, lint, mypy and the generated settings reference. The tests run on Linux with Python 3.11 and
 3.12 and on Windows with 3.12, then the Windows program is built. The build is attached to the
 workflow run as an artifact (kept 14 days) so anyone can download and try the change. Nothing is
-published, and a failure on any operating system blocks the build. Coverage is measured on the
-Linux 3.12 leg, must stay above the floor in `pyproject.toml`, and is uploaded as `coverage-xml`.
+published, and a failure on any operating system blocks the build. The packaged program is started
+once with a temporary app folder and must write its `startup app=` line before the build is
+accepted. Coverage is measured on the Linux 3.12 leg, must stay above the floor in
+`pyproject.toml`, and is uploaded as `coverage-xml`.
 
 ### Nightly (`nightly.yml`)
 

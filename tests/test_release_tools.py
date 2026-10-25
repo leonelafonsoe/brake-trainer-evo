@@ -19,6 +19,7 @@ def _load(name: str):
 
 notes = _load("release_notes")
 bump = _load("bump_version")
+smoke = _load("smoke_test_exe")
 
 CHANGELOG = """# Changelog
 
@@ -204,6 +205,34 @@ def test_bump_version_updates_everything_and_keeps_an_empty_unreleased(project):
     assert notes.check_release("v0.3.9", project)[0] == "0.3.9"
 
 
+def test_the_smoke_test_waits_for_the_startup_line(tmp_path):
+    import sys
+
+    command = [
+        sys.executable,
+        "-c",
+        "import os, pathlib, time; "
+        "pathlib.Path(os.environ['BRAKE_TRAINER_HOME'], 'brake_trainer.log')"
+        ".write_text('startup app=0.0.0 build=test\\n'); time.sleep(5)",
+    ]
+
+    assert smoke.wait_for_startup(command, timeout=10) == 0
+
+
+def test_the_smoke_test_fails_when_the_app_exits_early(tmp_path):
+    import sys
+
+    with pytest.raises(SystemExit, match="exited with 3"):
+        smoke.wait_for_startup([sys.executable, "-c", "raise SystemExit(3)"], timeout=10)
+
+
+def test_the_smoke_test_fails_without_a_startup_line(tmp_path):
+    import sys
+
+    with pytest.raises(SystemExit, match="did not write"):
+        smoke.wait_for_startup([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.5)
+
+
 def test_bump_version_refreshes_the_lock_when_one_exists(project, monkeypatch):
     (project / "uv.lock").write_text("", encoding="utf-8")
     calls: list[list[str]] = []
@@ -264,6 +293,12 @@ def test_the_installer_has_metadata_and_detects_a_running_app():
     assert "CloseApplications=yes" in installer
     # The mutex the installer checks must actually be created by the program.
     assert "CreateMutexW" in app and "BrakeTrainerEvo.App" in app
+
+
+def test_every_windows_build_is_smoke_tested():
+    for name in ("ci.yml", "nightly.yml", "release.yml"):
+        workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        assert "scripts/smoke_test_exe.py" in workflow, name
 
 
 def test_nightly_and_release_audit_the_locked_dependencies():
