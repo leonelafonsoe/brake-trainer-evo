@@ -29,3 +29,22 @@ def test_every_settings_window_field_exists_in_settings():
     names = {f.name for f in fields(Settings)}
     shown = {spec.name for specs in TABS.values() for spec in specs}
     assert shown <= names
+
+
+def test_readme_lists_every_top_level_module():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    modules = {
+        path.stem
+        for path in (ROOT / "src" / "brake_trainer").glob("*.py")
+        if path.stem not in {"__init__", "__main__"}
+    }
+    missing = sorted(name for name in modules if f"{name}.py" not in readme)
+    assert not missing, f"README project layout is missing: {', '.join(missing)}"
+
+
+def test_data_doc_matches_the_log_rotation():
+    from brake_trainer import logsetup
+
+    doc = (ROOT / "docs" / "DATA.md").read_text(encoding="utf-8")
+    size_mb = logsetup._MAX_BYTES // 1_000_000
+    assert f"about {size_mb} MB x {logsetup._BACKUPS}" in doc

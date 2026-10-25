@@ -2,13 +2,24 @@
 
 This page explains what Brake Trainer EVO does while you drive, in the order things happen.
 For *why* it works this way, see [DESIGN.md](DESIGN.md). Every number below is a default and can
-be changed in Settings (see [SETTINGS.md](SETTINGS.md)).
+be changed in Settings (see [SETTINGS.md](SETTINGS.md)). The game data and log lines it reads are
+in [TELEMETRY.md](TELEMETRY.md); the files it writes are in [DATA.md](DATA.md).
 
 ## The idea
 
 Every time you brake hard, the app notes **where on the track the braking started**. After a few
 good laps it knows your usual braking points for that track and car, and plays a beep as you
 approach them. It learns your own marks, so there is nothing to configure per track.
+
+## Words used here
+
+- **Sector**: one of the game's three parts of a lap.
+- **Line** (or **boundary**): where one sector ends and the next begins. The app learns the two
+  inner lines from the game's splits.
+- **Split**: the time the game reports as you cross a sector line; also the log line that carries it.
+- **Pass**: the driving through one sector, from one line to the next.
+- **Run**: the stored result of a counted pass - its time and where you started braking.
+- **Session**: one run of the game, from connecting to closing. Stored runs survive between sessions.
 
 ## Braking events
 
@@ -106,8 +117,7 @@ the last and the first sector.
 
 A sector pass is not saved when:
 
-- **Warm-up**: it is part of a warm-up lap, or the game's sector lines have not been learned yet (see
-  above).
+- **Warm-up**: it is part of a warm-up lap.
 - **Pit lane**: you were in the pit lane, or reset to the pits, during it.
 - **Partial**: you reset or teleported mid-sector, or drove less than 90% of it.
 - **Invalid lap**: the game invalidated your lap for a cut that happened in it (track limits). The
@@ -125,6 +135,11 @@ A sector pass is not saved when:
   the lap being driven now. When its lap is already over the status line says so ("S3 of the last lap
   won't count · cut"), and the run that lap had saved for that sector is taken back.
 - **Paused**: learning was paused at any point during it.
+
+While the game's sector lines are still being learned, a clean pass is held rather than dropped: it
+is timed and stored on those lines as soon as they are known, or on the equal splits if the app
+stops waiting, and its braking points already shape the cues. If another reason in this list also
+applies (warm-up, pit, partial, invalid, off track or paused), the pass is dropped for that reason.
 
 The signals above are the game's own. When the game invalidates a lap for an infraction it does not
 expose (no cut in its log and no race cut), the app says so in its log and can only drop the sector

@@ -21,8 +21,9 @@ flowchart LR
 
 | Layer | Modules | Rules |
 | --- | --- | --- |
-| Pure logic | `models`, `config`, `engine`, `storage` | No Qt. Fully unit-tested with synthetic laps. |
-| Adapters | `telemetry`, `audio` | The only code that touches the game, the SDK, `tasklist` or `winsound`. Everything is injectable for tests. |
+| Pure logic | `models`, `config`, `engine`, `storage`, `timeline` | No Qt. Fully unit-tested with synthetic laps. |
+| Adapters | `telemetry`, `audio`, `gamelog`, `paths` | The only code that touches the game, the SDK, the game's log, `tasklist`, `winsound` or the filesystem. Everything is injectable for tests. |
+| Provenance | `metadata`, `buildinfo` | The running version and build, and the provenance written into a saved file. No Qt. |
 | UI | `ui/*`, `app` | Thin. `ui/status.py` holds the status-line logic as a pure function so it is testable without Qt. |
 
 **Threads.** The telemetry loop and the engine run on one worker thread (an asyncio loop inside a

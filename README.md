@@ -39,8 +39,8 @@ then beeps as you approach those points. A small transparent HUD shows the detai
   and a status line. It can stay on top of the game.
 - **Settings window** for everything: sounds, detection thresholds, sectors, overlay look. The Data
   tab lets you delete a single run, a sector or a whole track and car. An About tab has the credits.
-- **Has its own icon** (taskbar, tray, installer) and closes within a second of the game exiting.
-- Closes itself when the game exits. Tray icon, persistent settings, logs.
+- **Has its own icon** (taskbar, tray, installer).
+- **Closes itself when the game exits**, and keeps a tray icon, your settings and rotating logs.
 
 ## Download
 
@@ -51,8 +51,9 @@ Get a build from the [Releases page](https://github.com/leonelafonsoe/brake-trai
 - **Nightly**: a pre-release rebuilt after every change to `main`, for trying the newest code.
 
 The programs are not code-signed, so Windows SmartScreen may warn the first time (see
-[Troubleshooting](docs/TROUBLESHOOTING.md#installing-and-running)). Each release lists its
-changes and has `SHA256SUMS.txt` to verify the files.
+[Troubleshooting](docs/TROUBLESHOOTING.md#installing-and-running)). Each versioned release lists its
+changes and has `SHA256SUMS.txt` to verify the installer and zip. The rolling Nightly pre-release
+has only the portable zip.
 
 ## Quick start (from source)
 
@@ -141,9 +142,14 @@ src/brake_trainer/
   models.py        data types
   config.py        settings (frozen dataclass, validated, JSON)
   engine.py        braking-point learning and cues (pure logic)
+  timeline.py      position history and interpolated line crossings
   storage.py       per track + car persistence
   telemetry.py     acevo-sdk adapter, restart watchdog, game-exit detection
+  gamelog.py       follows the game's log for sector splits and cuts
   audio.py         generated beeps (no audio files)
+  metadata.py      app/build/save provenance for stored files
+  paths.py         per-user app, data and log folders
+  buildinfo.py     which build this is (commit or packaged identifier)
   logsetup.py      logging: rotating file + console, verbose mode
   app.py           wiring, tray icon
   ui/              overlay, settings window, status line, icon, worker thread, theme

@@ -7,7 +7,7 @@ Everything is stored per user in `%APPDATA%\BrakeTrainerEvo\`:
 | `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)), the overlay position, and the version that wrote the file |
 | `data\<track>__<car>.json` | What was learned for one track and car, with the version that wrote it |
 | `data\quarantine\` | Files this build could not read, kept instead of overwritten (see below) |
-| `brake_trainer.log` | Log (rotated, about 0.5 MB x 3), starting with one diagnostics line: app version, build, settings/data versions, log path and verbose state |
+| `brake_trainer.log` | Log (rotated, about 1 MB x 3), starting with one diagnostics line: app version, build, settings/data versions, log path and verbose state |
 
 Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy for testing).
 
