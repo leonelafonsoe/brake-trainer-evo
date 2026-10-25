@@ -240,6 +240,7 @@ class BrakeEngine:
         self._late_cut = ""  # a cut reported for a lap the sector bar no longer shows
         self._late_cut_t = 0.0
         self._storage_warning = ""  # a learned-data file that could not be read
+        self._save_warning = ""  # a learned-data write that failed and has not succeeded since
         self._bounds: list[float] = []
         # The game's sector lines, still being learned from its split lines: while this is up the
         # laps are not counted, since a run timed between lines that then move would be filed wrong.
@@ -333,7 +334,7 @@ class BrakeEngine:
                 self._data.sectors[i] = sorted(runs, key=lambda r: r.t)[:keep]
                 changed = True
         if changed:
-            self._store.save(self._data)
+            self._save(self._data)
             self._on_message(
                 f"Keeping the {keep} fastest runs per sector: slower stored runs were removed"
             )
@@ -375,16 +376,39 @@ class BrakeEngine:
         changed = False
         while self._pending:
             edit = self._pending.popleft()
-            changed = self._store.apply(edit) or changed
-            if (edit.track, edit.car) == self._key:
-                self._data, self._key = None, None  # reload at the next sample
+            result = self._store.apply(edit)
+            changed = result.changed or changed
+            if not result.ok:
+                self._report_save_failure(result.detail)
+            elif result.changed and (edit.track, edit.car) == self._key:
+                # The file changed under the engine: reload it at the next sample. A no-op or a
+                # failed edit must not throw away runs that are still only in memory.
+                self._data, self._key = None, None
         if changed:
             self._on_data_changed()
         return changed
 
+    def _save(self, data: TrackData) -> bool:
+        """Write learned data, keeping a failed write visible until one succeeds again."""
+        result = self._store.save(data)
+        if result.ok:
+            if self._save_warning:
+                self._save_warning = ""
+                self._on_message("Learned data can be saved again")
+            return True
+        self._report_save_failure(result.detail)
+        return False
+
+    def _report_save_failure(self, detail: str) -> None:
+        """Say once that the store cannot be written; the status line keeps saying it."""
+        if self._save_warning:
+            return
+        self._save_warning = "Could not save learned data · see the log"
+        self._on_warning(f"Could not save learned data: {detail}")
+
     def flush(self) -> None:
         if self._data is not None:
-            self._store.save(self._data)
+            self._save(self._data)
 
     def update(self, s: Sample) -> None:
         self.apply_pending()
@@ -493,7 +517,7 @@ class BrakeEngine:
             last_result=self._last_result,
             late_cut=self._late_cut,
             late_cut_age=(s.t - self._late_cut_t) if self._late_cut else None,
-            storage_warning=self._storage_warning,
+            storage_warning=self._save_warning or self._storage_warning,
         )
 
     def _pass_flag(self) -> str:
@@ -664,7 +688,7 @@ class BrakeEngine:
         ):
             return
         self._data.early_onsets.append(list(run.onsets))
-        self._store.save(self._data)
+        self._save(self._data)
         self._rebuild_zones()
 
     @staticmethod
@@ -1037,7 +1061,7 @@ class BrakeEngine:
         if self._last_closed is not None and self._last_closed[1] is run:
             self._last_closed = None
         self._rebuild_zones()
-        self._store.save(self._data)
+        self._save(self._data)
         return True
 
     def _trace_track_limits(self, s: Sample, pos: float) -> None:
@@ -1136,7 +1160,7 @@ class BrakeEngine:
             changed = self._store_late(entry, round(entry.end - entry.run.t0, 3)) or changed
         self._lines_lost.clear()
         if changed and self._data is not None:
-            self._store.save(self._data)
+            self._save(self._data)
         self._on_message(message)
         return changed
 
@@ -1266,7 +1290,7 @@ class BrakeEngine:
         data.boundaries = [first, second]
         self._bounds = full_bounds(self._n, data.boundaries)
         self._learning_lines = False
-        self._store.save(data)
+        self._save(data)
         self._rebuild_zones()
         self._status = [SectorStatus.PENDING] * self._n
         self._status_lap = self._lap_no
@@ -1353,7 +1377,7 @@ class BrakeEngine:
             changed = self._store_late(entry, round(end - start, 3)) or changed
         if changed:
             self._rebuild_zones()
-            self._store.save(data)
+            self._save(data)
 
     def _store_late(self, entry: _LostPass, duration: float) -> bool:
         """Store and report a sector timed after the fact; True when there was anything to save.
@@ -1510,7 +1534,7 @@ class BrakeEngine:
                 self._last_closed = (idx, stored)
                 self._lap_runs[(self._lap_no, idx)] = _LapRun(stored, previous, t)
                 self._rebuild_zones()
-                self._store.save(data)
+                self._save(data)
         # with learning off the colours still show how the sector compared, but nothing is stored
         note = ("kept" if learning else "would be kept") if accepted else "not kept"
         status = self._status[idx]
@@ -1550,7 +1574,7 @@ class BrakeEngine:
             # confirmed just after the sector line: add to the run that was just saved
             self._last_closed[1].onsets.append(pos)
             self._rebuild_zones()
-            self._store.save(self._data)
+            self._save(self._data)
 
     # ------------------------------------------------------------------ cues
 

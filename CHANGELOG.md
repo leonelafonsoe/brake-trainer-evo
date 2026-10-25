@@ -35,6 +35,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - A learned-data file from a newer layout, a corrupt file, or one with a different sector count is
   moved to `data\quarantine\` instead of being overwritten. If it cannot be moved, the app keeps it
   and refuses to save over it.
+- A learned-data write now reports failure instead of pretending it worked: the old file is kept,
+  the temporary file is removed, and the status line says the data could not be saved until a later
+  write succeeds. Deleting data that cannot be removed is reported too.
 - The status line says what is actually true during warm-up and while waiting for the game's lines;
   sector results show their gap to the sector's best.
 - `acevo-sdk` is pinned below 0.2.0, which only releases frames after a clean lap boundary.

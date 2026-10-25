@@ -377,6 +377,63 @@ def test_warm_up_laps_can_be_switched_off_and_cues_still_play(store, cues):
     assert CueKind.WARN in cues
 
 
+def test_a_failed_save_is_shown_until_a_save_succeeds(store, monkeypatch):
+    from brake_trainer.storage import StoreResult
+
+    messages: list[str] = []
+    warnings: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0),
+        store,
+        on_message=messages.append,
+        on_warning=warnings.append,
+    )
+    driver = Driver(engine)
+    failing = {"on": True}
+    real_save = store.save
+
+    def save(data):
+        if failing["on"]:
+            return StoreResult(ok=False, detail="No space left on device")
+        return real_save(data)
+
+    monkeypatch.setattr(store, "save", save)
+    for _ in range(4):
+        driver.lap(CORNERS)
+
+    snap = engine.snapshot()
+    assert snap.storage_warning == "Could not save learned data · see the log"
+    assert warnings == ["Could not save learned data: No space left on device"]
+    assert not store.load("Monza", "Car A", N_SECTORS).total_runs()  # nothing was written
+
+    failing["on"] = False
+    engine.flush()
+
+    assert engine.snapshot().storage_warning == ""
+    assert messages.count("Learned data can be saved again") == 1
+    assert store.load("Monza", "Car A", N_SECTORS).total_runs() > 0
+
+
+def test_a_failed_data_edit_is_reported_and_keeps_the_warning_up(store, monkeypatch):
+    from brake_trainer.storage import DeleteSector, StoreResult
+
+    warnings: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0), store, on_warning=warnings.append
+    )
+    driver = Driver(engine)
+    driver.feed(0.1, 100.0, 0.0)
+    monkeypatch.setattr(
+        store, "apply", lambda edit: StoreResult(ok=False, detail="Permission denied")
+    )
+
+    engine.queue_edit(DeleteSector("Monza", "Car A", 0))
+
+    assert engine.apply_pending() is False  # a failed edit changed nothing
+    assert engine.snapshot().storage_warning
+    assert warnings == ["Could not save learned data: Permission denied"]
+
+
 def test_a_newer_data_file_is_quarantined_not_overwritten(store):
     path = store.directory / "Monza__Car_A.json"
     path.parent.mkdir(parents=True, exist_ok=True)

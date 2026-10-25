@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -17,6 +18,24 @@ from .models import NewerDataError, TrackData
 log = logging.getLogger(__name__)
 
 QUARANTINE_DIR = "quarantine"
+
+
+@dataclass(frozen=True, slots=True)
+class StoreResult:
+    """Outcome of a write, edit or delete.
+
+    ``ok`` is False when the operation was refused or failed; ``changed`` is True only when the
+    stored data actually changed, so callers can tell "nothing to do" from "the write failed".
+    The result is truthy exactly when something changed, which keeps the old boolean call sites
+    working.
+    """
+
+    ok: bool = True
+    changed: bool = False
+    detail: str = ""
+
+    def __bool__(self) -> bool:
+        return self.changed
 
 
 class LoadStatus(str, Enum):
@@ -191,22 +210,32 @@ class TrackStore:
             return TrackData.empty(track, car, n_sectors)
         return result.data
 
-    def save(self, data: TrackData) -> bool:
-        """Write one entry. Returns False if the write failed or the path is blocked."""
+    def save(self, data: TrackData) -> StoreResult:
+        """Write one entry.
+
+        ``ok`` is False if the write failed or the path is blocked, with the reason in ``detail``;
+        the temporary file is removed and the previous entry is left untouched.
+        """
         path = self._path(data.track, data.car)
         if path in self._blocked:
+            detail = "the file could not be read and must not be overwritten"
             log.error("Refusing to overwrite unreadable learned data %s", path.name)
-            return False
+            return StoreResult(ok=False, detail=detail)
         tmp = path.with_suffix(".tmp")
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
             payload = {**save_metadata(), **data.to_dict()}
-            tmp.write_text(json.dumps(payload), encoding="utf-8")
+            with tmp.open("w", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload))
+                handle.flush()
+                os.fsync(handle.fileno())  # durable before the replace, not just in the cache
             os.replace(tmp, path)
         except OSError as exc:
+            with contextlib.suppress(OSError):
+                tmp.unlink()
             log.warning("Could not save learned data: %s", exc)
-            return False
-        return True
+            return StoreResult(ok=False, detail=str(exc))
+        return StoreResult(changed=True)
 
     def entries(self) -> list[TrackData]:
         if not self.directory.exists():
@@ -255,41 +284,46 @@ class TrackStore:
                 return other.car if self.save(data) else ""
         return ""
 
-    def apply(self, edit: DataEdit) -> bool:
-        """Apply an edit to the stored files. Returns False if there was nothing to change."""
+    def apply(self, edit: DataEdit) -> StoreResult:
+        """Apply an edit to the stored files.
+
+        A refused or failed write has ``ok=False`` and leaves the file untouched; "nothing to
+        delete" is ``ok=True`` with ``changed=False``.
+        """
         if isinstance(edit, DeleteEntry):
             return self.delete(edit.track, edit.car)
         result = self._read(self._path(edit.track, edit.car))
         data = result.data
         if result.status is not LoadStatus.OK or data is None:
-            return False
+            return StoreResult()
         if not 0 <= edit.sector < data.n_sectors:
-            return False
+            return StoreResult()
         runs = data.sectors[edit.sector]
         if isinstance(edit, DeleteSector):
             if not runs:
-                return False
+                return StoreResult()
             data.sectors[edit.sector] = []
         else:
             index = next((i for i, r in enumerate(runs) if abs(r.t - edit.time) < 1e-6), None)
             if index is None:
-                return False
+                return StoreResult()
             del runs[index]
         return self.save(data)
 
-    def delete(self, track: str, car: str) -> bool:
+    def delete(self, track: str, car: str) -> StoreResult:
         path = self._path(track, car)
         try:
             path.unlink()
         except FileNotFoundError:
             self._blocked.discard(path)
             self._issues.pop(path, None)
-            return False
-        except OSError:
-            return False
+            return StoreResult()
+        except OSError as exc:
+            log.warning("Could not delete learned data %s: %s", path.name, exc)
+            return StoreResult(ok=False, detail=str(exc))
         self._blocked.discard(path)
         self._issues.pop(path, None)
-        return True
+        return StoreResult(changed=True)
 
     def clear(self) -> int:
-        return sum(self.delete(d.track, d.car) for d in self.entries())
+        return sum(1 for d in self.entries() if self.delete(d.track, d.car).changed)

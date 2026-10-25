@@ -217,8 +217,9 @@ class Snapshot:
     # says it instead.
     late_cut: str = ""
     late_cut_age: float | None = None  # seconds since that report
-    # A learned-data file this build could not read. The Data tab has the full detail; the status
-    # line only needs to tell the driver that the entry was not loaded (or is read-only).
+    # A learned-data file this build could not read, or a write that failed and has not succeeded
+    # since. The Data tab has the full detail; the status line only needs to tell the driver that
+    # the entry was not loaded (or is read-only) or that what they just drove was not saved.
     storage_warning: str = ""
 
 

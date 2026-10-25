@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 import logging
 from pathlib import Path
@@ -7,10 +8,11 @@ from pathlib import Path
 import pytest
 
 from brake_trainer import __version__
+from brake_trainer import storage as storage_module
 from brake_trainer.buildinfo import build_id
 from brake_trainer.config import SETTINGS_VERSION, Settings, load_settings, save_settings
 from brake_trainer.models import DATA_VERSION, SectorRun, TrackData
-from brake_trainer.storage import DeleteSector, LoadStatus
+from brake_trainer.storage import DeleteSector, LoadStatus, StoreResult
 
 FIXTURES = Path(__file__).with_name("fixtures") / "settings"
 
@@ -234,6 +236,66 @@ def test_share_lines_does_not_overwrite_an_unsafe_entry(store, monkeypatch):
     data = store.load("Monza", "Car B", 3)  # blocks the target
     assert store.share_lines(data) == ""
     assert target.read_text(encoding="utf-8") == original
+
+
+def test_a_failed_replace_keeps_the_old_file_and_removes_the_temporary(store, monkeypatch):
+    store.save(_data("Car A", 1))
+    path = store.directory / "Monza__Car_A.json"
+    original = path.read_text(encoding="utf-8")
+
+    def refuse(*args, **kwargs):
+        raise OSError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(storage_module.os, "replace", refuse)
+    result = store.save(_data("Car A", 2))
+
+    assert not result.ok and not result.changed
+    assert "Permission denied" in result.detail
+    assert path.read_text(encoding="utf-8") == original  # the previous entry survives
+    assert not list(store.directory.glob("*.tmp"))  # and nothing is left behind
+
+
+def test_a_full_disk_is_reported_and_the_temporary_file_is_removed(store, monkeypatch):
+    store.save(_data("Car A", 1))
+    path = store.directory / "Monza__Car_A.json"
+    original = path.read_text(encoding="utf-8")
+
+    def full(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(storage_module.os, "fsync", full)
+    result = store.save(_data("Car A", 2))
+
+    assert not result.ok and not result.changed
+    assert "No space left" in result.detail
+    assert path.read_text(encoding="utf-8") == original
+    assert not list(store.directory.glob("*.tmp"))
+
+
+def test_an_edit_that_cannot_be_written_is_a_failure_not_a_no_op(store, monkeypatch):
+    store.save(_data("Car A", 1))
+    monkeypatch.setattr(
+        store, "save", lambda data: StoreResult(ok=False, detail="No space left on device")
+    )
+
+    failed = store.apply(DeleteSector("Monza", "Car A", 0))
+
+    assert not failed.ok and not failed.changed
+    assert "No space" in failed.detail
+    # Nothing to delete is still a successful no-op, and the two must not look alike.
+    monkeypatch.undo()
+    no_op = store.apply(DeleteSector("Monza", "Car A", 2))
+    assert no_op.ok and not no_op.changed
+
+
+def test_a_delete_that_cannot_remove_the_file_is_reported(store):
+    # The path is a directory, so unlink fails with a real OSError rather than a mocked one.
+    (store.directory / "Monza__Car_A.json").mkdir(parents=True)
+
+    result = store.delete("Monza", "Car A")
+
+    assert not result.ok and not result.changed
+    assert result.detail
 
 
 def test_store_roundtrip(store):

@@ -68,6 +68,10 @@ the session and the app shows a warning instead of failing silently.
   `data\quarantine\` and a fresh entry starts, rather than overwritten: files from 0.3.10 and
   earlier hold a different number of sectors. If a file cannot be moved (for example it is locked),
   the app keeps it in place and refuses to save over it; Settings -> Data marks it read-only.
+- If a learned-data file cannot be written (the disk is full, or the folder is read-only), the
+  previous file is kept, the half-written temporary file is removed, and the status line says the
+  data could not be saved until a later write succeeds. A failed delete is reported the same way,
+  so Settings -> Data never claims something was removed when it was not.
 
 ## Housekeeping
 
