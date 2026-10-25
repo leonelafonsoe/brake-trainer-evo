@@ -3,25 +3,27 @@
 ## Installing and running
 
 **`Activate.ps1 cannot be loaded because running scripts is disabled`**
-PowerShell's execution policy blocks the virtual-environment script. Either allow scripts for your
-user once, or skip activation:
+With [uv](https://docs.astral.sh/uv/) you do not need to activate the environment:
+
+```powershell
+uv sync --extra dev
+uv run python -m brake_trainer
+```
+
+If you use the venv directly, allow scripts for your user once:
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-# or, without activating:
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.venv\Scripts\python.exe -m brake_trainer
 ```
 
-**`pip` is not recognized**
-Python is not on your PATH. Use the launcher instead: `py -m pip install -e ".[dev]"`. If `py` does
-not exist either, install Python 3.11+ from python.org (tick "Add python.exe to PATH") or run
-`winget install Python.Python.3.12`, then open a new terminal. If typing `python` opens the
-Microsoft Store, Python is not really installed.
+**`uv` or `python` is not recognized**
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.11+ from
+python.org (tick "Add python.exe to PATH"), or run `winget install Python.Python.3.12`, then open a
+new terminal. If typing `python` opens the Microsoft Store, Python is not really installed.
 
 **Windows SmartScreen or antivirus flags the executable**
 Unsigned executables built with PyInstaller are sometimes flagged. Prefer the folder build
-(`py scripts/build_exe.py`), or build it yourself from the source, which is the safest option.
+(`uv run python scripts/build_exe.py`), or build it yourself from the source, which is the safest option.
 For SmartScreen use "More info -> Run anyway" only for a build you made yourself.
 
 **The built .exe shows the wrong (default) icon**
@@ -30,7 +32,7 @@ old icon even though the new one is inside. The app itself (taskbar, window, tra
 code and is not affected. To check and refresh:
 
 1. Look at the start of the build output for `Using icon: ...\packaging\icon.ico`. If it says "no icon
-   found", the file `packaging\icon.ico` is missing (regenerate it with `py scripts/make_icon.py`).
+   found", the file `packaging\icon.ico` is missing (regenerate it with `uv run python scripts/make_icon.py`).
 2. Copy the `.exe` to another folder or rename it. A new path has no cached icon, so you see the real one.
 3. Refresh the cache:
 
