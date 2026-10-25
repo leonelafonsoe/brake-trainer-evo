@@ -109,7 +109,14 @@ src/brake_trainer/
   config.py       Settings, clamping, settings_version migration
   settings_spec.py settings metadata: labels, ranges, tabs, defaults
   timeline.py     position history, interpolation, crossing detection
-  engine.py       learning, sector timing, cues (pure logic)
+  engine/         learning, sector timing, cues (pure logic)
+    __init__.py   the public import path: explicit re-exports only
+    engine.py     BrakeEngine: session, storage, update and snapshot
+    passes.py     the sector pass in progress and closing it
+    lines.py      the game's sector lines, learned from its split log
+    limits.py     braking zones and the game's track-limit signals
+    cues.py       braking events and the cues they produce
+    constants.py  shared constants (a leaf module)
   storage.py      per track + car JSON, quarantine, atomic saves
   metadata.py     app/build/save provenance
   buildinfo.py    which build is running

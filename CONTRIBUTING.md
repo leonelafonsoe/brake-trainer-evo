@@ -37,7 +37,7 @@ pytest --cov        # same command as CI, enforcing the coverage floor
 - Every test has a 60-second timeout, so a hang fails the run instead of blocking CI.
 - Coverage has a floor (`fail_under` in `pyproject.toml`). It is a ratchet: raise it as coverage
   improves, never lower it to make a change pass.
-- Keep the engine (`engine.py`, `storage.py`, `models.py`, `config.py`) free of Qt imports.
+- Keep the engine (`engine/`, `storage.py`, `models.py`, `config.py`) free of Qt imports.
 - Add or update tests for behaviour changes. `tests/conftest.py` has a synthetic `Driver` that
   drives an engine around a fake track, which makes most scenarios a few lines.
 - If you add a setting, add it to `Settings`, to the `TABS` table in `settings_spec.py`, and
