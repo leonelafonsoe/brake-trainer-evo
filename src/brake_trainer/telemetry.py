@@ -214,6 +214,55 @@ async def _wait_or_stop(stop: asyncio.Event, delay: float) -> bool:
     return True
 
 
+class _WatchResult(NamedTuple):
+    detected: str = ""  # the game's process name, when it was first seen
+    closed: bool = False
+
+
+class _GameWatch:
+    """One game-process watch: a handle when one can be opened, ``tasklist`` polling otherwise."""
+
+    def __init__(
+        self,
+        probe: Callable[[str], GameProbe],
+        open_watcher: Callable[[int], ProcessWatcher | None],
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._probe = probe
+        self._open_watcher = open_watcher
+        self._clock = clock
+        self._watcher: ProcessWatcher | None = None
+        self._seen = False
+        self._missing = 0
+        self._last_check = 0.0
+
+    async def poll(self, process_name: str) -> _WatchResult:
+        """Check once, at the waiting or fallback cadence, and report a detection or exit."""
+        if self._watcher is not None:
+            return _WatchResult(closed=self._watcher.exited())
+        now = self._clock()
+        interval = _PROBE_FALLBACK_S if self._seen else _PROBE_WAITING_S
+        if now - self._last_check < interval:
+            return _WatchResult()
+        self._last_check = now
+        probe = await asyncio.to_thread(self._probe, process_name)
+        if probe.status is GameStatus.RUNNING:
+            detected = "" if self._seen else probe.name
+            self._seen, self._missing = True, 0
+            self._watcher = self._open_watcher(probe.pid) if probe.pid else None
+            return _WatchResult(detected=detected)
+        if probe.status is GameStatus.ABSENT and self._seen:
+            self._missing += 1
+            if self._missing >= _GAME_MISSING_CHECKS:
+                return _WatchResult(closed=True)
+        return _WatchResult()
+
+    def close(self) -> None:
+        if self._watcher is not None:
+            self._watcher.close()
+            self._watcher = None
+
+
 class TelemetryReader:
     """Async loop: capture -> samples, with automatic restart and game-exit detection."""
 
@@ -253,8 +302,7 @@ class TelemetryReader:
         capture restart, so a retry does not probe for the game again.
         """
         delay = _RESTART_DELAY_S
-        last_check, seen, missing = 0.0, False, 0
-        watcher: ProcessWatcher | None = None
+        watch = _GameWatch(self._probe, self._open_watcher)
         cap: Any = None
         logged_regions = False
         try:
@@ -295,25 +343,12 @@ class TelemetryReader:
 
                     # Game exit. With a process handle it is noticed on the next poll (~0.1 s);
                     # without one we fall back to listing processes once a second.
-                    if watcher is not None:
-                        if watcher.exited():
-                            return self._game_closed()
-                        continue
-                    now = time.monotonic()
-                    if now - last_check < (_PROBE_FALLBACK_S if seen else _PROBE_WAITING_S):
-                        continue
-                    last_check = now
-                    probe = await asyncio.to_thread(self._probe, self._get_settings().game_process)
-                    if probe.status is GameStatus.RUNNING:
-                        if not seen:
-                            self._on_message(f"Game detected ({probe.name})")
-                            self._on_game_state(True)
-                        seen, missing = True, 0
-                        watcher = self._open_watcher(probe.pid) if probe.pid else None
-                    elif probe.status is GameStatus.ABSENT and seen:
-                        missing += 1
-                        if missing >= _GAME_MISSING_CHECKS:
-                            return self._game_closed()
+                    watched = await watch.poll(self._get_settings().game_process)
+                    if watched.detected:
+                        self._on_message(f"Game detected ({watched.detected})")
+                        self._on_game_state(True)
+                    if watched.closed:
+                        return self._game_closed()
                 except asyncio.CancelledError:
                     raise
                 except Exception:
@@ -326,8 +361,7 @@ class TelemetryReader:
                     delay = min(delay * 2, _MAX_RESTART_DELAY_S)
             return ExitReason.STOPPED
         finally:
-            if watcher is not None:
-                watcher.close()
+            watch.close()
             if cap is not None:
                 await self._stop_capture(cap)
 
