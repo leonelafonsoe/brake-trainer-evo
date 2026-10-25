@@ -11,5 +11,5 @@ judged the cut (Roggia); the drop belongs to S2, not to S1 a fixed distance behi
 `noise.txt` holds the lines around that block that must not produce a second event.
 
 To add a case, put the excerpt in a new `.txt` file here and add a short test in
-`tests/test_gamelog.py` using `_parse_fixture`; assert the `(cut, split)` events it must produce.
-Keep the file to the lines needed for that one behaviour.
+`tests/test_gamelog_parser.py` using `_parse_fixture`; assert the `(cut, split)` events it must
+produce. Keep the file to the lines needed for that one behaviour.
