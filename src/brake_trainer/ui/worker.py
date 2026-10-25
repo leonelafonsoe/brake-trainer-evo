@@ -14,7 +14,7 @@ from PySide6.QtCore import QThread, Signal
 from ..audio import AudioPlayer
 from ..config import Settings, SettingsHolder
 from ..engine import BrakeEngine
-from ..gamelog import DEFAULT_LOG_DIR, GameLogTail
+from ..gamelog import GameLogSupervisor
 from ..logsetup import log_file
 from ..models import Sample, ViewState
 from ..storage import DataEdit, TrackStore
@@ -106,26 +106,26 @@ class EngineWorker(QThread):
             on_restart=self._engine.reset_tracking,
         )
         ticker = asyncio.create_task(self._ticker())
-        tail = self._start_log_tail()
+        logs = asyncio.create_task(
+            GameLogSupervisor(
+                lambda: self._holder.value,
+                self._on_cut,
+                self._log_message,
+                on_split=self._on_split,
+            ).run(self._stop)
+        )
         try:
             reason = await reader.run(self._stop)
         finally:
             ticker.cancel()
-            if tail is not None:
-                tail.cancel()
+            logs.cancel()
+            # Await both: a cancelled task's exception is otherwise only reported when the loop
+            # closes, and the game-log tail must be finished before the engine is flushed.
+            for result in await asyncio.gather(ticker, logs, return_exceptions=True):
+                if isinstance(result, Exception):
+                    log.error("Worker task failed", exc_info=result)
         if reason is ExitReason.GAME_CLOSED:
             self.game_closed.emit()
-
-    def _start_log_tail(self) -> asyncio.Task[None] | None:
-        """Follow the game's log for its cuts and its sector splits, if enabled."""
-        settings = self._holder.value
-        if not settings.use_game_log or self._stop is None:
-            return None
-        directory = (
-            Path(settings.game_log_dir).expanduser() if settings.game_log_dir else DEFAULT_LOG_DIR
-        )
-        tail = GameLogTail(directory, self._on_cut, self._log_message, on_split=self._on_split)
-        return asyncio.create_task(tail.run(self._stop))
 
     def _on_cut(self, reason: str, at: float) -> None:
         """A cut the game wrote to its log: the engine drops the sector it happened in.

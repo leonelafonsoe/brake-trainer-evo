@@ -38,18 +38,24 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+from .config import Settings
 
 log = logging.getLogger(__name__)
 
 DEFAULT_LOG_DIR = Path.home() / "Saved Games" / "ACE" / "Logs"
 MIN_INSIDE_M = 2.0  # shorter excursions are tolerated by the game
 PIT_TELEPORT_M = 10.0  # larger values are an artefact of being teleported to the pits
+_MAX_FIRST_READ_BYTES = 1_000_000  # only the start of a log is needed to learn the player's car
+_FINGERPRINT_BYTES = 64  # bytes kept from before the read offset to spot an in-place rewrite
 
 # One HUD notification per cut, written when the game judges it. The warning line that follows it
 # (`false {PENALTY_CLEARED_KEY}` in the current build) carries the HUD text and penalty
@@ -81,19 +87,20 @@ class LogEvent:
     split: int = -1  # the game's sector index that just ended, or -1
 
 
-def line_time(line: str, fallback: float) -> float:
-    """The wall-clock time the game wrote ``line``, as POSIX seconds.
+def line_time(line: str) -> float | None:
+    """The wall-clock time the game wrote ``line``, as POSIX seconds, or None if it has none.
 
     The game buffers its log, so a line can be read long after it was written; the line's own
-    timestamp is the only reliable time for the event. Falls back to ``fallback`` if it is missing.
+    timestamp is the only reliable time for the event. A line without one cannot be attributed,
+    so the caller skips it rather than guessing (the read time can be minutes late).
     """
     match = _TS_RE.match(line)
     if match is None:
-        return fallback
+        return None
     try:
         return datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S.%f").timestamp()
     except ValueError:
-        return fallback
+        return None
 
 
 def _norm(uuid: str) -> str:
@@ -159,7 +166,8 @@ class GameLogTail:
     """Follows the newest log file and reports the player's cuts and sector splits as they land.
 
     On a new file everything already in it is read first (to learn which car is the player's)
-    without reporting, so old events are never replayed.
+    without reporting, so old events are never replayed. Only the start of a large file is read:
+    the player's connection is near the top, and the rest of the history is of no use.
     """
 
     def __init__(
@@ -182,20 +190,69 @@ class GameLogTail:
         self._partial = b""
         self._live = False
         self._warned = False
+        self._undated_warned = False
+        self._file_id: tuple[int, int] | None = None  # (st_dev, st_ino)
+        self._mtime_ns = 0
+        self._fingerprint = b""  # the bytes just before the offset, to spot an in-place rewrite
+
+    def _reset_file(self, stat: os.stat_result) -> None:
+        """Start this file from the top: it is new, or it was rewritten under us."""
+        self._offset, self._partial = 0, b""
+        self._state.clear()
+        self._live = False
+        self._undated_warned = False
+        self._file_id = (stat.st_dev, stat.st_ino)
+        self._mtime_ns = stat.st_mtime_ns
+        self._fingerprint = b""
+
+    def _prefix_changed(self) -> bool:
+        """Whether the bytes before the offset are not the ones we last read."""
+        if not self._fingerprint:
+            return False
+        assert self._path is not None
+        start = self._offset - len(self._fingerprint)
+        try:
+            with self._path.open("rb") as handle:
+                handle.seek(start)
+                return handle.read(len(self._fingerprint)) != self._fingerprint
+        except OSError:
+            return False
+
+    @staticmethod
+    def _read_fingerprint(handle: Any, offset: int) -> bytes:
+        start = max(0, offset - _FINGERPRINT_BYTES)
+        handle.seek(start)
+        return bytes(handle.read(offset - start))
 
     def _read_new(self) -> list[str]:
         """New complete lines since the last read (blocking, small)."""
         assert self._path is not None
         try:
-            size = self._path.stat().st_size
-            if size < self._offset:  # the file was replaced or truncated
-                self._offset, self._partial = 0, b""
-                self._state.clear()
-                self._live = False
+            stat = self._path.stat()
+        except OSError:
+            return []
+        # A replaced file can be *larger* than the old one, so size alone cannot tell us: the game
+        # starts a new log on every run. The inode names the file; when it is unchanged but the
+        # mtime moved, the bytes we already read say whether it was rewritten in place.
+        replaced = (stat.st_dev, stat.st_ino) != self._file_id or stat.st_size < self._offset
+        if not replaced and stat.st_mtime_ns != self._mtime_ns and self._prefix_changed():
+            replaced = True
+        if replaced:
+            self._reset_file(stat)
+        first = not self._live
+        try:
             with self._path.open("rb") as handle:
                 handle.seek(self._offset)
-                data = handle.read()
+                data = handle.read(_MAX_FIRST_READ_BYTES if first else -1)
                 self._offset = handle.tell()
+                if first and stat.st_size > self._offset:
+                    # Do not read a whole stale log: the player's car is learned from the top and
+                    # nothing before we started can be reported anyway. Skip to the end.
+                    self._offset = stat.st_size
+                    self._partial = b""
+                    data = b""
+                self._mtime_ns = stat.st_mtime_ns
+                self._fingerprint = self._read_fingerprint(handle, self._offset)
         except OSError:
             return []
         chunks = (self._partial + data).split(b"\n")
@@ -205,7 +262,15 @@ class GameLogTail:
     def _switch_to(self, path: Path) -> None:
         self._path, self._offset, self._partial, self._live = path, 0, b"", False
         self._state.clear()
+        self._file_id, self._mtime_ns, self._fingerprint = None, 0, b""
+        self._undated_warned = False
         self._on_message(f"Reading the game log for cuts and sector splits: {path}")
+
+    def _warn_undated(self) -> None:
+        if self._undated_warned:
+            return
+        self._undated_warned = True
+        self._on_message("Ignoring game-log lines without a timestamp")
 
     async def run(self, stop: asyncio.Event) -> None:
         last_scan = 0.0
@@ -227,12 +292,17 @@ class GameLogTail:
                     # The game buffers its log: this can be a dozen lines or a whole minute of
                     # them. Each carries its own time, which is what the engine attributes from.
                     log.debug("gamelog: read %d new lines", len(lines))
-                now = time.time()
                 for line in lines:
                     event = parse_line(line, self._state)
                     if event is None or not self._live:
                         continue
-                    at = line_time(line, now)
+                    at = line_time(line)
+                    if at is None:
+                        # Guessing with the read time would file a buffered event under the
+                        # position the car has now, minutes later. Say so once and drop it.
+                        self._warn_undated()
+                        log.warning("gamelog: no timestamp on a line, skipping it: %r", line[:120])
+                        continue
                     if event.cut:
                         self._on_cut(event.cut, at)
                     if event.split >= 0:
@@ -240,3 +310,83 @@ class GameLogTail:
                 self._live = True  # everything that existed at the start has been read
             with contextlib.suppress(asyncio.TimeoutError):  # builtin TimeoutError only from 3.11
                 await asyncio.wait_for(stop.wait(), timeout=self._poll_s)
+
+
+class GameLogSupervisor:
+    """Keeps a :class:`GameLogTail` in step with the current settings.
+
+    The tail used to be built once with a settings snapshot, so turning the game log off, pointing
+    it at another folder, or enabling it at runtime needed an app restart. Poll the live settings
+    instead: stop the tail when it is not wanted, start it when it is, and restart it when the
+    folder changes.
+    """
+
+    def __init__(
+        self,
+        get_settings: Callable[[], Settings],
+        on_cut: Callable[[str, float], None],
+        on_message: Callable[[str], None] = lambda text: None,
+        on_split: Callable[[int, float], None] = lambda index, at: None,
+        poll_s: float = 0.5,
+    ) -> None:
+        self._get_settings = get_settings
+        self._on_cut = on_cut
+        self._on_message = on_message
+        self._on_split = on_split
+        self._poll_s = poll_s
+
+    def _wanted(self) -> Path | None:
+        settings = self._get_settings()
+        if not settings.use_game_log:
+            return None
+        return (
+            Path(settings.game_log_dir).expanduser() if settings.game_log_dir else DEFAULT_LOG_DIR
+        )
+
+    def _start(self, directory: Path, stop: asyncio.Event) -> asyncio.Task[None]:
+        tail = GameLogTail(directory, self._on_cut, self._on_message, on_split=self._on_split)
+        return asyncio.create_task(tail.run(stop))
+
+    async def _stop_tail(
+        self, task: asyncio.Task[None] | None, stop: asyncio.Event | None, *, cancel: bool
+    ) -> None:
+        """Stop a tail and wait for it, so its exceptions are not lost in the event loop."""
+        if task is None:
+            return
+        if cancel:
+            task.cancel()
+        elif stop is not None:
+            stop.set()
+        try:
+            await task
+        except asyncio.CancelledError:
+            if cancel:
+                return  # we cancelled it; the supervisor is not itself being cancelled here
+            raise
+        except Exception:
+            log.exception("Game-log tail failed")
+
+    async def run(self, stop: asyncio.Event) -> None:
+        task: asyncio.Task[None] | None = None
+        tail_stop: asyncio.Event | None = None
+        current: Path | None = None
+        try:
+            while not stop.is_set():
+                if task is not None and task.done():
+                    # The tail ended on its own (an unexpected error): report it, then let the
+                    # next pass start a fresh one rather than waiting forever on a dead task.
+                    await self._stop_tail(task, tail_stop, cancel=True)
+                    task = tail_stop = None
+                    current = None
+                wanted = self._wanted()
+                if wanted != current:
+                    await self._stop_tail(task, tail_stop, cancel=False)
+                    task = tail_stop = None
+                    current = wanted
+                    if wanted is not None:
+                        tail_stop = asyncio.Event()
+                        task = self._start(wanted, tail_stop)
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(stop.wait(), timeout=self._poll_s)
+        finally:
+            await self._stop_tail(task, tail_stop, cancel=True)

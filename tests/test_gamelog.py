@@ -4,14 +4,24 @@ import asyncio
 import logging
 import os
 import time
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+from brake_trainer import gamelog as gamelog_module
 from brake_trainer.config import Settings
 from brake_trainer.engine import _HISTORY_S, N_SECTORS, BrakeEngine, _LapRun
-from brake_trainer.gamelog import REPORTED_CUT, GameLogTail, LogState, line_time, parse_line
+from brake_trainer.gamelog import (
+    DEFAULT_LOG_DIR,
+    REPORTED_CUT,
+    GameLogSupervisor,
+    GameLogTail,
+    LogState,
+    line_time,
+    parse_line,
+)
 from brake_trainer.models import SectorRun, SectorStatus, TrackData
 from brake_trainer.timeline import crossing_between
 
@@ -200,13 +210,10 @@ async def test_tail_reports_the_sector_splits_it_reads(tmp_path: Path):
     await asyncio.wait_for(task, 2)
 
 
-def test_a_line_time_is_read_from_the_line_and_falls_back_when_missing():
-    fallback = 1234.5
-    assert (
-        line_time(NOTIFICATION, fallback) == datetime(2026, 10, 16, 20, 41, 38, 703000).timestamp()
-    )
-    assert line_time("[no timestamp here]", fallback) == fallback
-    assert line_time("[2026-13-99 99:99:99.999] broken", fallback) == fallback
+def test_a_line_time_is_read_from_the_line_and_missing_ones_are_not_guessed():
+    assert line_time(NOTIFICATION) == datetime(2026, 10, 16, 20, 41, 38, 703000).timestamp()
+    assert line_time("[no timestamp here]") is None
+    assert line_time("[2026-13-99 99:99:99.999] broken") is None
 
 
 async def test_tail_without_a_log_folder_just_says_so(tmp_path: Path):
@@ -224,6 +231,150 @@ async def test_tail_without_a_log_folder_just_says_so(tmp_path: Path):
     stop.set()
     await asyncio.wait_for(task, 2)
     assert any("No game log found" in m for m in messages)
+
+
+async def test_a_larger_replacement_file_is_read_from_the_top_not_the_old_offset(
+    tmp_path: Path,
+):
+    # The game starts a new log on every run; it can be larger than the one before. The old code
+    # only reset when the file was *smaller*, so it resumed at the previous offset and reported the
+    # middle of the new log's history as if it had just happened.
+    log = tmp_path / "log.txt"
+    original = CONNECT + "\n"
+    log.write_text(original, encoding="utf-8")
+    hits: list[tuple[str, float]] = []
+    tail = GameLogTail(
+        tmp_path, lambda reason, at: hits.append((reason, at)), poll_s=0.01, rescan_s=0.02
+    )
+    stop = asyncio.Event()
+    task = asyncio.create_task(tail.run(stop))
+    assert await _wait(lambda: tail._live)
+
+    replacement = tmp_path / "next.txt"
+    replacement.write_text(original + NOTIFICATION + "\n" + "x" * 200 + "\n", encoding="utf-8")
+    os.replace(replacement, log)  # a new inode, larger than the old file
+    await asyncio.sleep(0.15)
+    assert hits == []  # the new file's existing content is history too
+
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(NOTIFICATION + "\n")
+    assert await _wait(lambda: len(hits) == 1)
+    stop.set()
+    await asyncio.wait_for(task, 2)
+
+
+async def test_only_the_start_of_a_large_log_is_read(tmp_path: Path, monkeypatch):
+    # A stale log can be megabytes long. Only its top can name the player's car, and nothing in it
+    # can be reported, so the rest is skipped instead of read and parsed line by line.
+    monkeypatch.setattr(gamelog_module, "_MAX_FIRST_READ_BYTES", 300)
+    log = tmp_path / "log.txt"
+    log.write_text(CONNECT + "\n" + "x" * 500 + "\n" + NOTIFICATION + "\n", encoding="utf-8")
+    hits: list[tuple[str, float]] = []
+    tail = GameLogTail(
+        tmp_path, lambda reason, at: hits.append((reason, at)), poll_s=0.01, rescan_s=0.02
+    )
+    stop = asyncio.Event()
+    task = asyncio.create_task(tail.run(stop))
+    assert await _wait(lambda: tail._live)
+    assert tail._offset == log.stat().st_size  # the rest of the history was skipped
+    assert hits == []
+
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(NOTIFICATION + "\n")
+    assert await _wait(lambda: len(hits) == 1)
+    stop.set()
+    await asyncio.wait_for(task, 2)
+
+
+async def test_an_undated_event_is_skipped_and_warned_about_once(tmp_path: Path):
+    # The line's own time is what places it. Without one, using the read time would file a buffered
+    # event minutes late, so it is dropped - and the driver is told why, once.
+    log = tmp_path / "log.txt"
+    log.write_text(CONNECT + "\n", encoding="utf-8")
+    hits: list[tuple[str, float]] = []
+    messages: list[str] = []
+    tail = GameLogTail(
+        tmp_path, lambda reason, at: hits.append((reason, at)), messages.append, poll_s=0.01
+    )
+    stop = asyncio.Event()
+    task = asyncio.create_task(tail.run(stop))
+    assert await _wait(lambda: tail._live)
+
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write("[gameface] [info] Adding notification UINotificationType_SessionPenalty\n")
+    await asyncio.sleep(0.1)
+    assert hits == []
+    assert messages.count("Ignoring game-log lines without a timestamp") == 1
+
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(NOTIFICATION + "\n")
+    assert await _wait(lambda: len(hits) == 1)
+    stop.set()
+    await asyncio.wait_for(task, 2)
+
+
+class FakeTail:
+    """Stands in for the real tail: records its folder and when it was stopped."""
+
+    created: list[FakeTail] = []
+
+    def __init__(self, directory, on_cut, on_message, on_split=lambda index, at: None) -> None:
+        self.directory = directory
+        self.started = asyncio.Event()
+        self.finished = asyncio.Event()
+        FakeTail.created.append(self)
+
+    async def run(self, stop: asyncio.Event) -> None:
+        self.started.set()
+        try:
+            await stop.wait()
+        finally:
+            self.finished.set()
+
+
+async def test_the_supervisor_follows_runtime_settings(tmp_path: Path, monkeypatch):
+    FakeTail.created.clear()
+    monkeypatch.setattr(gamelog_module, "GameLogTail", FakeTail)
+    current = {"settings": Settings(use_game_log=False)}
+    stop = asyncio.Event()
+    supervisor = GameLogSupervisor(
+        lambda: current["settings"], lambda reason, at: None, poll_s=0.01
+    )
+    task = asyncio.create_task(supervisor.run(stop))
+    await asyncio.sleep(0.05)
+    assert FakeTail.created == []  # disabled: no tail at all
+
+    current["settings"] = replace(current["settings"], use_game_log=True)
+    assert await _wait(lambda: len(FakeTail.created) == 1)
+    first = FakeTail.created[0]
+    assert first.directory == DEFAULT_LOG_DIR  # empty folder = the usual place
+
+    current["settings"] = replace(current["settings"], game_log_dir=str(tmp_path))
+    assert await _wait(lambda: len(FakeTail.created) == 2)
+    assert first.finished.is_set()  # the old tail was stopped, not left running
+    assert FakeTail.created[1].directory == tmp_path
+
+    current["settings"] = replace(current["settings"], use_game_log=False)
+    assert await _wait(lambda: FakeTail.created[1].finished.is_set())
+
+    stop.set()
+    await asyncio.wait_for(task, 2)
+
+
+async def test_cancelling_the_supervisor_stops_its_tail(monkeypatch):
+    FakeTail.created.clear()
+    monkeypatch.setattr(gamelog_module, "GameLogTail", FakeTail)
+    stop = asyncio.Event()
+    supervisor = GameLogSupervisor(
+        lambda: Settings(use_game_log=True), lambda reason, at: None, poll_s=0.01
+    )
+    task = asyncio.create_task(supervisor.run(stop))
+    assert await _wait(lambda: len(FakeTail.created) == 1)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert FakeTail.created[0].finished.is_set()  # no tail outlives the worker's loop
 
 
 # ---- the engine side

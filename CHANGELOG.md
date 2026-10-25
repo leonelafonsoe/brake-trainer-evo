@@ -56,6 +56,11 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   first lap.
 - A lap invalidated because it began in the pits no longer opens the session with "S1 won't count".
 - A deleted or never-driven data entry is no longer logged as an unreadable file.
+- Turning the game log on or off, or pointing it at another folder, now takes effect without
+  restarting the app.
+- A game log replaced by a larger one (the game starts a new file on every run) is read from its
+  top instead of resuming at the old offset, and a line without a timestamp is skipped instead of
+  being filed at the time it was read.
 
 ### Removed
 
