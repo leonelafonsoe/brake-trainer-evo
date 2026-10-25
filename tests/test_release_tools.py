@@ -251,3 +251,13 @@ def test_the_installer_has_metadata_and_detects_a_running_app():
     assert "CloseApplications=yes" in installer
     # The mutex the installer checks must actually be created by the program.
     assert "CreateMutexW" in app and "BrakeTrainerEvo.App" in app
+
+
+def test_the_security_workflow_audits_the_frozen_lock():
+    workflow = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
+
+    assert "schedule:" in workflow
+    assert "uv export --frozen --all-extras" in workflow
+    assert "pip-audit" in workflow
+    assert "uv sync --frozen --extra dev" in workflow
+    assert "astral-sh/setup-uv@" in workflow
