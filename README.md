@@ -142,6 +142,7 @@ the top centre of the main screen.
 src/brake_trainer/
   models.py        data types
   config.py        settings (frozen dataclass, validated, JSON)
+  settings_spec.py settings metadata: labels, ranges, tabs and defaults
   engine.py        braking-point learning and cues (pure logic)
   timeline.py      position history and interpolated line crossings
   storage.py       per track + car persistence

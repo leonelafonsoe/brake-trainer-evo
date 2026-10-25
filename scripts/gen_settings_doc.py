@@ -1,4 +1,4 @@
-"""Generate docs/SETTINGS.md from the settings window's field table.
+"""Generate docs/SETTINGS.md from the settings registry.
 
 py scripts/gen_settings_doc.py            # rewrite docs/SETTINGS.md
 py scripts/gen_settings_doc.py --check    # exit 1 if the file is out of date (used by tests)
@@ -7,19 +7,15 @@ py scripts/gen_settings_doc.py --check    # exit 1 if the file is out of date (u
 from __future__ import annotations
 
 import sys
-from dataclasses import fields
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from brake_trainer.config import Settings  # noqa: E402
-from brake_trainer.ui.settings_window import TABS, Spec  # noqa: E402
+from brake_trainer.settings_spec import HIDDEN, TABS, SettingSpec  # noqa: E402
 
 OUT = ROOT / "docs" / "SETTINGS.md"
-
-# Stored with the settings but not something the driver sets.
-_INTERNAL = {"settings_version"}
 
 _INTRO = """# Settings reference
 
@@ -38,7 +34,7 @@ telemetry capture starts.
 """
 
 
-def _fmt(value: object, spec: Spec | None = None) -> str:
+def _fmt(value: object, spec: SettingSpec | None = None) -> str:
     if isinstance(value, bool):
         return "on" if value else "off"
     if value is None:
@@ -50,11 +46,12 @@ def _fmt(value: object, spec: Spec | None = None) -> str:
     return str(value)
 
 
-def _range(spec: Spec) -> str:
+def _range(spec: SettingSpec) -> str:
     if spec.kind == "bool":
         return "on / off"
     if spec.kind == "text":
         return "text"
+    assert spec.lo is not None and spec.hi is not None
     lo, hi, unit = _fmt(spec.lo), _fmt(spec.hi), spec.suffix.strip()
     text = f"{lo} - {hi}{' ' + unit if unit else ''}"
     if spec.kind == "optint":
@@ -67,23 +64,20 @@ def _range(spec: Spec) -> str:
 
 def render() -> str:
     defaults = Settings()
-    shown: set[str] = set()
     parts = [_INTRO]
     for tab, specs in TABS.items():
         parts.append(f"\n## {tab}\n")
         parts.append("| Setting | Key | Default | Range | What it does |")
         parts.append("| --- | --- | --- | --- | --- |")
         for spec in specs:
-            shown.add(spec.name)
             default = _fmt(getattr(defaults, spec.name))
             if spec.suffix and default not in ("on", "off", "auto", "empty"):
                 default += spec.suffix
             tip = spec.tip.replace("|", "\\|") or "-"
             parts.append(f"| {spec.label} | `{spec.name}` | {default} | {_range(spec)} | {tip} |")
-    hidden = [f.name for f in fields(Settings) if f.name not in shown and f.name not in _INTERNAL]
     parts.append("\n## Stored but not shown in the window\n")
-    for name in hidden:
-        parts.append(f"- `{name}` (default {_fmt(getattr(defaults, name))})")
+    for spec in HIDDEN:
+        parts.append(f"- `{spec.name}` (default {_fmt(getattr(defaults, spec.name))})")
     parts.append(
         "\nThe overlay position is saved when you drag the window. "
         '"Reset position" in the overlay or tray menu moves it back to the top centre.\n'

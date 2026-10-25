@@ -107,6 +107,7 @@ single read, and `threading.Event`/`asyncio.Event`/condition polling replace gue
 src/brake_trainer/
   models.py       data types (Sample, Snapshot, TrackData, ViewState)
   config.py       Settings, clamping, settings_version migration
+  settings_spec.py settings metadata: labels, ranges, tabs, defaults
   timeline.py     position history, interpolation, crossing detection
   engine.py       learning, sector timing, cues (pure logic)
   storage.py      per track + car JSON, quarantine, atomic saves
@@ -125,6 +126,8 @@ Boundaries:
 
 - **Pure logic** (`models`, `config`, `timeline`, `engine`, `storage`) never imports Qt. The engine
   takes its only I/O through the injected `TrackStore`.
+- **Settings metadata** (`settings_spec`) is pure and Qt-free; `config`, the settings window and the
+  docs generator all read the same registry.
 - **Adapters** (`telemetry`, `gamelog`, `audio`, `paths`, `buildinfo`) own the outside world. Inject
   their side effects so tests need no game, display or Windows.
 - **UI** (`ui/*`, `app`) is thin. `ui/status.py` is a pure function over `Snapshot` and `Settings`.
@@ -135,16 +138,16 @@ Boundaries:
 
 ### A new setting
 
-1. Add the field and default to `Settings` in `src/brake_trainer/config.py`.
-2. If it is numeric, add its `(min, max)` to `_LIMITS` so load and apply clamp it.
-3. Add it to a tab in `TABS` in `src/brake_trainer/ui/settings_window.py` (or the Diagnostics tab
-   for a troubleshooting switch).
-4. Regenerate the reference: `python scripts/gen_settings_doc.py`.
-5. Add a round-trip/clamping assertion in `tests/test_config_storage.py` and a UI form assertion in
-   `tests/test_settings_window.py`.
-6. If the engine reads it while running, handle it in `BrakeEngine.apply_settings` and test the
+1. Add a `SettingSpec` to `src/brake_trainer/settings_spec.py` (name, kind, default, tab, label,
+   bounds, step, suffix, help).
+2. Add the matching typed field to `Settings` in `src/brake_trainer/config.py`, using
+   `DEFAULTS["name"]`.
+3. Regenerate the reference: `python scripts/gen_settings_doc.py`.
+4. Add the registry/kind/range assertions in `tests/test_settings_spec.py` and the form assertions
+   in `tests/test_settings_window.py`.
+5. If the engine reads it while running, handle it in `BrakeEngine.apply_settings` and test the
    live change. Every setting is documented as live; keep that true.
-7. Add the changelog line and update `docs/SETTINGS.md` (generated) or `docs/HOW_IT_WORKS.md`.
+6. Add the changelog line and update `docs/SETTINGS.md` (generated) or `docs/HOW_IT_WORKS.md`.
 
 ### The game-log parser
 

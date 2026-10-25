@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +36,7 @@ from ..config import Settings
 from ..gamelog import DEFAULT_LOG_DIR
 from ..models import CueKind
 from ..paths import app_dir
+from ..settings_spec import TABS, SettingSpec
 from ..storage import DataEdit, DeleteEntry, DeleteRun, DeleteSector, TrackStore
 from . import theme
 
@@ -58,338 +59,21 @@ _ABOUT_HTML = (
 _EDIT_ROLE = Qt.ItemDataRole.UserRole
 
 
-@dataclass(frozen=True)
-class Spec:
-    name: str
-    label: str
-    kind: str  # float | int | optint | bool | text
-    lo: float = 0.0
-    hi: float = 0.0
-    step: float = 1.0
-    decimals: int = 2
-    suffix: str = ""
-    tip: str = ""
-    special: str = ""  # text shown for the minimum value (e.g. "Off")
-
-
-TABS: dict[str, list[Spec]] = {
-    "Cues": [
-        Spec(
-            "sound_enabled",
-            "Sound cues",
-            "bool",
-            tip="Turn all cue sounds on or off. The overlay keeps working.",
-        ),
-        Spec(
-            "volume",
-            "Volume",
-            "float",
-            0,
-            1,
-            0.05,
-            2,
-            tip="Loudness of the beeps, from 0 (silent) to 1.",
-        ),
-        Spec(
-            "lead_s",
-            "Warning lead time",
-            "float",
-            0.3,
-            5,
-            0.1,
-            1,
-            " s",
-            "The low beep sounds this many seconds before the braking point.",
-        ),
-        Spec(
-            "min_lead_m",
-            "Minimum warning distance",
-            "float",
-            5,
-            300,
-            5,
-            0,
-            " m",
-            "At low speed the warning never comes closer than this.",
-        ),
-        Spec(
-            "here_m",
-            "'Brake now' window",
-            "float",
-            2,
-            50,
-            1,
-            0,
-            " m",
-            "The high beep sounds when you are this close to the point.",
-        ),
-        Spec(
-            "skip_zone_if_braking",
-            "Skip cue if brake above",
-            "float",
-            0,
-            1,
-            0.05,
-            2,
-            tip="No beep if you are already braking harder than this.",
-        ),
-        Spec(
-            "warn_hz",
-            "Warning tone",
-            "int",
-            200,
-            4000,
-            50,
-            suffix=" Hz",
-            tip="Pitch of the low warning beep (braking point coming up).",
-        ),
-        Spec(
-            "warn_ms",
-            "Warning length",
-            "int",
-            30,
-            500,
-            10,
-            suffix=" ms",
-            tip="Length of the warning beep.",
-        ),
-        Spec(
-            "here_hz",
-            "Brake-now tone",
-            "int",
-            200,
-            4000,
-            50,
-            suffix=" Hz",
-            tip="Pitch of the high beep (you are at the braking point).",
-        ),
-        Spec(
-            "here_ms",
-            "Brake-now length",
-            "int",
-            30,
-            500,
-            10,
-            suffix=" ms",
-            tip="Length of the high beep.",
-        ),
-    ],
-    "Detection": [
-        Spec(
-            "brake_on",
-            "Braking starts above",
-            "float",
-            0.05,
-            0.95,
-            0.05,
-            2,
-            tip="Pedal position that counts as the start of a braking event.",
-        ),
-        Spec(
-            "brake_off",
-            "Braking ends below",
-            "float",
-            0.01,
-            0.9,
-            0.01,
-            2,
-            tip="Pedal position below which a braking event ends.",
-        ),
-        Spec(
-            "min_peak",
-            "Minimum peak pressure",
-            "float",
-            0.1,
-            1,
-            0.05,
-            2,
-            tip="Light brake touches below this peak are ignored.",
-        ),
-        Spec(
-            "min_speed_drop",
-            "Minimum speed shed",
-            "float",
-            1,
-            100,
-            1,
-            0,
-            " km/h",
-            tip="A braking event must slow the car by at least this much.",
-        ),
-        Spec(
-            "cluster_m",
-            "Same-corner distance",
-            "float",
-            5,
-            200,
-            5,
-            0,
-            " m",
-            tip="Braking starts closer than this are treated as the same corner.",
-        ),
-    ],
-    "Sectors": [
-        Spec(
-            "learning_enabled",
-            "Learn braking points",
-            "bool",
-            tip="Off = cues still play, but nothing is saved or changed (e.g. during a race).",
-        ),
-        Spec(
-            "warmup_laps",
-            "Ignore laps after leaving the pits",
-            "int",
-            0,
-            5,
-            1,
-            special="Off",
-            tip=(
-                "Cold tyres and brakes make you brake earlier, so these laps are not learned. "
-                "The first laps of a new track are ignored too, while the game's sector lines are "
-                "being learned from its log."
-            ),
-        ),
-        Spec(
-            "skip_invalid_sectors",
-            "Skip sector if lap invalidated",
-            "bool",
-            tip="A sector where the game invalidates your lap (track limits, cuts) is not saved.",
-        ),
-        Spec(
-            "top_runs",
-            "Fastest runs kept per sector",
-            "int",
-            1,
-            10,
-            1,
-            tip="Cue points are the median of these runs. 1 = copy your single best run.",
-        ),
-        Spec(
-            "own_runs_to_replace_ref",
-            "Own runs before leaving reference",
-            "int",
-            1,
-            10,
-            1,
-            tip="With a new car, borrowed points are used until you have this many runs.",
-        ),
-        Spec(
-            "reference_car",
-            "Preferred reference car",
-            "text",
-            tip="Part of a car name. Empty = the car with the most data on that track.",
-        ),
-    ],
-    "Overlay": [
-        Spec(
-            "overlay_always_on_top",
-            "Always on top",
-            "bool",
-            tip="Needs the game in borderless / windowed mode to be visible over it.",
-        ),
-        Spec(
-            "overlay_opacity",
-            "Opacity",
-            "float",
-            0.3,
-            1,
-            0.05,
-            2,
-            tip="Opacity of the whole overlay, text included.",
-        ),
-        Spec(
-            "overlay_background",
-            "Background opacity",
-            "float",
-            0,
-            0.9,
-            0.05,
-            2,
-            tip="0 = fully transparent (HUD style). Raise it if the text is hard to read.",
-        ),
-        Spec(
-            "overlay_click_through",
-            "Click-through",
-            "bool",
-            tip="Mouse clicks pass through to the game. Use the tray icon to switch it off.",
-        ),
-    ],
-    "App": [
-        Spec(
-            "close_with_game",
-            "Close when the game exits",
-            "bool",
-            tip="Quit automatically (after saving) when the game exits.",
-        ),
-        Spec(
-            "game_process",
-            "Game process name contains",
-            "text",
-            tip="Part of the game's process name, used to detect that it is running or has closed.",
-        ),
-        Spec(
-            "use_game_log",
-            "Follow the game's log",
-            "bool",
-            tip=(
-                "Read the game's log for the cuts it reports and the sector splits that mark its "
-                'own lines. Shared memory only shows the first cut of a lap (its "lap valid" flag '
-                "drops once); the log records one event per cut and every sector split."
-            ),
-        ),
-        Spec(
-            "game_log_dir",
-            "Game log folder",
-            "text",
-            tip=(
-                "Where the game writes its logs. Empty = the usual place under Saved Games "
-                "(<profile>/Saved Games/ACE/Logs)."
-            ),
-        ),
-        Spec(
-            "telemetry_hz",
-            "Telemetry rate",
-            "float",
-            5,
-            60,
-            5,
-            0,
-            " Hz",
-            tip=(
-                "How often telemetry is read. Higher makes live data a little smoother; 60 is "
-                "plenty. Sector lines are interpolated between samples rather than snapped to "
-                "them, so it can refine the estimate only up to the rate the game publishes."
-            ),
-        ),
-    ],
-    "Diagnostics": [
-        Spec(
-            "debug_logging",
-            "Verbose (debug) logging",
-            "bool",
-            tip=(
-                "Write extra detail to the log, including the game's track-limit signals (the race "
-                "cut and the lap flag) at every change. Turn it on, reproduce a problem, then "
-                "share the log file."
-            ),
-        ),
-    ],
-}
-
-
-def _make_widget(spec: Spec) -> QWidget:
+def _make_widget(spec: SettingSpec) -> QWidget:
     w: QWidget
     if spec.kind == "bool":
         w = QCheckBox()
     elif spec.kind == "text":
         w = QLineEdit()
     elif spec.kind == "float":
+        assert spec.lo is not None and spec.hi is not None
         w = QDoubleSpinBox()
         w.setDecimals(spec.decimals)
         w.setRange(spec.lo, spec.hi)
         w.setSingleStep(spec.step)
         w.setSuffix(spec.suffix)
     else:
+        assert spec.lo is not None and spec.hi is not None
         w = QSpinBox()
         w.setRange(int(spec.lo), int(spec.hi))
         w.setSingleStep(int(spec.step))
@@ -403,7 +87,7 @@ def _make_widget(spec: Spec) -> QWidget:
     return w
 
 
-def _set(widget: QWidget, spec: Spec, value: Any) -> None:
+def _set(widget: QWidget, spec: SettingSpec, value: Any) -> None:
     if isinstance(widget, QCheckBox):
         widget.setChecked(bool(value))
     elif isinstance(widget, QLineEdit):
@@ -414,7 +98,7 @@ def _set(widget: QWidget, spec: Spec, value: Any) -> None:
         widget.setValue(int(value or 0))
 
 
-def _get(widget: QWidget, spec: Spec) -> Any:
+def _get(widget: QWidget, spec: SettingSpec) -> Any:
     if isinstance(widget, QCheckBox):
         return widget.isChecked()
     if isinstance(widget, QLineEdit):
@@ -440,7 +124,7 @@ class SettingsWindow(QDialog):
         super().__init__(parent)
         self._get_settings = get_settings
         self._store = store
-        self._widgets: dict[str, tuple[Spec, QWidget]] = {}
+        self._widgets: dict[str, tuple[SettingSpec, QWidget]] = {}
         self.setWindowTitle("Brake Trainer — Settings")
         self.setMinimumWidth(560)
 
@@ -474,7 +158,7 @@ class SettingsWindow(QDialog):
 
     # ------------------------------------------------------------------ building
 
-    def _form(self, specs: list[Spec]) -> QWidget:
+    def _form(self, specs: list[SettingSpec]) -> QWidget:
         page = QWidget()
         form = QFormLayout(page)
         form.setContentsMargins(16, 16, 16, 16)
@@ -485,7 +169,7 @@ class SettingsWindow(QDialog):
             form.addRow(spec.label, widget)
         return page
 
-    def _diagnostics_tab(self, specs: list[Spec]) -> QWidget:
+    def _diagnostics_tab(self, specs: list[SettingSpec]) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -684,4 +368,4 @@ class SettingsWindow(QDialog):
         super().showEvent(event)
 
 
-__all__ = ["TABS", "SettingsWindow", "Spec", "Qt"]
+__all__ = ["TABS", "SettingSpec", "SettingsWindow", "Qt"]

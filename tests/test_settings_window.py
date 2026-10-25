@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QDoubleSpinBox,
+    QLineEdit,
+    QMessageBox,
+    QSpinBox,
+)
 
 from brake_trainer.config import Settings
 from brake_trainer.models import SectorRun, TrackData
+from brake_trainer.settings_spec import TABS, SettingSpec
 from brake_trainer.storage import DeleteEntry, DeleteRun, DeleteSector
 from brake_trainer.ui import settings_window as settings_module
 from brake_trainer.ui.settings_window import SettingsWindow, _get, _set
@@ -47,6 +56,54 @@ def test_apply_shows_the_clamped_value_and_emits_it(qapp, store):
 
     assert applied and applied[-1].volume == 1.0
     assert _get(widget, spec) == 1.0  # the form shows what will actually be used
+
+
+def test_every_visible_setting_has_a_widget_of_the_right_kind(qapp, store):
+    window = _window(qapp, store)
+    visible = [spec for specs in TABS.values() for spec in specs]
+    classes = {
+        "bool": QCheckBox,
+        "text": QLineEdit,
+        "float": QDoubleSpinBox,
+        "int": QSpinBox,
+        "optint": QSpinBox,
+    }
+
+    assert set(window._widgets) == {spec.name for spec in visible}
+    for spec in visible:
+        assert isinstance(window._widgets[spec.name][1], classes[spec.kind]), spec.name
+    assert "overlay_x" not in window._widgets
+    assert "overlay_y" not in window._widgets
+
+
+def _different_value(spec: SettingSpec):
+    if spec.kind == "bool":
+        return not spec.default
+    if spec.kind == "text":
+        return "different"
+    assert spec.bounds is not None
+    lo, hi = spec.bounds
+    value = hi if spec.default != hi else lo
+    return int(value) if spec.kind == "int" else float(value)
+
+
+@pytest.mark.parametrize(
+    "spec", [spec for specs in TABS.values() for spec in specs], ids=lambda spec: spec.name
+)
+def test_each_visible_setting_round_trips_through_the_form(qapp, store, spec):
+    window = _window(qapp, store)
+    wanted = replace(Settings(), **{spec.name: _different_value(spec)})
+
+    window.load(wanted)
+
+    assert window.collect() == wanted.clamped()
+
+
+def test_collect_preserves_the_hidden_overlay_position(qapp, store):
+    current = Settings(overlay_x=120, overlay_y=-5)
+    window = _window(qapp, store, current)
+
+    assert window.collect() == current
 
 
 def test_the_data_tree_lists_entries_and_requests_deletes(qapp, store):
