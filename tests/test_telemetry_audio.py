@@ -255,3 +255,103 @@ def test_audio_player_respects_enabled_flag():
 
     time.sleep(0.1)
     assert len(played) == 1
+
+
+async def test_reader_reports_a_capture_start_failure_and_recovers(monkeypatch):
+    _fast(monkeypatch)
+    attempts, errors = [], []
+
+    class FlakyCapture(FakeCapture):
+        async def start_capture(self):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise OSError("shared memory unavailable")
+            await super().start_capture()
+
+    stop = asyncio.Event()
+    reader = TelemetryReader(
+        lambda: Settings(),
+        lambda s: None,
+        capture_factory=FlakyCapture,
+        game_probe=lambda _: GameProbe(GameStatus.RUNNING, "x", 0),
+        process_watcher=lambda pid: None,
+        on_error=errors.append,
+        poll_s=0.001,
+    )
+    task = asyncio.create_task(reader.run(stop))
+    await asyncio.sleep(0.1)
+    stop.set()
+
+    assert await task is ExitReason.STOPPED
+    assert errors[0] == "capture could not start"
+    assert "" in errors  # the next successful start cleared it
+    assert len(attempts) >= 2  # it retried instead of dying
+
+
+async def test_reader_reports_a_read_failure_and_recovers(monkeypatch):
+    _fast(monkeypatch)
+    errors = []
+
+    class FlakyFrames(FakeCapture):
+        def __init__(self, hz):
+            super().__init__(hz)
+            self.failed = False
+
+        def get_frames(self):
+            if not self.failed:
+                self.failed = True
+                raise OSError("shared memory went away")
+            return super().get_frames()
+
+    stop = asyncio.Event()
+    reader = TelemetryReader(
+        lambda: Settings(),
+        lambda s: None,
+        capture_factory=FlakyFrames,
+        game_probe=lambda _: GameProbe(GameStatus.RUNNING, "x", 0),
+        process_watcher=lambda pid: None,
+        on_error=errors.append,
+        poll_s=0.001,
+    )
+    task = asyncio.create_task(reader.run(stop))
+    await asyncio.sleep(0.1)
+    stop.set()
+
+    assert await task is ExitReason.STOPPED
+    assert "telemetry read failed" in errors
+    assert "" in errors
+
+
+async def test_reader_reports_bad_frames_and_recovers(monkeypatch):
+    _fast(monkeypatch)
+    import brake_trainer.telemetry as tel
+
+    calls = {"n": 0}
+    real = tel.sample_from_frame
+
+    def flaky(frame):
+        calls["n"] += 1
+        if calls["n"] <= tel._FRAME_ERROR_LIMIT:
+            raise ValueError("bad frame")
+        return real(frame)
+
+    monkeypatch.setattr(tel, "sample_from_frame", flaky)
+    errors, samples = [], []
+    stop = asyncio.Event()
+    reader = TelemetryReader(
+        lambda: Settings(),
+        samples.append,
+        capture_factory=FakeCapture,
+        game_probe=lambda _: GameProbe(GameStatus.RUNNING, "x", 0),
+        process_watcher=lambda pid: None,
+        on_error=errors.append,
+        poll_s=0.001,
+    )
+    task = asyncio.create_task(reader.run(stop))
+    await asyncio.sleep(0.2)
+    stop.set()
+
+    assert await task is ExitReason.STOPPED
+    assert tel._ERROR_FRAMES in errors
+    assert "" in errors  # a readable frame cleared it
+    assert samples

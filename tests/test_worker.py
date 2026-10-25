@@ -152,3 +152,16 @@ def test_a_crashed_loop_still_flushes_once(qapp, store, monkeypatch):
     worker.start()
     assert worker.wait(5000)
     assert flushed == [1]
+
+
+def test_a_telemetry_error_reaches_the_view_state_and_clears_on_recovery(qapp, store):
+    worker = _worker(store)
+    states: list = []
+    worker.state.connect(states.append)
+
+    worker._on_telemetry_error("capture could not start")
+    assert states[-1].error.startswith("Telemetry failed: capture could not start")
+    assert "brake_trainer.log" in states[-1].error
+
+    worker._on_telemetry_error("")
+    assert states[-1].error == ""

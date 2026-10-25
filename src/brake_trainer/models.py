@@ -229,3 +229,4 @@ class ViewState:
     snapshot: Snapshot
     game_running: bool = False
     live: bool = False  # telemetry samples are arriving right now
+    error: str = ""  # a telemetry failure the UI should show, or ""

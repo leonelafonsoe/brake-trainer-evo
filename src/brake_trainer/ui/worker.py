@@ -15,6 +15,7 @@ from ..audio import AudioPlayer
 from ..config import Settings, SettingsHolder
 from ..engine import BrakeEngine
 from ..gamelog import DEFAULT_LOG_DIR, GameLogTail
+from ..logsetup import log_file
 from ..models import Sample, ViewState
 from ..storage import DataEdit, TrackStore
 from ..telemetry import TRACK_LIMITS_NOTE, ExitReason, TelemetryReader
@@ -46,6 +47,7 @@ class EngineWorker(QThread):
         self._stop: asyncio.Event | None = None
         # Set from any thread, including before the thread has started and before the loop exists.
         self._stop_requested = threading.Event()
+        self._error = ""  # a telemetry failure the overlay should show
         self._game_running = False
         self._last_sample = 0.0
         self._last_emit = 0.0
@@ -100,6 +102,7 @@ class EngineWorker(QThread):
             self._on_sample,
             self._log_message,
             self._on_game_state,
+            on_error=self._on_telemetry_error,
             on_restart=self._engine.reset_tracking,
         )
         ticker = asyncio.create_task(self._ticker())
@@ -151,6 +154,20 @@ class EngineWorker(QThread):
         self._game_running = running
         self._emit()
 
+    def _on_telemetry_error(self, detail: str) -> None:
+        """A retryable capture/read failure, or "" once the reader has recovered.
+
+        The detail goes to the log with the exception; the status line gets the short reason and
+        the log file name, so a driver can find the full message without a long path on the HUD.
+        """
+        text = f"Telemetry failed: {detail} · see {Path(log_file()).name}" if detail else ""
+        if text == self._error:
+            return
+        self._error = text
+        if text:
+            log.error("%s (log: %s)", text, log_file())
+        self._emit()
+
     def _on_sample(self, sample: Sample) -> None:
         self._last_sample = time.monotonic()
         self._engine.update(sample)
@@ -167,4 +184,4 @@ class EngineWorker(QThread):
         now = time.monotonic()
         self._last_emit = now
         live = now - self._last_sample < _LIVE_TIMEOUT_S
-        self.state.emit(ViewState(self._engine.snapshot(), self._game_running, live))
+        self.state.emit(ViewState(self._engine.snapshot(), self._game_running, live, self._error))

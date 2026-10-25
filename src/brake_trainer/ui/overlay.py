@@ -192,13 +192,15 @@ class OverlayWindow(QWidget):
         else:
             self._sectors.set_state((), None, 0.0)
 
-        line = status_line(snap, self._settings, state.live)
+        line = status_line(snap, self._settings, state.live, state.error)
         if line is None:
             self._ref.hide()
+            self._ref.setToolTip("")
         else:
             text, colour = line
             self._ref.setText(text)
             self._ref.setStyleSheet(f"color:{colour}; font-size:10px; font-weight:400;")
+            self._ref.setToolTip(state.error)
             self._ref.show()
 
     def _update_distance(self, state: ViewState) -> None:

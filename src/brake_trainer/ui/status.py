@@ -30,13 +30,19 @@ def phase_label(snap: Snapshot, settings: Settings) -> str:
     return "learning…"
 
 
-def status_line(snap: Snapshot, settings: Settings, live: bool) -> tuple[str, str] | None:
+def status_line(
+    snap: Snapshot, settings: Settings, live: bool, error: str = ""
+) -> tuple[str, str] | None:
     """(text, colour) for the line under the sector bar, or None when there is nothing to say.
 
-    Priority: a cut reported for a lap that is already gone > the current sector can't count >
-    learning paused > warm-up or waiting for the game's sector lines > the last sector result (for a
-    few seconds) > borrowed reference > a quiet summary of what is learned.
+    Priority: a telemetry failure > a cut reported for a lap that is already gone > the current
+    sector can't count > learning paused > warm-up or waiting for the game's sector lines > the last
+    sector result (for a few seconds) > borrowed reference > a quiet summary of what is learned.
     """
+    if error:
+        # A failure has to be visible even when no sample is arriving: that is exactly when it
+        # matters, and the overlay would otherwise just say it is waiting.
+        return (error, theme.RED)
     if not live:
         return None
     if snap.storage_warning:

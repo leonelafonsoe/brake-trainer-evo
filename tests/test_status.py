@@ -120,3 +120,10 @@ def test_a_cut_reported_for_a_lap_that_is_gone_is_announced():
     # ... and it stops after a while, giving the line back
     stale = snap(late_cut="S3 of the last lap won't count · cut", late_cut_age=60.0)
     assert status_line(stale, ST, True)[0] == "2 braking points"
+
+
+def test_a_telemetry_failure_is_visible_even_when_not_live():
+    # No sample is arriving, which is exactly when the reason has to be shown: the overlay would
+    # otherwise just say it is waiting for the game.
+    text = "Telemetry failed: capture could not start · see brake_trainer.log"
+    assert status_line(snap(), ST, False, text) == (text, theme.RED)
