@@ -5,15 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..models import SectorResult, SectorRun, SectorStatus
-from .constants import (
-    _COVERAGE_REQUIRED,
-    _HISTORY_S,
-    _LINES_REASONS,
-    _NOT_COUNTING_ANYWAY,
-    _NOTE_PRIORITY,
-    _PASS_FLAGS,
+from ..models import (
+    DropReason,
+    OutcomeKind,
+    SectorOutcome,
+    SectorResult,
+    SectorRun,
+    SectorStatus,
 )
+from ..outcomes import (
+    LINES_REASONS,
+    NOT_COUNTING_ANYWAY,
+    PASS_FLAGS,
+    primary,
+    render_outcome,
+)
+from .constants import _COVERAGE_REQUIRED, _HISTORY_S
 
 if TYPE_CHECKING:
     from .engine import BrakeEngine
@@ -29,7 +36,7 @@ class _Pass:
     coverage: float = 0.0
     onsets: list[float] = field(default_factory=list)
     paused: bool = False  # learning was off during part of this pass
-    flagged: set[str] = field(default_factory=set)  # reasons this pass must not count
+    flagged: set[DropReason] = field(default_factory=set)  # reasons this pass must not count
 
 
 @dataclass(slots=True)
@@ -60,14 +67,6 @@ class _LapRun:
     at: float
 
 
-def _note(reasons: set[str]) -> str:
-    """The one reason worth showing for a sector that did not count."""
-    for reason in _NOTE_PRIORITY:
-        if reason in reasons:
-            return reason
-    return ", ".join(sorted(reasons))
-
-
 class PassesMixin:
     # BrakeEngine inherits this mixin, so mypy's rule that an explicit self type must be a
     # supertype of its class does not hold: the annotations are right and only the check needs
@@ -77,13 +76,13 @@ class PassesMixin:
     _last_closed: tuple[int, SectorRun] | None
     _last_result: SectorResult | None
 
-    def _pass_flag(self: BrakeEngine) -> str:  # type: ignore[misc]
-        """The most important reason the sector in progress will not count, or ""."""
+    def _pass_flag(self: BrakeEngine) -> DropReason | None:  # type: ignore[misc]
+        """The most important reason the sector in progress will not count, if any."""
         if self._pass is None:
-            return ""
-        if self._pass.flagged.intersection(_NOT_COUNTING_ANYWAY):
-            return ""
-        return next((flag for flag in _PASS_FLAGS if flag in self._pass.flagged), "")
+            return None
+        if self._pass.flagged.intersection(NOT_COUNTING_ANYWAY):
+            return None
+        return next((flag for flag in PASS_FLAGS if flag in self._pass.flagged), None)
 
     def _keep_onsets(self: BrakeEngine, run: _Pass | None) -> None:  # type: ignore[misc]
         """Keep where the driver braked in a pass that only the sector lines kept from counting.
@@ -108,9 +107,9 @@ class PassesMixin:
         self._rebuild_zones()
 
     @staticmethod
-    def _lines_only(reasons: set[str]) -> bool:
+    def _lines_only(reasons: set[DropReason]) -> bool:
         """Were the sector lines the only thing keeping this pass from counting?"""
-        return bool(reasons) and reasons <= _LINES_REASONS
+        return bool(reasons) and reasons <= LINES_REASONS
 
     def _hold_lost(self: BrakeEngine, run: _Pass, sector: int, end: float) -> None:  # type: ignore[misc]
         """Keep a sector the lines arrived too late for, so it can be timed once they do.
@@ -128,12 +127,12 @@ class PassesMixin:
 
     # ------------------------------------------------------------------ sectors
 
-    def _flag(self: BrakeEngine, reason: str) -> None:  # type: ignore[misc]
+    def _flag(self: BrakeEngine, reason: DropReason) -> None:  # type: ignore[misc]
         """Add a reason the pass in progress must not count (once per reason)."""
         if self._pass is not None:
             self._pass.flagged.add(reason)
 
-    def _unflag(self: BrakeEngine, reason: str) -> None:  # type: ignore[misc]
+    def _unflag(self: BrakeEngine, reason: DropReason) -> None:  # type: ignore[misc]
         """Take a reason back: it no longer applies to the pass in progress."""
         if self._pass is not None:
             self._pass.flagged.discard(reason)
@@ -172,10 +171,10 @@ class PassesMixin:
         self._on_sector(result)
         self._on_message(result.describe())
 
-    def _report_dropped(self: BrakeEngine, idx: int, note: str) -> None:  # type: ignore[misc]
+    def _report_dropped(self: BrakeEngine, idx: int, outcome: SectorOutcome) -> None:  # type: ignore[misc]
         """Report a sector that did not count, remembering why for a cut reported later."""
-        self._lap_notes[(self._lap_no, idx)] = note
-        self._report(SectorResult(idx, None, False, None, note))
+        self._lap_notes[(self._lap_no, idx)] = outcome
+        self._report(SectorResult(idx, None, False, None, render_outcome(outcome), outcome=outcome))
 
     def _already_out(self: BrakeEngine, lap: int, idx: int) -> bool:  # type: ignore[misc]
         """Did this sector already fail to count for a reason a cut report adds nothing to?
@@ -189,7 +188,7 @@ class PassesMixin:
             if self._pass.flagged:
                 return True
             return self._settings.learning_enabled and self._pass.paused
-        return self._lap_notes.get((lap, idx), "").startswith("not counted")
+        return (lap, idx) in self._lap_notes
 
     def _close_sector(self: BrakeEngine, t: float) -> None:  # type: ignore[misc]
         run, idx, data = self._pass, self._sector, self._data
@@ -206,18 +205,22 @@ class PassesMixin:
         if run.flagged:  # a named reason beats the catch-all, even if the pass is also unclean
             self._keep_onsets(run)  # for the lines alone, the braking points are still good
             self._hold_lost(run, idx, t)  # ... and its time can still be recovered
-            self._report_dropped(idx, f"not counted · {_note(run.flagged)}")
+            self._report_dropped(idx, SectorOutcome(OutcomeKind.DROPPED, primary(run.flagged)))
             return
         if not run.clean:
-            self._report_dropped(idx, "not counted · pit, reset or partial")
+            self._report_dropped(
+                idx, SectorOutcome(OutcomeKind.DROPPED, DropReason.PIT_RESET_PARTIAL)
+            )
             return
         if learning and run.paused:
-            self._report_dropped(idx, "not counted · learning was paused")
+            self._report_dropped(idx, SectorOutcome(OutcomeKind.DROPPED, DropReason.PAUSED))
             return
         width = self._bounds[idx + 1] - self._bounds[idx]
         if run.coverage < _COVERAGE_REQUIRED * width:
             share = run.coverage / width
-            self._report_dropped(idx, f"not counted · {share:.0%} covered")
+            self._report_dropped(
+                idx, SectorOutcome(OutcomeKind.DROPPED, DropReason.COVERAGE, f"{share:.0%}")
+            )
             return
 
         was_ref = learning and self._using_ref(idx)
@@ -241,11 +244,24 @@ class PassesMixin:
                 self._rebuild_zones()
                 self._save(data)
         # with learning off the colours still show how the sector compared, but nothing is stored
-        note = ("kept" if learning else "would be kept") if accepted else "not kept"
+        if not accepted:
+            outcome = SectorOutcome(OutcomeKind.NOT_KEPT)
+        elif learning:
+            outcome = SectorOutcome(OutcomeKind.KEPT)
+        else:
+            outcome = SectorOutcome(OutcomeKind.WOULD_KEEP)
         status = self._status[idx]
         self._report(
             SectorResult(
-                idx, stored.t, accepted, kept[0].t, note, len(stored.onsets), status, previous_best
+                idx,
+                stored.t,
+                accepted,
+                kept[0].t,
+                render_outcome(outcome),
+                len(stored.onsets),
+                status,
+                previous_best,
+                outcome,
             )
         )
         if was_ref and not self._using_ref(idx):

@@ -142,6 +142,7 @@ the top centre of the main screen.
 ```
 src/brake_trainer/
   models.py        data types
+  outcomes.py      typed sector outcomes and their driver-facing wording
   config.py        settings (frozen dataclass, validated, JSON)
   settings_spec.py settings metadata: labels, ranges, tabs and defaults
   engine/          braking-point learning and cues (pure logic: engine, passes, lines,

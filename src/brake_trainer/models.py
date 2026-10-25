@@ -30,6 +30,45 @@ class CueKind(StrEnum):
     HERE = "here"  # braking point is right here
 
 
+class DropReason(StrEnum):
+    """Why a sector pass did not count (or was never going to)."""
+
+    WARM_UP = "warm_up"
+    FINDING_LINES = "finding_lines"
+    LINES_MOVED = "lines_moved"
+    PIT_RESET_PARTIAL = "pit_reset_partial"
+    PAUSED = "paused"
+    COVERAGE = "coverage"
+    OFF_TRACK = "off_track"
+    LAP_INVALIDATED = "lap_invalidated"
+
+
+class OutcomeKind(StrEnum):
+    """What happened to a completed sector pass."""
+
+    KEPT = "kept"
+    WOULD_KEEP = "would_keep"  # learning was off: it compares, but nothing was stored
+    NOT_KEPT = "not_kept"  # clean and counted, but slower than the kept runs
+    DROPPED = "dropped"
+
+
+@dataclass(frozen=True, slots=True)
+class SectorOutcome:
+    """A typed sector result, rendered to text only where the driver can see it."""
+
+    kind: OutcomeKind
+    reason: DropReason | None = None
+    detail: str = ""  # the coverage share for COVERAGE; other reasons have a fixed phrase
+
+    @property
+    def quiet(self) -> bool:
+        """Does the status line already say this, so the result would only repeat it?"""
+        return self.kind is OutcomeKind.DROPPED and self.reason in (
+            DropReason.WARM_UP,
+            DropReason.FINDING_LINES,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class Sample:
     """One telemetry reading, already reduced to what the engine needs."""
@@ -152,6 +191,7 @@ class SectorResult:
     braking_events: int = 0
     status: SectorStatus = SectorStatus.PENDING
     previous_best: float | None = None  # the sector's best before this run, if it was beaten
+    outcome: SectorOutcome | None = None  # typed reason/kind; ``note`` is its rendered text
 
     @property
     def delta(self) -> float | None:

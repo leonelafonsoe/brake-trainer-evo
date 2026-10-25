@@ -24,6 +24,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   and storage, sector passes, sector lines, braking zones and track limits, cues and shared
   constants each live in their own file. The public import path is unchanged and behaviour is
   identical.
+- Sector results now carry a typed outcome (`DropReason`/`OutcomeKind`); the driver-facing wording
+  lives in one module, so the status line no longer matches English phrases to decide what to show.
+  The notes and overlay text are unchanged.
 - GitHub Actions are pinned to commit SHAs, and PySide6 is bounded below 7 so a major upgrade cannot
   land unreviewed.
 - The settings window is now a `ui/settings/` package (window shell, form, diagnostics, data and

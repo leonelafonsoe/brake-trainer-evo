@@ -21,7 +21,7 @@ flowchart LR
 
 | Layer | Modules | Rules |
 | --- | --- | --- |
-| Pure logic | `models`, `config`, `engine`, `storage`, `timeline` | No Qt. Fully unit-tested with synthetic laps. |
+| Pure logic | `models`, `outcomes`, `config`, `engine`, `storage`, `timeline` | No Qt. Fully unit-tested with synthetic laps. |
 | Adapters | `telemetry`, `audio`, `gamelog`, `paths` | The only code that touches the game, the SDK, the game's log, `tasklist`, `winsound` or the filesystem. Everything is injectable for tests. |
 | Provenance | `metadata`, `buildinfo` | The running version and build, and the provenance written into a saved file. No Qt. |
 | UI | `ui/*`, `app` | Thin. `ui/status.py` holds the status-line logic as a pure function so it is testable without Qt. |
@@ -166,6 +166,13 @@ If the game's log cannot be found the app says so and falls back to the lap flag
 lap). When the lap flag drops with no other signal at all, the app logs a warning that names the
 limitation - except when the log is being followed, where every cut is in it anyway. See
 [TELEMETRY.md](TELEMETRY.md).
+
+### A sector result carries a typed outcome
+The engine records why a pass did not count as a `DropReason`, and what happened to one that did
+as an `OutcomeKind`, rather than passing English phrases through the learning logic. `outcomes.py`
+is the only place those values become words. The status line can then ask whether a result is
+quiet without matching substrings, and a misspelt phrase cannot silently change what is learned.
+`SectorResult.note` is still the rendered sentence for callers that only need the text.
 
 ### Pausing learning
 In a race you want the marks to stay as they are. Paused mode keeps cues and sector colours
