@@ -104,8 +104,8 @@ Formats and the full policy: [docs/DATA.md](docs/DATA.md).
 
 Use the detailed recipes in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). In short:
 
-- **New setting** — add the field and default to `Settings`, add a `Spec` to the right tab in
-  `ui/settings_window.py`, regenerate `docs/SETTINGS.md`, and test the round-trip/clamping.
+- **New setting** — add a `SettingSpec` to `settings_spec.py`, add the matching typed field and
+  default reference to `Settings`, regenerate `docs/SETTINGS.md`, and test the round-trip/clamping.
   If the engine uses it live, apply it in `apply_settings`.
 - **Game-log parser** — start from a real, anonymized excerpt in `tests/fixtures/game_log/`; add
   the smallest test for `parse_line`/`line_time`; update `docs/TELEMETRY.md` if the format is

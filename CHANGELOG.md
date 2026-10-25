@@ -10,6 +10,12 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   before a commit, and `.editorconfig` keeps editors consistent. Real fixture files are excluded
   from whitespace fixes.
 
+### Changed
+
+- Settings metadata now lives in one registry: defaults, ranges, labels, tips and tabs are defined
+  once and used by the config loader, the settings window and the generated reference, so they
+  cannot drift. The hidden overlay position is explicit rather than inferred.
+
 ## 0.4.2 - 2026-10-25
 
 ### Fixed

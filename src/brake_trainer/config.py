@@ -11,81 +11,63 @@ from pathlib import Path
 from typing import Any
 
 from .metadata import save_metadata
+from .settings_spec import DEFAULTS, SPEC_BY_NAME
+from .settings_spec import LIMITS as _LIMITS
+from .settings_spec import SETTINGS_VERSION as SETTINGS_VERSION
 
 log = logging.getLogger(__name__)
 
-# Bumped when a stored setting needs to change meaning; see Settings.from_dict.
-SETTINGS_VERSION = 3
-
 # Stamped into every file; the loader ignores them, so they are never carried over from an old file.
 _METADATA_KEYS = frozenset({"app_version", "build", "saved_at"})
-
-# (min, max) per numeric field; values outside are clamped on load / apply.
-_LIMITS: dict[str, tuple[float, float]] = {
-    "brake_on": (0.05, 0.95),
-    "brake_off": (0.01, 0.9),
-    "min_peak": (0.1, 1.0),
-    "min_speed_drop": (1.0, 100.0),
-    "cluster_m": (5.0, 200.0),
-    "top_runs": (1, 10),
-    "warmup_laps": (0, 5),
-    "own_runs_to_replace_ref": (1, 10),
-    "lead_s": (0.3, 5.0),
-    "min_lead_m": (5.0, 300.0),
-    "here_m": (2.0, 50.0),
-    "skip_zone_if_braking": (0.0, 1.0),
-    "warn_hz": (200, 4000),
-    "here_hz": (200, 4000),
-    "warn_ms": (30, 500),
-    "here_ms": (30, 500),
-    "volume": (0.0, 1.0),
-    "telemetry_hz": (5.0, 60.0),
-    "overlay_opacity": (0.3, 1.0),
-    "overlay_background": (0.0, 0.9),
-}
-_OPTIONAL_INT = {"overlay_x", "overlay_y"}
 
 
 @dataclass(frozen=True, slots=True)
 class Settings:
     # --- braking detection ---
-    brake_on: float = 0.25  # brake above this = braking started
-    brake_off: float = 0.10  # brake below this = braking ended
-    min_peak: float = 0.40  # ignore light touches below this peak
-    min_speed_drop: float = 15.0  # km/h that must be shed for an event to count
-    cluster_m: float = 40.0  # onsets closer than this are the same corner
+    brake_on: float = DEFAULTS["brake_on"]  # brake above this = braking started
+    brake_off: float = DEFAULTS["brake_off"]  # brake below this = braking ended
+    min_peak: float = DEFAULTS["min_peak"]  # ignore light touches below this peak
+    # km/h that must be shed for an event to count
+    min_speed_drop: float = DEFAULTS["min_speed_drop"]
+    cluster_m: float = DEFAULTS["cluster_m"]  # onsets closer than this are the same corner
     # --- sectors & learning ---
-    learning_enabled: bool = True  # off: cues still play, nothing is saved or changed
-    top_runs: int = 3  # fastest runs kept per sector
-    warmup_laps: int = 1  # laps ignored after leaving the pits (cold tyres and brakes)
-    skip_invalid_sectors: bool = True  # sector not counted if the lap was invalidated in it
-    own_runs_to_replace_ref: int = 2
-    reference_car: str = ""  # "" = automatic
+    # off: cues still play, nothing is saved or changed
+    learning_enabled: bool = DEFAULTS["learning_enabled"]
+    top_runs: int = DEFAULTS["top_runs"]  # fastest runs kept per sector
+    # laps ignored after leaving the pits (cold tyres and brakes)
+    warmup_laps: int = DEFAULTS["warmup_laps"]
+    # sector not counted if the lap was invalidated in it
+    skip_invalid_sectors: bool = DEFAULTS["skip_invalid_sectors"]
+    own_runs_to_replace_ref: int = DEFAULTS["own_runs_to_replace_ref"]
+    reference_car: str = DEFAULTS["reference_car"]  # "" = automatic
     # --- cues ---
-    lead_s: float = 1.6
-    min_lead_m: float = 35.0
-    here_m: float = 8.0
-    skip_zone_if_braking: float = 0.10
-    sound_enabled: bool = True
-    volume: float = 0.6
-    warn_hz: int = 900
-    here_hz: int = 1800
-    warn_ms: int = 90
-    here_ms: int = 120
+    lead_s: float = DEFAULTS["lead_s"]
+    min_lead_m: float = DEFAULTS["min_lead_m"]
+    here_m: float = DEFAULTS["here_m"]
+    skip_zone_if_braking: float = DEFAULTS["skip_zone_if_braking"]
+    sound_enabled: bool = DEFAULTS["sound_enabled"]
+    volume: float = DEFAULTS["volume"]
+    warn_hz: int = DEFAULTS["warn_hz"]
+    here_hz: int = DEFAULTS["here_hz"]
+    warn_ms: int = DEFAULTS["warn_ms"]
+    here_ms: int = DEFAULTS["here_ms"]
     # --- app ---
-    telemetry_hz: float = 60.0
-    game_process: str = "assettocorsaevo"
-    close_with_game: bool = True
-    use_game_log: bool = True  # follow the game's log for the cuts it reports after the fact
-    game_log_dir: str = ""  # "" = the game's default folder under Saved Games
-    debug_logging: bool = False  # verbose log for troubleshooting (see docs/TROUBLESHOOTING.md)
+    telemetry_hz: float = DEFAULTS["telemetry_hz"]
+    game_process: str = DEFAULTS["game_process"]
+    close_with_game: bool = DEFAULTS["close_with_game"]
+    # follow the game's log for the cuts it reports after the fact
+    use_game_log: bool = DEFAULTS["use_game_log"]
+    # "" = the game's default folder under Saved Games
+    game_log_dir: str = DEFAULTS["game_log_dir"]
+    # verbose log for troubleshooting (see docs/TROUBLESHOOTING.md)
+    debug_logging: bool = DEFAULTS["debug_logging"]
     # --- overlay ---
-    overlay_always_on_top: bool = True
-    overlay_opacity: float = 1.0
-    overlay_background: float = 0.0  # 0 = fully transparent, HUD style
-    overlay_click_through: bool = False
-    overlay_x: int | None = None
-    overlay_y: int | None = None
+    overlay_always_on_top: bool = DEFAULTS["overlay_always_on_top"]
+    overlay_opacity: float = DEFAULTS["overlay_opacity"]
+    overlay_background: float = DEFAULTS["overlay_background"]  # 0 = fully transparent, HUD style
+    overlay_click_through: bool = DEFAULTS["overlay_click_through"]
+    overlay_x: int | None = DEFAULTS["overlay_x"]
+    overlay_y: int | None = DEFAULTS["overlay_y"]
     settings_version: int = SETTINGS_VERSION  # stored so an old file is migrated only once
 
     def clamped(self) -> Settings:
@@ -118,7 +100,6 @@ class Settings:
         version and the keys this build does not know, so the newer build still finds its choices
         (see :func:`save_settings`).
         """
-        defaults = cls()
         values: dict[str, Any] = {}
         try:
             raw_version = int(raw.get("settings_version", 1))
@@ -127,20 +108,23 @@ class Settings:
         for f in fields(cls):
             if f.name not in raw:
                 continue
-            value, default = raw[f.name], getattr(defaults, f.name)
-            if f.name in _OPTIONAL_INT:
+            spec = SPEC_BY_NAME.get(f.name)
+            if spec is None:  # the registry tests forbid this; be defensive for old files
+                continue
+            value = raw[f.name]
+            if spec.kind == "optint":
                 if value is None or (isinstance(value, int) and not isinstance(value, bool)):
                     values[f.name] = value
-            elif isinstance(default, bool):
+            elif spec.kind == "bool":
                 if isinstance(value, bool):
                     values[f.name] = value
-            elif isinstance(default, int):
+            elif spec.kind == "int":
                 if isinstance(value, int) and not isinstance(value, bool):
                     values[f.name] = value
-            elif isinstance(default, float):
+            elif spec.kind == "float":
                 if isinstance(value, int | float) and not isinstance(value, bool):
                     values[f.name] = float(value)
-            elif isinstance(default, str) and isinstance(value, str):
+            elif spec.kind == "text" and isinstance(value, str):
                 values[f.name] = value
         settings = cls(**values).clamped()
         if raw_version > SETTINGS_VERSION:
