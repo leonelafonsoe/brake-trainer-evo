@@ -11,6 +11,7 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QTreeWidget,
@@ -102,6 +103,20 @@ class SettingsWindow(FormMixin, DiagnosticsPageMixin, DataPageMixin, AboutPageMi
         """Remember the dialog's position and size, so it reopens there next time."""
         self.geometry_changed.emit(bytes(self.saveGeometry().toBase64().data()).decode("ascii"))
 
+    def _is_dirty(self) -> bool:
+        return self.collect() != self._get_settings().clamped()
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+        if self.isVisible() and self._is_dirty():
+            answer = QMessageBox.question(
+                self,
+                "Discard changes?",
+                "You have unapplied settings. Close without applying them?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
         self.save_geometry()
         super().closeEvent(event)
