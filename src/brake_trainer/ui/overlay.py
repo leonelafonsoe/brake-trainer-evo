@@ -45,6 +45,18 @@ def _caption(text: str) -> QLabel:
     return _label(text, size=10, color=theme.TEXT_DIM, bold=True)
 
 
+def _style(widget: QWidget, css: str) -> None:
+    """Apply a stylesheet only when it changed (the overlay redraws at 20 Hz)."""
+    if widget.styleSheet() != css:
+        widget.setStyleSheet(css)
+
+
+def _text(label: QLabel, text: str) -> None:
+    """Set label text only when it changed."""
+    if label.text() != text:
+        label.setText(text)
+
+
 def _tool_button(text: str, tip: str) -> QPushButton:
     btn = QPushButton(text)
     btn.setToolTip(tip)
@@ -170,20 +182,20 @@ class OverlayWindow(QWidget):
         self._state = state
         snap = state.snapshot
         if not state.game_running and not state.live:
-            self._dot.setStyleSheet(f"color:{theme.MUTED}; font-size:10px;")
-            self._title.setText("Waiting for Assetto Corsa EVO…")
+            _style(self._dot, f"color:{theme.MUTED}; font-size:10px;")
+            _text(self._title, "Waiting for Assetto Corsa EVO…")
         else:
             color = theme.GREEN if state.live else theme.AMBER
-            self._dot.setStyleSheet(f"color:{color}; font-size:10px;")
+            _style(self._dot, f"color:{color}; font-size:10px;")
             if snap.track and state.live:
                 title = f"{snap.track} · {snap.car}"
-                self._title.setText(title if len(title) <= 36 else title[:35] + "…")
+                _text(self._title, title if len(title) <= 36 else title[:35] + "…")
             else:
-                self._title.setText("Game running — not in a session")
+                _text(self._title, "Game running — not in a session")
 
         self._update_distance(state)
         self._brake.set_value(snap.brake, theme.RED if snap.braking else theme.TEXT)
-        self._speed.setText(f"{snap.speed_kmh:.0f} km/h")
+        _text(self._speed, f"{snap.speed_kmh:.0f} km/h")
 
         if state.live and snap.sector_status:
             self._sectors.set_state(
@@ -194,26 +206,30 @@ class OverlayWindow(QWidget):
 
         line = status_line(snap, self._settings, state.live, state.error)
         if line is None:
-            self._ref.hide()
-            self._ref.setToolTip("")
+            if not self._ref.isHidden():
+                self._ref.hide()
+            if self._ref.toolTip():
+                self._ref.setToolTip("")
         else:
             text, colour = line
-            self._ref.setText(text)
-            self._ref.setStyleSheet(f"color:{colour}; font-size:10px; font-weight:400;")
-            self._ref.setToolTip(state.error)
-            self._ref.show()
+            _text(self._ref, text)
+            _style(self._ref, f"color:{colour}; font-size:10px; font-weight:400;")
+            if self._ref.toolTip() != state.error:
+                self._ref.setToolTip(state.error)
+            if self._ref.isHidden():
+                self._ref.show()
 
     def _update_distance(self, state: ViewState) -> None:
         snap, st = state.snapshot, self._settings
         style = "color:{c}; font-size:{s}px; font-weight:{w};"
         if not state.live:
-            self._distance.setText("—")
-            self._distance.setStyleSheet(style.format(c=theme.TEXT_DIM, s=20, w=700))
+            _text(self._distance, "—")
+            _style(self._distance, style.format(c=theme.TEXT_DIM, s=20, w=700))
             self._approach.set_value(0)
             return
         if snap.next_zone_m is None:
-            self._distance.setText(phase_label(snap, st))
-            self._distance.setStyleSheet(style.format(c=theme.TEXT_DIM, s=14, w=600))
+            _text(self._distance, phase_label(snap, st))
+            _style(self._distance, style.format(c=theme.TEXT_DIM, s=14, w=600))
             self._approach.set_value(0)
             return
         dist = snap.next_zone_m
@@ -223,8 +239,8 @@ class OverlayWindow(QWidget):
             color = theme.AMBER
         else:
             color = theme.TEXT
-        self._distance.setText(f"{dist:.0f} m")
-        self._distance.setStyleSheet(style.format(c=color, s=20, w=700))
+        _text(self._distance, f"{dist:.0f} m")
+        _style(self._distance, style.format(c=color, s=20, w=700))
         self._approach.set_value(1 - min(dist, _APPROACH_WINDOW_M) / _APPROACH_WINDOW_M, color)
 
     # ------------------------------------------------------------------ window behaviour
