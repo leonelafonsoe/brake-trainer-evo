@@ -43,7 +43,7 @@ telemetry capture starts.
 
 | Setting | Key | Default | Range | What it does |
 | --- | --- | --- | --- | --- |
-| Learn braking points | `learning_enabled` | on | on / off | Off = cues still play, but nothing is saved or changed (e.g. during a race). |
+| Learn braking points | `learning_enabled` | on | on / off | Off = cues still play, but no braking points or sector times are saved or changed (e.g. during a race). |
 | Ignore laps after leaving the pits | `warmup_laps` | 1 | off (0), or 1 - 5 | Cold tyres and brakes make you brake earlier, so these laps are not learned. The first laps of a new track are ignored too, while the game's sector lines are being learned from its log. |
 | Skip sector if lap invalidated | `skip_invalid_sectors` | on | on / off | A sector where the game invalidates your lap (track limits, cuts) is not saved. |
 | Fastest runs kept per sector | `top_runs` | 3 | 1 - 10 | Cue points are the median of these runs. 1 = copy your single best run. |
@@ -67,7 +67,7 @@ telemetry capture starts.
 | Game process name contains | `game_process` | assettocorsaevo | text | Part of the game's process name, used to detect that it is running or has closed. |
 | Follow the game's log | `use_game_log` | on | on / off | Read the game's log for the cuts it reports and the sector splits that mark its own lines. Shared memory only shows the first cut of a lap (its "lap valid" flag drops once); the log records one event per cut and every sector split. |
 | Game log folder | `game_log_dir` | empty | text | Where the game writes its logs. Empty = the usual place under Saved Games (<profile>/Saved Games/ACE/Logs). |
-| Telemetry rate | `telemetry_hz` | 60 Hz | 5 - 60 Hz | How often telemetry is read. Higher makes live data a little smoother; 60 is plenty. Sector lines are interpolated between samples rather than snapped to them, so it can refine the estimate only up to the rate the game publishes. |
+| Telemetry rate | `telemetry_hz` | 60 Hz | 5 - 60 Hz | How often telemetry is read. Higher makes live data a little smoother; 60 is plenty. Sector lines are interpolated between samples rather than snapped to them, so it can refine the estimate only up to the rate the game publishes. A change applies the next time telemetry starts (after a restart or a reconnection), not to the live capture. |
 
 ## Diagnostics
 

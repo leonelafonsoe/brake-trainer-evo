@@ -34,7 +34,7 @@ telemetry capture starts.
 """
 
 
-def _fmt(value: object, spec: SettingSpec | None = None) -> str:
+def _fmt(value: object) -> str:
     if isinstance(value, bool):
         return "on" if value else "off"
     if value is None:

@@ -20,11 +20,11 @@ def _stored(store) -> TrackData:
 
 def test_delete_one_run_keeps_the_rest(store):
     _stored(store)
-    assert store.apply(DeleteRun("Monza", "Car A", 0, 18.0))
+    assert store.apply(DeleteRun("Monza", "Car A", 0, 18.0, (0.05,)))
     data = store.load("Monza", "Car A", 3)
     assert [r.t for r in data.sectors[0]] == [18.5, 19.0]
     assert len(data.sectors[1]) == 1
-    assert not store.apply(DeleteRun("Monza", "Car A", 0, 18.0))  # already gone
+    assert not store.apply(DeleteRun("Monza", "Car A", 0, 18.0, (0.05,)))  # already gone
 
 
 def test_delete_sector_and_entry(store):
@@ -67,7 +67,7 @@ def test_deleting_one_run_of_the_entry_in_use_survives_exit_and_more_laps(store)
     before = store.load("Monza", "Car A", 3)
     victim = before.sectors[1][0]
 
-    engine.queue_edit(DeleteRun("Monza", "Car A", 1, victim.t))
+    engine.queue_edit(DeleteRun("Monza", "Car A", 1, victim.t, tuple(victim.onsets)))
     assert engine.apply_pending() and changes
     expected = len(before.sectors[1]) - 1
     assert len(store.load("Monza", "Car A", 3).sectors[1]) == expected
@@ -79,10 +79,11 @@ def test_deleting_one_run_of_the_entry_in_use_survives_exit_and_more_laps(store)
 
 
 def test_settings_window_data_tree_and_selected_edits(store, qapp):
-    from brake_trainer.ui.settings_window import SettingsWindow
+    from brake_trainer.ui.settings import SettingsWindow
 
     _stored(store)
     window = SettingsWindow(lambda: Settings(), store)
+    window.refresh_data()  # the tab populates when it is shown
     tree = window._tree
     assert tree.topLevelItemCount() == 1
     entry = tree.topLevelItem(0)

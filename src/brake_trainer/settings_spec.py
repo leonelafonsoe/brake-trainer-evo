@@ -13,7 +13,8 @@ from typing import Any, Literal
 
 Kind = Literal["bool", "int", "optint", "float", "text"]
 
-# Bumped when a stored setting needs to change meaning; see Settings.from_dict.
+# Bumped when the stored settings layout changes. A file with any other version is archived and the
+# app starts from defaults (see config.load_settings): there is no migration code to keep.
 SETTINGS_VERSION = 3
 
 TAB_ORDER: tuple[str, ...] = ("Cues", "Detection", "Sectors", "Overlay", "App", "Diagnostics")
@@ -39,7 +40,6 @@ class SettingSpec:
     suffix: str = ""
     tip: str = ""
     special: str = ""  # text shown for the minimum value, e.g. "Off"
-    internal: bool = False  # not a user setting and never documented
 
     @property
     def visible(self) -> bool:
@@ -233,7 +233,10 @@ SPECS: tuple[SettingSpec, ...] = (
         default=True,
         tab="Sectors",
         label="Learn braking points",
-        tip="Off = cues still play, but nothing is saved or changed (e.g. during a race).",
+        tip=(
+            "Off = cues still play, but no braking points or sector times are saved or changed"
+            " (e.g. during a race)."
+        ),
     ),
     SettingSpec(
         name="warmup_laps",
@@ -377,7 +380,8 @@ SPECS: tuple[SettingSpec, ...] = (
         tip=(
             "How often telemetry is read. Higher makes live data a little smoother; 60 is plenty."
             " Sector lines are interpolated between samples rather than snapped to them, so it can"
-            " refine the estimate only up to the rate the game publishes."
+            " refine the estimate only up to the rate the game publishes. A change applies the next"
+            " time telemetry starts (after a restart or a reconnection), not to the live capture."
         ),
     ),
     SettingSpec(
@@ -402,12 +406,6 @@ SPECS: tuple[SettingSpec, ...] = (
         kind="optint",
         default=None,
     ),
-    SettingSpec(
-        name="settings_version",
-        kind="int",
-        default=3,
-        internal=True,
-    ),
 )
 
 SPEC_BY_NAME: dict[str, SettingSpec] = {spec.name: spec for spec in SPECS}
@@ -420,6 +418,4 @@ OPTIONAL_INT: frozenset[str] = frozenset(spec.name for spec in SPECS if spec.kin
 TABS: dict[str, list[SettingSpec]] = {
     tab: [spec for spec in SPECS if spec.tab == tab] for tab in TAB_ORDER
 }
-HIDDEN: tuple[SettingSpec, ...] = tuple(
-    spec for spec in SPECS if spec.tab is None and not spec.internal
-)
+HIDDEN: tuple[SettingSpec, ...] = tuple(spec for spec in SPECS if spec.tab is None)

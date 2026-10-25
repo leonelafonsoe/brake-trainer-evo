@@ -177,7 +177,7 @@ def test_the_release_workflow_fails_closed_and_stamps_the_build():
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "BRAKE_TRAINER_BUILD: ${{ github.sha }}" in workflow
     # A uv-managed release must not fall back to the bare setup-python interpreter.
-    assert 'uv run --frozen --no-sync python -c "from brake_trainer import __version__' in workflow
+    assert 'uv run --locked --no-sync python -c "from brake_trainer import __version__' in workflow
     assert "SHA256SUMS.txt" in workflow
     assert "Checksum mismatch" in workflow
     assert "Missing release asset" in workflow
@@ -204,6 +204,16 @@ def test_bump_version_updates_everything_and_keeps_an_empty_unreleased(project):
     assert notes.check_release("v0.3.9", project)[0] == "0.3.9"
 
 
+def test_bump_version_refreshes_the_lock_when_one_exists(project, monkeypatch):
+    (project / "uv.lock").write_text("", encoding="utf-8")
+    calls: list[list[str]] = []
+    monkeypatch.setattr(bump.subprocess, "run", lambda args, **kwargs: calls.append(args))
+
+    bump.bump(project, "0.3.9", date(2026, 10, 14))
+
+    assert calls == [["uv", "lock"]]
+
+
 def test_bump_version_refuses_bad_input(project):
     with pytest.raises(ValueError, match="not a version"):
         bump.bump(project, "v1", date.today())
@@ -223,23 +233,24 @@ def test_third_party_actions_are_pinned_by_commit_sha():
             assert re.search(r"@[0-9a-f]{40}(\s|$)", uses), f"{path.name}: {uses}"
 
 
-def test_dependabot_covers_python_and_actions():
+def test_dependabot_covers_uv_and_actions():
     config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
 
-    assert "package-ecosystem: pip" in config
+    # Dependabot only updates uv.lock for the uv ecosystem; "pip" would leave it stale.
+    assert "package-ecosystem: uv" in config
     assert "package-ecosystem: github-actions" in config
 
 
-def test_dependencies_are_locked_and_ci_uses_the_frozen_lock():
+def test_dependencies_are_locked_and_ci_refuses_a_stale_lock():
     assert (ROOT / "uv.lock").is_file()
 
     for name in ("ci.yml", "nightly.yml", "release.yml"):
         workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
         assert "astral-sh/setup-uv@" in workflow, name
-        assert "uv sync --frozen --extra dev" in workflow, name
+        assert "uv sync --locked --extra dev" in workflow, name
 
     gates = (ROOT / ".github" / "actions" / "gates" / "action.yml").read_text(encoding="utf-8")
-    assert "uv run --frozen --no-sync" in gates
+    assert "uv run --locked --no-sync" in gates
 
 
 def test_the_installer_has_metadata_and_detects_a_running_app():
@@ -255,11 +266,11 @@ def test_the_installer_has_metadata_and_detects_a_running_app():
     assert "CreateMutexW" in app and "BrakeTrainerEvo.App" in app
 
 
-def test_the_security_workflow_audits_the_frozen_lock():
+def test_the_security_workflow_audits_the_locked_dependencies():
     workflow = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
 
     assert "schedule:" in workflow
-    assert "uv export --frozen --all-extras" in workflow
+    assert "uv export --locked --all-extras" in workflow
     assert "pip-audit" in workflow
-    assert "uv sync --frozen --extra dev" in workflow
+    assert "uv sync --locked --extra dev" in workflow
     assert "astral-sh/setup-uv@" in workflow

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +20,9 @@ from .settings_spec import SETTINGS_VERSION as SETTINGS_VERSION
 
 log = logging.getLogger(__name__)
 
-# Stamped into every file; the loader ignores them, so they are never carried over from an old file.
-_METADATA_KEYS = frozenset({"app_version", "build", "saved_at"})
+# Settings files this process could not read or move aside. Saving over one would destroy evidence
+# and the user's choices, so writes are refused for the rest of the run (as learned data is).
+_unreadable_settings: set[Path] = set()
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,13 +72,15 @@ class Settings:
     overlay_click_through: bool = DEFAULTS["overlay_click_through"]
     overlay_x: int | None = DEFAULTS["overlay_x"]
     overlay_y: int | None = DEFAULTS["overlay_y"]
-    settings_version: int = SETTINGS_VERSION  # stored so an old file is migrated only once
 
     def clamped(self) -> Settings:
         changes: dict[str, Any] = {}
         for name, (lo, hi) in _LIMITS.items():
             value = getattr(self, name)
             if value is None:
+                continue
+            if isinstance(value, float) and not math.isfinite(value):
+                changes[name] = DEFAULTS[name]  # NaN/Inf cannot be clamped into a usable value
                 continue
             fixed = min(max(value, lo), hi)
             if isinstance(value, int) and not isinstance(value, bool):
@@ -90,21 +96,10 @@ class Settings:
     def from_dict(cls, raw: Mapping[str, Any]) -> Settings:
         """Build from untrusted data: unknown keys and wrong types fall back to defaults.
 
-        Retired settings are simply unknown keys now, so a file that still stores one
-        (``cut_give_back_m`` from version 2) loads without it and is written back in the current
-        shape.
-
-        A file from a *newer* build is not migrated: its version is left alone and a warning is
-        logged. This build cannot know what changed after its own version, and writing the version
-        down would make the next build migrate the file a second time. Saving from here keeps that
-        version and the keys this build does not know, so the newer build still finds its choices
-        (see :func:`save_settings`).
+        The caller has already checked ``settings_version``; a file from another version is
+        archived instead of being partly loaded (see :func:`load_settings`).
         """
         values: dict[str, Any] = {}
-        try:
-            raw_version = int(raw.get("settings_version", 1))
-        except (TypeError, ValueError):
-            raw_version = 1
         for f in fields(cls):
             if f.name not in raw:
                 continue
@@ -123,20 +118,12 @@ class Settings:
                     values[f.name] = value
             elif spec.kind == "float":
                 if isinstance(value, int | float) and not isinstance(value, bool):
-                    values[f.name] = float(value)
+                    number = float(value)
+                    if math.isfinite(number):
+                        values[f.name] = number
             elif spec.kind == "text" and isinstance(value, str):
                 values[f.name] = value
-        settings = cls(**values).clamped()
-        if raw_version > SETTINGS_VERSION:
-            log.warning(
-                "Settings file is from a newer version (%d > %d); leaving its version alone",
-                raw_version,
-                SETTINGS_VERSION,
-            )
-            return replace(settings, settings_version=raw_version)
-        if raw_version < SETTINGS_VERSION:
-            return replace(settings, settings_version=SETTINGS_VERSION)
-        return settings
+        return cls(**values).clamped()
 
     def to_dict(self) -> dict[str, Any]:
         return {f.name: getattr(self, f.name) for f in fields(self)}
@@ -149,56 +136,76 @@ class SettingsHolder:
         self.value = value
 
 
-def load_settings(path: Path) -> Settings:
+def _archive_settings(path: Path, reason: str) -> bool:
+    """Move a settings file this build cannot use aside; False when it could not be moved."""
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    target = path.with_name(f"{path.stem}.{reason}-{stamp}{path.suffix}")
+    counter = 1
+    while target.exists():
+        target = path.with_name(f"{path.stem}.{reason}-{stamp}-{counter}{path.suffix}")
+        counter += 1
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(raw, dict):
-            return Settings.from_dict(raw)
-    except FileNotFoundError:
-        pass
-    except (OSError, ValueError) as exc:
-        log.warning("Could not read settings (%s); using defaults", exc)
-    return Settings()
+        os.replace(path, target)
+    except OSError as exc:
+        log.error("Could not move settings %s aside: %s", path, exc)
+        return False
+    log.warning(
+        "Settings %s could not be used; moved to %s and starting from defaults", path, target
+    )
+    return True
 
 
-def _preserved_settings(path: Path) -> tuple[dict[str, Any], int]:
-    """Unknown keys and version from an existing file, when it is from a newer build.
+def load_settings(path: Path) -> Settings:
+    """Read settings, starting from defaults if the file cannot be used.
 
-    Retired keys from an older/equal file are deliberately not preserved: they are migration
-    leftovers, not settings this build does not understand. A newer file's unknown keys are kept so
-    that saving from an older build does not delete choices the newer build made.
+    An unreadable file is moved aside, never overwritten. If it cannot be moved, saves are refused
+    for the rest of the run so the user's file and the evidence in it survive.
     """
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}, 0
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return Settings()
+    except OSError as exc:
+        log.error("Could not read settings %s: %s; writes are disabled", path, exc)
+        _unreadable_settings.add(path)
+        return Settings()
+    try:
+        raw = json.loads(text)
+    except ValueError as exc:
+        log.warning("Settings file is not valid JSON: %s", exc)
+        raw = None
     if not isinstance(raw, dict):
-        return {}, 0
+        if not _archive_settings(path, "invalid"):
+            _unreadable_settings.add(path)
+        return Settings()
     try:
         version = int(raw.get("settings_version", 0))
     except (TypeError, ValueError):
         version = 0
-    if version <= SETTINGS_VERSION:
-        return {}, version
-    known = {f.name for f in fields(Settings)} | _METADATA_KEYS
-    extras = {key: value for key, value in raw.items() if key not in known}
-    return extras, version
+    if version != SETTINGS_VERSION:
+        # No migrations: a file from another layout is kept as evidence and the app starts clean.
+        if not _archive_settings(path, f"version-{version}"):
+            _unreadable_settings.add(path)
+        return Settings()
+    return Settings.from_dict(raw)
 
 
 def save_settings(settings: Settings, path: Path) -> bool:
-    """Write settings, keeping unknown keys from a newer file. Returns False on a failed write."""
+    """Write settings atomically. Returns False on a failed write."""
+    if path in _unreadable_settings:
+        log.error("Refusing to overwrite unreadable settings %s", path)
+        return False
     tmp = path.with_suffix(".tmp")
-    extras, stored_version = _preserved_settings(path)
-    payload = {
-        **save_metadata(),
-        **extras,
-        **settings.to_dict(),
-        "settings_version": max(settings.settings_version, stored_version),
-    }
+    payload = {**save_metadata(), **settings.to_dict(), "settings_version": SETTINGS_VERSION}
     try:
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        with tmp.open("w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, indent=2))
+            handle.flush()
+            os.fsync(handle.fileno())  # durable before the replace, not just in the cache
         os.replace(tmp, path)
     except OSError as exc:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
         log.warning("Could not save settings: %s", exc)
         return False
     return True

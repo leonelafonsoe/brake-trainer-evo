@@ -10,6 +10,7 @@ Then review the diff, commit it (usually through a pull request), and push the t
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -47,6 +48,10 @@ def bump(root: Path, version: str, today: date) -> None:
         if count != 1:
             raise ValueError(f"could not find the version in {path.name}")
         path.write_text(new, encoding="utf-8")
+
+    if (root / "uv.lock").exists():
+        # CI installs with --locked, so the lock's root version must move with pyproject.toml.
+        subprocess.run(["uv", "lock"], cwd=root, check=True)
 
 
 def main() -> int:

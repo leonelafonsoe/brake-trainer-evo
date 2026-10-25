@@ -5,7 +5,9 @@ import logging
 import pytest
 
 from brake_trainer.config import Settings
-from brake_trainer.engine import _HISTORY_S, N_SECTORS, BrakeEngine, _LapRun
+from brake_trainer.engine import N_SECTORS, BrakeEngine
+from brake_trainer.engine.constants import _HISTORY_S
+from brake_trainer.engine.passes import _LapRun
 from brake_trainer.models import SectorRun, SectorStatus, TrackData
 from brake_trainer.timeline import crossing_between
 

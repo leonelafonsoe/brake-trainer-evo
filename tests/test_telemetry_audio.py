@@ -242,6 +242,18 @@ async def test_reader_unknown_probe_never_closes(monkeypatch):
     assert await task is ExitReason.STOPPED
 
 
+def test_an_empty_process_name_never_matches_the_task_list():
+    from brake_trainer.telemetry import GameStatus, find_game_process
+
+    class Result:
+        stdout = '"System","4","Services","0","100 K"\n"explorer.exe","9","Console","1","1 K"\n'
+
+    assert find_game_process("", run=lambda *args, **kwargs: Result()).status is GameStatus.UNKNOWN
+    assert (
+        find_game_process("   ", run=lambda *args, **kwargs: Result()).status is GameStatus.UNKNOWN
+    )
+
+
 def test_open_process_watcher_is_a_noop_off_windows():
     import sys
 

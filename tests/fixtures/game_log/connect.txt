@@ -1,1 +1,0 @@
-[2026-10-22 22:03:55.332] [gameplay] [info] 76561198000000000 connected (true) on car ks_ferrari_296_gt3, with new carId 0123456789abcdef-fedcba9876543210

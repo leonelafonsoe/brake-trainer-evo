@@ -95,6 +95,7 @@ class PassesMixin:
         """
         if (
             self._data is None
+            or not self._settings.learning_enabled
             or run is None
             or not run.onsets
             or not run.clean

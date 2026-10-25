@@ -19,7 +19,7 @@ from .storage import TrackStore
 from .ui import theme
 from .ui.icon import app_icon
 from .ui.overlay import OverlayWindow
-from .ui.settings_window import SettingsWindow
+from .ui.settings import SettingsWindow
 from .ui.worker import EngineWorker
 
 log = logging.getLogger("brake_trainer")
@@ -28,15 +28,19 @@ log = logging.getLogger("brake_trainer")
 _app_mutex: int | None = None
 
 
-def _create_app_mutex() -> None:
-    """Create the named mutex the installer checks before replacing a running program."""
+def _create_app_mutex() -> bool:
+    """Create the installer's named mutex; return whether this is the first instance."""
     global _app_mutex
     if sys.platform != "win32":
-        return
-    with contextlib.suppress(Exception):
+        return True
+    try:
         import ctypes
 
-        _app_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "BrakeTrainerEvo.App")
+        kernel32 = ctypes.windll.kernel32
+        _app_mutex = kernel32.CreateMutexW(None, False, "BrakeTrainerEvo.App")
+        return kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+    except Exception:  # pragma: no cover - ctypes failure must not stop the app
+        return True
 
 
 def _set_taskbar_identity() -> None:
@@ -53,7 +57,9 @@ def _set_taskbar_identity() -> None:
 def main() -> int:
     forced_debug = debug_requested_on_startup(sys.argv)  # --debug / BRAKE_TRAINER_DEBUG
     configure_logging(debug=forced_debug)
-    _create_app_mutex()
+    if not _create_app_mutex():
+        log.info("Brake Trainer EVO is already running; exiting")
+        return 0
     _set_taskbar_identity()
 
     app = QApplication(sys.argv)
@@ -80,7 +86,8 @@ def main() -> int:
     def apply(settings: Settings) -> None:
         nonlocal save_warning_shown
         holder.value = settings
-        if not save_settings(settings, settings_path()) and not save_warning_shown:
+        saved = save_settings(settings, settings_path())
+        if not saved and not save_warning_shown:
             # Applying still works for this session; make the risk visible instead of losing the
             # change silently at exit.
             save_warning_shown = True
@@ -93,6 +100,8 @@ def main() -> int:
                 "They apply for this session, but may be lost when the app exits. "
                 "Check that the folder is writable.",
             )
+        elif saved:
+            save_warning_shown = False  # a later failure must be reported again
         worker.update_settings(settings)
         overlay.apply_settings(settings)
         set_debug(forced_debug or settings.debug_logging)  # takes effect immediately
@@ -100,6 +109,10 @@ def main() -> int:
             action.blockSignals(True)
             action.setChecked(getattr(settings, field))
             action.blockSignals(False)
+        if settings_window.isVisible():
+            # A tray or overlay toggle while Settings is open must be reflected there, otherwise the
+            # next Apply would write the stale form back and silently undo it.
+            settings_window.load(settings)
 
     def update(**changes: Any) -> None:
         apply(replace(holder.value, **changes))
@@ -123,7 +136,7 @@ def main() -> int:
     overlay.moved.connect(lambda x, y: update(overlay_x=x, overlay_y=y))
     settings_window.applied.connect(apply)
     settings_window.edit_requested.connect(worker.request_edit)
-    worker.data_changed.connect(settings_window.refresh_data)
+    worker.data_changed.connect(settings_window.refresh_data_if_visible)
     settings_window.test_cue.connect(lambda kind: audio.play(kind, force=True))
 
     # --- tray icon (a way back to the settings even when the overlay is click-through)

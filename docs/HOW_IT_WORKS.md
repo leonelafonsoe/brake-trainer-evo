@@ -46,8 +46,9 @@ The lap is split into **three** sectors, the game's own. Sectors exist so the ap
   the kept runs to become a cue point.
 - A lap that closes while the app is still waiting for the game's sector lines contributes its
   braking points at once, because where you brake is a place on the track and needs no sector line to
-  be useful; once the lines arrive, its sectors are timed from the samples too. Only warm-up laps and
-  laps the game ruled out contribute nothing.
+  be useful; once the lines arrive, its sectors are timed from the samples too. Warm-up laps
+  contribute nothing, and a lap the game ruled out contributes only the sectors where you stayed on
+  the track (see [What is not learned](#what-is-not-learned)).
 
 ### Where the sector lines are
 
@@ -87,10 +88,10 @@ is moved onto the game's line and timed from there. Only when that crossing is g
 reset, or a pause longer than the kept history) is the sector dropped, with "not counted · the lines were
 learned mid-sector", rather than blamed on the pit lane or a reset.
 
-**Data from older versions** (before 0.4.0) keeps the equal splits it was learned with, so a corner can
-still be cut by a line. The overlay then shows "equal sector lines" in its quiet summary, and
-Settings -> Data lists it as "equal splits". Delete that entry and drive a lap to learn the game's
-lines.
+**Data whose lines were never learned** - a fresh entry, or one saved by a build that did not read
+the game's splits - keeps the equal splits it was learned with, so a corner can still be cut by a
+line. The overlay then shows "equal sector lines" in its quiet summary, and Settings -> Data lists
+it as "equal splits". Delete that entry and drive a lap to learn the game's lines.
 
 The start/finish line never moves, so a braking zone very close to it can still wobble between
 the last and the first sector.

@@ -24,6 +24,15 @@ def _live(**over) -> ViewState:
     return ViewState(snapshot=Snapshot(track="Monza", car="Ferrari 296 GTB", **over), live=True)
 
 
+def test_the_overlay_never_takes_focus_or_a_taskbar_slot(qapp):
+    window = _window(qapp)
+
+    flags = window.windowFlags()
+    assert flags & Qt.WindowType.Tool
+    assert flags & Qt.WindowType.WindowDoesNotAcceptFocus
+    assert window.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+
+
 def test_waiting_for_the_game_is_quiet(qapp):
     window = _window(qapp)
 

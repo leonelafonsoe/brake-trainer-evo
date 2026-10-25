@@ -5,6 +5,8 @@ Everything is stored per user in `%APPDATA%\BrakeTrainerEvo\`:
 | Path | Content |
 | --- | --- |
 | `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)), the overlay position, and the version that wrote the file |
+| `settings.invalid-<stamp>.json` | A settings file this build could not read, kept instead of overwritten (see below) |
+| `settings.version-<n>-<stamp>.json` | A settings file from another layout, kept instead of migrated (see below) |
 | `data\<track>__<car>.json` | What was learned for one track and car, with the version that wrote it. A colliding name adds `--<hash>` (see below) |
 | `data\quarantine\` | Files this build could not read, kept instead of overwritten (see below) |
 | `brake_trainer.log` | Log (rotated, about 1 MB x 3), starting with one diagnostics line: app version, build, settings/data versions, log path and verbose state |
@@ -22,17 +24,26 @@ files by hand: the app finds an entry by the names inside it.
 
 ## Settings compatibility
 
-`settings.json` keeps its `settings_version`. A file written by a newer build is loaded with the
-fields this build knows; unknown keys are preserved when the app saves, and the newer version is
-kept, so the newer build does not lose its choices. A file from an older build is migrated once and
-keys this build has retired are dropped. If the file cannot be written, the change still applies for
-the session and the app shows a warning instead of failing silently.
+`settings.json` records a `settings_version`. There are no migrations: a file whose version is not
+the one this build writes (including a file with no version, such as 0.3.x) is moved to
+`settings.version-<n>-<stamp>.json` beside it and the app starts from defaults. A file from a newer
+build is treated the same way, so this build never rewrites a layout it does not understand.
+
+Writes are atomic: the new file is written to a temporary file, flushed to disk and only then
+replaces the old one; a failed write keeps the previous file and removes the temporary one. If the
+file cannot be written, the change still applies for the session and the app shows a warning
+instead of failing silently.
+
+A settings file that cannot be parsed is **not** overwritten. It is moved to
+`settings.invalid-<stamp>.json` beside it, and the app starts from defaults. If the file cannot be
+moved (for example it is locked), writes are disabled for the rest of the run rather than destroying
+it.
 
 ## Learned data format
 
 ```json
 {
-  "app_version": "0.4.0",
+  "app_version": "0.5.0",
   "build": "2983a85ac7d3",
   "saved_at": "2026-10-24T12:00:00+00:00",
   "version": 1,
@@ -60,8 +71,8 @@ the session and the app shows a warning instead of failing silently.
   file is never overwritten by an older build. Files with an older version still load.
 - `boundaries`: the `n_sectors - 1` inner sector lines (0..1). They are the game's own sector lines,
   learned from its log (see `DESIGN.md`); `null` means they have not been learned yet, so equal splits
-  are in use - that is what files from versions before 0.4.0 use and keep. Settings -> Data shows
-  which kind each entry is. The lines are the track's, not the car's, so an entry here is copied from
+  are in use - either a fresh entry or data saved by a build that did not read the game's splits.
+  Settings -> Data shows which kind each entry is. The lines are the track's, not the car's, so an entry here is copied from
   another car's file on the same track as soon as it is opened, and only a track no car has learned yet
   waits for the log. To learn the lines again, delete every entry on the track and drive a lap.
 - `sectors`: one list per sector, fastest run first. Each run has its time `t` in seconds and
@@ -99,5 +110,6 @@ any older duplicate holding the same track and car.
   saving its own copy.
 - **Start over**: delete the files in `data\`. Files the app could not read are kept under
   `data\quarantine\`; delete those too if you do not need them for support.
-- **Reset settings**: delete `settings.json`.
+- **Reset settings**: delete `settings.json` (and any `settings.invalid-*.json` left by a file the
+  app could not read).
 - **Share or back up data**: copy the files. They are plain JSON.

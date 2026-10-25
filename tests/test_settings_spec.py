@@ -36,7 +36,6 @@ def test_visible_hidden_and_internal_fields_are_explicit():
     assert len(visible) == len(set(visible))
     assert tuple(TABS) == TAB_ORDER
     assert {spec.name for spec in HIDDEN} == {"overlay_x", "overlay_y"}
-    assert {spec.name for spec in SPECS if spec.internal} == {"settings_version"}
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda spec: spec.name)
@@ -91,8 +90,9 @@ def test_visible_settings_have_a_label_and_help():
             assert spec.lo == 0, spec.name
 
 
-def test_settings_version_is_exported_from_config_for_compatibility():
+def test_the_schema_version_is_not_a_user_setting():
     from brake_trainer.config import SETTINGS_VERSION
 
     assert SETTINGS_VERSION == settings_spec.SETTINGS_VERSION
-    assert DEFAULTS["settings_version"] == SETTINGS_VERSION
+    assert "settings_version" not in DEFAULTS
+    assert "settings_version" not in SPEC_BY_NAME

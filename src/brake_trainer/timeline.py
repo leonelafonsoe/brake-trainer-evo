@@ -60,9 +60,6 @@ class PositionTimeline:
         self._keep_s = keep_s
         self._points: deque[HistoryPoint] = deque()
 
-    def __len__(self) -> int:
-        return len(self._points)
-
     @property
     def last(self) -> HistoryPoint | None:
         """The newest sample, or None before the first one."""

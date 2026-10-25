@@ -86,6 +86,8 @@ class OverlayWindow(QWidget):
         self._state = ViewState(snapshot=Snapshot())
         self.setWindowTitle("Brake Trainer")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        # A HUD must never pull keyboard focus from the game when it appears or changes flags.
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFixedWidth(300)
         self._build()
         self._apply_flags()
@@ -151,7 +153,12 @@ class OverlayWindow(QWidget):
         self._quit_btn.setVisible(visible)
 
     def _apply_flags(self) -> None:
-        flags = Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+        flags = (
+            Qt.WindowType.Window
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool  # no taskbar entry and no Alt-Tab competition with the game
+            | Qt.WindowType.WindowDoesNotAcceptFocus
+        )
         if self._settings.overlay_always_on_top:
             flags |= Qt.WindowType.WindowStaysOnTopHint
         if self._settings.overlay_click_through:

@@ -86,6 +86,9 @@ class EngineWorker(QThread):
             asyncio.run(self._main())
         except Exception:
             log.exception("Telemetry worker crashed")
+            # The overlay must not keep saying "waiting for the game" when nothing is running.
+            self._error = "Telemetry worker stopped · see the log"
+            self._emit()
         finally:
             self._loop = None
             self._stop = None

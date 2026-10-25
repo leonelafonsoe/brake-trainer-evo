@@ -10,7 +10,6 @@ RESULT_SHOW_S = 6.0  # how long a finished sector's result stays on screen
 LATE_CUT_SHOW_S = 12.0  # how long a cut reported for a lap that is already gone stays on screen
 
 _WORDS = {SectorStatus.BEST: "best", SectorStatus.GOOD: "good", SectorStatus.SLOWER: "slower"}
-_QUIET_NOTES = ("warm-up", "finding the sector lines")  # only repeat the status line above
 
 
 def phase_label(snap: Snapshot, settings: Settings) -> str:
@@ -68,12 +67,7 @@ def status_line(
     result = snap.last_result
     if result is not None and snap.last_result_age is not None:
         recent = snap.last_result_age < RESULT_SHOW_S
-        if result.outcome is not None:
-            quiet = result.outcome.quiet
-        else:
-            # A hand-built result (tests, or data from an older caller) has no typed outcome; the
-            # rendered note is all there is to go on.
-            quiet = result.duration is None and any(q in result.note for q in _QUIET_NOTES)
+        quiet = result.outcome is not None and result.outcome.quiet
         if recent and not quiet:
             label = f"S{result.sector + 1}"
             if result.duration is None:

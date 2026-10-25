@@ -151,10 +151,15 @@ def test_a_crashed_loop_still_flushes_once(qapp, store, monkeypatch):
     monkeypatch.setattr(worker_module, "TelemetryReader", CrashingReader)
     worker = _worker(store)
     flushed = _count_flushes(worker)
+    states: list = []
+    worker.state.connect(states.append)
 
     worker.start()
     assert worker.wait(5000)
     assert flushed == [1]
+    # The HUD must not keep saying "waiting for the game" after the worker has died.
+    _pump(qapp, lambda: bool(states), "a visible crash state")
+    assert states[-1].error == "Telemetry worker stopped · see the log"
 
 
 def test_a_telemetry_error_reaches_the_view_state_and_clears_on_recovery(qapp, store):
@@ -250,7 +255,7 @@ def test_a_data_edit_requested_by_the_ui_is_applied_on_the_next_pending_pass(qap
     changed: list = []
     worker.data_changed.connect(lambda: changed.append(1))
 
-    worker.request_edit(DeleteRun("Monza", "Car A", 0, 18.0))
+    worker.request_edit(DeleteRun("Monza", "Car A", 0, 18.0, (0.05,)))
     # Queued, not applied from the UI thread: the file is untouched until the worker's pass.
     assert len(store.load("Monza", "Car A", 3).sectors[0]) == 2
 

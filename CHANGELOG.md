@@ -4,6 +4,48 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+### Changed
+
+- Settings no longer carry `settings_version` as a field and there is no migration code. A settings
+  file from another version (older, newer, or pre-versioning) is moved to
+  `settings.version-<n>-<stamp>.json` and the app starts from defaults, so no build rewrites a layout
+  it does not understand. `SETTINGS_VERSION` remains the schema number written into the file.
+- CI installs the lock with `uv sync --locked`, so a stale `uv.lock` fails instead of being silently
+  ignored. Dependabot now tracks the `uv` ecosystem, pre-commit hooks run in CI, and Nightly and
+  Release enforce the coverage floor.
+
+### Fixed
+
+- Pausing learning now freezes the data even when the game's sector lines settle while it is
+  paused: the passes held for retiming are dropped instead of being written behind the driver's back.
+- A sector timed after the fact carries the same typed outcome as one timed live, so the status line
+  never falls back to matching English text.
+- An unreadable `settings.json` is moved to `settings.invalid-<stamp>.json` instead of being replaced
+  by defaults at the next save. If it cannot be moved, settings writes are refused for the run. The
+  write is flushed to disk before the replace, and a failed write removes its temporary file.
+- A data edit that hits an unreadable or blocked file is reported as a failed edit, not as a
+  successful no-op.
+- Non-finite settings values (`NaN`/`Infinity`) fall back to their defaults instead of being stored
+  as invalid JSON.
+- The overlay is a non-activating tool window: it no longer takes keyboard focus or a taskbar slot
+  from the game.
+- A crashed telemetry worker now says so on the HUD instead of leaving it waiting for the game.
+- The settings window no longer scans the learned-data folder at startup or while it is hidden, and
+  the store's issue list is safe to read from the UI thread.
+- A settings-save failure is reported again after a later successful save, and a tray or overlay
+  change is reflected in an open settings window instead of being undone by the next Apply.
+- A second copy of the app exits instead of running a second overlay and writer.
+- An empty game-process name is treated as "unknown" instead of matching the first task list row.
+- The replay harness writes local timestamps, matching the game-log parser; the previous UTC
+  formatting made every line look hours old outside UTC.
+
+### Removed
+
+- The pre-0.9 game-log parser (`Limits: car ... tyres out changed`), the connection/UUID learning it
+  needed, and the `connect.txt` fixture. Only the current notification and split lines are read, so
+  `parse_line` is stateless and a log that already has content is skipped as a whole instead of
+  being read from the top.
+
 ## 0.5.0 - 2026-10-25
 
 ### Added

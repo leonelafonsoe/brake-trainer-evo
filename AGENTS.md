@@ -36,11 +36,11 @@ Run it from source with `uv run python -m brake_trainer` (or `uv run brake-train
 
 ## Gates
 
-Run all of these before calling a change done. They are the same gates CI, Nightly and Release
-use (`.github/actions/gates/action.yml`):
+Run all of these before calling a change done. CI runs the same gates (`.github/actions/gates/action.yml`
+plus the pre-commit step):
 
 ```bash
-uv sync --frozen --extra dev
+uv sync --locked --extra dev
 uv run pre-commit run --all-files
 uv run ruff format --check .
 uv run ruff check .
@@ -48,8 +48,9 @@ uv run mypy
 uv run pytest -q -W error
 uv run pytest -q -W error --cov   # enforces the coverage floor
 uv run python scripts/gen_settings_doc.py --check
-uv run python scripts/release_notes.py --tag v0.5.0 --check
 ```
+
+Before tagging a release, also run `uv run python scripts/release_notes.py --tag vX.Y.Z --check`.
 
 - A warning is an error (`filterwarnings = ["error"]`). Fix the warning; do not filter it away.
 - Each test has a 60-second timeout, so a hang fails instead of blocking CI.
@@ -93,8 +94,8 @@ More detail and the thread diagram: [docs/DESIGN.md](docs/DESIGN.md).
   file and remove the temporary one.
 - `DATA_VERSION` guards the learned-data layout. Bump it when a change to `TrackData.to_dict`
   would make an older build misread a file, and add a fixture plus a round-trip/migration test.
-- `SETTINGS_VERSION` guards settings. Bump it when renaming or retiring keys; unknown keys from a
-  newer file are preserved, while retired keys from older files are dropped.
+- `SETTINGS_VERSION` guards settings. Bump it when renaming or retiring keys: a file with any other
+  version is archived and the app starts from defaults. There is no migration code.
 - Archive by move, do not delete, when a file is unusable. Deleting learned data is a user action.
 
 Formats and the full policy: [docs/DATA.md](docs/DATA.md).
@@ -141,7 +142,7 @@ Link instead of duplicating a long explanation, and keep each page owning one jo
 ## Release and versioning
 
 - The version lives in `pyproject.toml` and `src/brake_trainer/__init__.py`; they must match.
-- This branch targets **0.4.0**. Bump only as part of a release.
+- This branch targets **0.5.0**. Bump only as part of a release.
 - A version tag must match the project version and have a non-empty changelog section; `## Unreleased`
   must be empty when tagging.
 - Pre-release tags use the hyphen form (`v0.4.0-rc1`); the Release workflow treats only those as

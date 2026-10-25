@@ -50,11 +50,11 @@ pre-release flag only recognises the hyphen form, so use the hyphen when tagging
 ### Steps
 
 1. Keep adding notes under `## Unreleased` in `CHANGELOG.md` as changes land.
-2. Prepare the release (sets the version in `pyproject.toml` and `__init__.py`, and turns
+2. Prepare the release (sets the version in `pyproject.toml`, `__init__.py` and `uv.lock`, and turns
    `## Unreleased` into `## <version> - <date>`, leaving a new empty `## Unreleased`):
 
    ```powershell
-   uv run python scripts/bump_version.py 0.4.0
+   uv run python scripts/bump_version.py X.Y.Z
    ```
 
 3. Review the diff, commit it (a small pull request is fine), and merge to `main`.
@@ -63,8 +63,8 @@ pre-release flag only recognises the hyphen form, so use the hyphen when tagging
    ```powershell
    git checkout main
    git pull
-   git tag v0.4.0
-   git push origin v0.4.0
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
    ```
 
 5. Watch the *Release* run on the Actions tab. When it finishes the release appears on the

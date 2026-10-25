@@ -133,12 +133,12 @@ lap is over the colours for it are gone from the sector bar, so the status line 
 ("S3 of the last lap won't count · cut"). The debug log shows the read lag and the lap per cut
 (`... written at ... (read 12.3 s later, 1 lap back), car at 49.7% (S3) ...`).
 
-The old tyre-count log format (`Limits: car ... tyres out changed`) is still recognised for older
-builds, with the player's car taken from the log's connection lines. An infraction the game judges
-from something it does not expose (no cut in its log and no race cut) cannot be pinned to a sector.
-With the log being read, every cut is in it, so the app stays quiet and notes the fallback only in
-its debug log; with the log switched off it warns, and can only drop the sector where the flag
-dropped.
+Only the current notification and split lines are read: the older tyre-count format
+(`Limits: car ... tyres out changed`) and the connection lines that named the player's car are no
+longer parsed. An infraction the game judges from something it does not expose (no cut in its log
+and no race cut) cannot be pinned to a sector. With the log being read, every cut is in it, so the
+app stays quiet and notes the fallback only in its debug log; with the log switched off it warns,
+and can only drop the sector where the flag dropped.
 
 ## Behaviours worth knowing
 

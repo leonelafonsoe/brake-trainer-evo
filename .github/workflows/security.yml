@@ -31,10 +31,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - run: uv sync --frozen --extra dev
+      - run: uv sync --locked --extra dev
       - name: Audit the locked requirements
         run: |
-          uv export --frozen --all-extras --no-hashes --format requirements-txt \
+          uv export --locked --all-extras --no-hashes --format requirements-txt \
             > "$RUNNER_TEMP/requirements-audit.txt"
-          uv run --frozen --no-sync pip-audit -r "$RUNNER_TEMP/requirements-audit.txt" \
+          uv run --locked --no-sync pip-audit -r "$RUNNER_TEMP/requirements-audit.txt" \
             --no-deps --disable-pip --desc

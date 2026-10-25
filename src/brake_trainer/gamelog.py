@@ -24,13 +24,6 @@ The game buffers this log, so the app can read a notification several seconds af
 it, and several cuts can arrive in one read. Every line carries its own timestamp, so the reader
 reports each event *with the time it happened*, and the engine attributes it from the car's position
 then - not from wherever the car is when the line is finally seen.
-
-Older builds wrote the excursion itself instead of a notification::
-
-    ... [physics] [info] Limits: car <uuid> tyres out changed: 3 -> 4 with 2.62m inside
-
-That line names the car, so the player's id is learned from the connection lines and only the
-player's own excursions are reported.
 """
 
 from __future__ import annotations
@@ -42,7 +35,7 @@ import os
 import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -52,9 +45,6 @@ from .config import Settings
 log = logging.getLogger(__name__)
 
 DEFAULT_LOG_DIR = Path.home() / "Saved Games" / "ACE" / "Logs"
-MIN_INSIDE_M = 2.0  # shorter excursions are tolerated by the game
-PIT_TELEPORT_M = 10.0  # larger values are an artefact of being teleported to the pits
-_MAX_FIRST_READ_BYTES = 1_000_000  # only the start of a log is needed to learn the player's car
 _FINGERPRINT_BYTES = 64  # bytes kept from before the read offset to spot an in-place rewrite
 
 # One HUD notification per cut, written when the game judges it. The warning line that follows it
@@ -66,17 +56,8 @@ _NOTIFY_RE = re.compile(r"Adding notification UINotificationType_SessionPenalty\
 _SPLIT_RE = re.compile(r"Received split: isStart (?:true|false), isEnd (?:true|false), index (\d+)")
 # Every line starts with its own wall-clock time, in local time: ``[2026-10-16 22:11:06.027]``.
 _TS_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]")
-# Older builds: each change of the player's tyre-off count, with how far past the line they are.
-_LIMITS_RE = re.compile(
-    r"\[physics\] \[info\] Limits: car ([a-f0-9\-]+) tyres out changed: \d+ -> (\d+) "
-    r"with ([\-\d.]+)m inside"
-)
-_CONNECT_RE = re.compile(
-    r"(\d+) connected(?: \([^)]*\))? on car ([\w_]+), with new carId ([a-f0-9\-]+)"
-)
 
 REPORTED_CUT = "the game reported a cut"
-REPORTED_TYRES_OUT = "the game's log reported all four tyres off the track"
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,54 +84,13 @@ def line_time(line: str) -> float | None:
         return None
 
 
-def _norm(uuid: str) -> str:
-    return uuid.replace("-", "").lower()
-
-
-def _is_steam_id(pid: str) -> bool:
-    return len(pid) == 17 and pid.startswith("7656")
-
-
-@dataclass
-class LogState:
-    """What has been learned from the log so far: which car is the player's."""
-
-    player_uuids: set[str] = field(default_factory=set)
-    _seen_non_steam: str | None = None
-
-    def clear(self) -> None:
-        self.player_uuids.clear()
-        self._seen_non_steam = None
-
-
-def parse_line(line: str, state: LogState) -> LogEvent | None:
-    """Feed one log line. Returns what it reports for the player's car, if anything."""
-    if "connected" in line and "with new carId" in line:
-        match = _CONNECT_RE.search(line)
-        if match:
-            pid, uuid = match.group(1), _norm(match.group(3))
-            if _is_steam_id(pid):
-                state.player_uuids.add(uuid)
-            elif not state.player_uuids and state._seen_non_steam is None:
-                # offline / unknown id: assume the first car that connects is the player's
-                state._seen_non_steam = uuid
-                state.player_uuids.add(uuid)
-        return None
+def parse_line(line: str) -> LogEvent | None:
+    """Read one log line. Returns the cut or split it reports, if any."""
     if _NOTIFY_RE.search(line):
         return LogEvent(cut=REPORTED_CUT)
     match = _SPLIT_RE.search(line)
     if match:
         return LogEvent(split=int(match.group(1)))
-    if "Limits: car" not in line or "tyres out changed" not in line:
-        return None
-    match = _LIMITS_RE.search(line)
-    if not match:
-        return None
-    uuid, tyres_out, inside = _norm(match.group(1)), int(match.group(2)), float(match.group(3))
-    if uuid not in state.player_uuids or tyres_out != 4:
-        return None
-    if MIN_INSIDE_M <= inside <= PIT_TELEPORT_M:
-        return LogEvent(cut=REPORTED_TYRES_OUT)
     return None
 
 
@@ -163,11 +103,10 @@ def newest_log(directory: Path) -> Path | None:
 
 
 class GameLogTail:
-    """Follows the newest log file and reports the player's cuts and sector splits as they land.
+    """Follows the newest log file and reports its cuts and sector splits as they land.
 
-    On a new file everything already in it is read first (to learn which car is the player's)
-    without reporting, so old events are never replayed. Only the start of a large file is read:
-    the player's connection is near the top, and the rest of the history is of no use.
+    A file that already has content when it is first seen is skipped: events written before the app
+    started are history and must not be replayed.
     """
 
     def __init__(
@@ -184,7 +123,6 @@ class GameLogTail:
         self._on_message = on_message
         self._on_split = on_split
         self._poll_s, self._rescan_s = poll_s, rescan_s
-        self._state = LogState()
         self._path: Path | None = None
         self._offset = 0
         self._partial = b""
@@ -198,7 +136,6 @@ class GameLogTail:
     def _reset_file(self, stat: os.stat_result) -> None:
         """Start this file from the top: it is new, or it was rewritten under us."""
         self._offset, self._partial = 0, b""
-        self._state.clear()
         self._live = False
         self._undated_warned = False
         self._file_id = (stat.st_dev, stat.st_ino)
@@ -239,19 +176,19 @@ class GameLogTail:
             replaced = True
         if replaced:
             self._reset_file(stat)
-        first = not self._live
+        self._mtime_ns = stat.st_mtime_ns
+        if not self._live:
+            # Nothing written before the app started is reported. Skip straight to the end, however
+            # large the existing log is; only events that arrive from now on matter.
+            self._offset = stat.st_size
+            self._partial = b""
+            self._fingerprint = b""
+            return []
         try:
             with self._path.open("rb") as handle:
                 handle.seek(self._offset)
-                data = handle.read(_MAX_FIRST_READ_BYTES if first else -1)
+                data = handle.read()
                 self._offset = handle.tell()
-                if first and stat.st_size > self._offset:
-                    # Do not read a whole stale log: the player's car is learned from the top and
-                    # nothing before we started can be reported anyway. Skip to the end.
-                    self._offset = stat.st_size
-                    self._partial = b""
-                    data = b""
-                self._mtime_ns = stat.st_mtime_ns
                 self._fingerprint = self._read_fingerprint(handle, self._offset)
         except OSError:
             return []
@@ -261,7 +198,6 @@ class GameLogTail:
 
     def _switch_to(self, path: Path) -> None:
         self._path, self._offset, self._partial, self._live = path, 0, b"", False
-        self._state.clear()
         self._file_id, self._mtime_ns, self._fingerprint = None, 0, b""
         self._undated_warned = False
         self._on_message(f"Reading the game log for cuts and sector splits: {path}")
@@ -281,7 +217,7 @@ class GameLogTail:
             # carries its own time, which is what the engine attributes from.
             log.debug("gamelog: read %d new lines", len(lines))
         for line in lines:
-            event = parse_line(line, self._state)
+            event = parse_line(line)
             if event is None or not self._live:
                 continue
             at = line_time(line)

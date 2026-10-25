@@ -26,7 +26,8 @@ export QT_QPA_PLATFORM=offscreen    # the UI tests must not need a display
 ```
 
 The `dev` extra installs pytest, coverage, ruff, mypy and PyInstaller. `uv.lock` pins the exact
-resolved versions; CI uses `uv sync --frozen --extra dev`. The runtime dependencies are PySide6 and
+resolved versions; CI uses `uv sync --locked --extra dev`, which fails if `uv.lock` is stale, so a
+dependency change must be committed with its lock. The runtime dependencies are PySide6 and
 `acevo-sdk` (pinned below 0.2.0; see the comment in `pyproject.toml`).
 
 ## Run from source
@@ -51,7 +52,7 @@ BRAKE_TRAINER_HOME=/tmp/brake-trainer-dev uv run python -m brake_trainer
 Run the same gates as CI (`.github/actions/gates/action.yml`):
 
 ```bash
-uv sync --frozen --extra dev
+uv sync --locked --extra dev
 uv run pre-commit run --all-files  # ruff, formatting, YAML/TOML, whitespace, mypy
 uv run ruff format --check .
 uv run ruff check .
@@ -59,7 +60,12 @@ uv run mypy
 uv run pytest -q -W error
 uv run pytest -q -W error --cov    # coverage with the floor from pyproject.toml
 uv run python scripts/gen_settings_doc.py --check
-uv run python scripts/release_notes.py --tag v0.5.0 --check
+```
+
+Before tagging a release, also run
+
+```bash
+uv run python scripts/release_notes.py --tag vX.Y.Z --check
 ```
 
 Use `uv run ruff format .` to apply formatting, and `uv run python scripts/gen_settings_doc.py` to
@@ -88,8 +94,9 @@ regenerate the settings reference after changing a setting.
 | Telemetry reader, audio, process probing | `tests/test_telemetry_audio.py` |
 | Worker thread, queueing, shutdown | `tests/test_worker.py` |
 | Overlay states and settings form | `tests/test_overlay.py`, `tests/test_settings_window.py` |
+| Composition root, single instance | `tests/test_app.py` |
 | Status line and widget geometry | `tests/test_status.py`, `tests/test_widgets.py` |
-| Docs, release tools, generated files | `tests/test_docs.py`, `tests/test_release_tools.py` |
+| Docs, links, release tools, generated files | `tests/test_docs.py`, `tests/test_docs_links.py`, `tests/test_release_tools.py` |
 
 `tests/conftest.py` has the fixtures that make a scenario short:
 
@@ -108,7 +115,7 @@ single read, and `threading.Event`/`asyncio.Event`/condition polling replace gue
 ```
 src/brake_trainer/
   models.py       data types (Sample, Snapshot, TrackData, ViewState)
-  config.py       Settings, clamping, settings_version migration
+  config.py       Settings, clamping, atomic settings persistence
   settings_spec.py settings metadata: labels, ranges, tabs, defaults
   timeline.py     position history, interpolation, crossing detection
   engine/         learning, sector timing, cues (pure logic)
@@ -193,8 +200,8 @@ Boundaries:
    if the move fails, and report a failed write.
 5. Update `docs/DATA.md`.
 
-For settings, bump `SETTINGS_VERSION` when renaming or retiring keys; newer unknown keys are
-preserved, retired keys from older files are dropped.
+For settings, bump `SETTINGS_VERSION` when renaming or retiring keys. A file with another version
+is archived and the app starts from defaults; there is no migration code to keep.
 
 ### UI
 
@@ -212,8 +219,8 @@ preserved, retired keys from older files are dropped.
 Follow [RELEASING.md](RELEASING.md). The short version:
 
 1. Put the user-facing changes under `## Unreleased` in `CHANGELOG.md`.
-2. `uv run python scripts/bump_version.py X.Y.Z` (updates `pyproject.toml`, `__init__.py` and the
-   changelog date/section).
+2. `uv run python scripts/bump_version.py X.Y.Z` (updates `pyproject.toml`, `__init__.py`, `uv.lock`
+   and the changelog date/section).
 3. Run every gate above, including
    `uv run python scripts/release_notes.py --tag vX.Y.Z --check`.
 4. Commit, tag `vX.Y.Z` and push the tag. Pre-releases use the hyphen form (`v0.4.0-rc1`).
@@ -227,7 +234,7 @@ the smallest excerpt that proves one behaviour under `tests/fixtures/`:
 
 - `game_log/` — parser inputs (notification block, split, connection line).
 - `track_data/` — real stored `version: 1` JSON for loader/round-trip tests.
-- `settings/` — real settings JSON from older versions for migrations.
+- `settings/` — real settings JSON from older versions, proving an unknown layout is archived.
 
 Remove names, Steam IDs, car IDs and paths; never commit a full session log. Add a new fixture
 instead of silently replacing an old one, and note the game/app build in the folder README. App
@@ -257,7 +264,7 @@ logs are evidence, not test input. The full rules are in [CONTRIBUTING.md](../CO
 | --- | --- |
 | `scripts/gen_settings_doc.py` | Rebuild `docs/SETTINGS.md`; `--check` is a CI gate. |
 | `scripts/release_notes.py` | Print or check the changelog section for a tag (`--tag`, `--check`, `--out`). |
-| `scripts/bump_version.py` | Update the version in both places and the changelog date. |
+| `scripts/bump_version.py` | Update the version in both places, `uv.lock` and the changelog. |
 | `scripts/build_exe.py` | PyInstaller build (Windows); bakes in `build-id.txt`. |
 | `scripts/make_icon.py` | Regenerate `packaging/icon.ico`. |
 
