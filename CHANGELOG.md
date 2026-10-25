@@ -35,6 +35,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   position instead of staying off-screen.
 - Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
   cleanup on failure), so the two cannot drift in how they protect a failed write.
+- Settings type validation now lives in `SettingSpec.coerce`: one rule for every field, including
+  rejecting booleans as numbers and non-finite floats, instead of a kind ladder in the loader.
 - Documentation is six pages instead of ten: `GUIDE.md` (behaviour and troubleshooting),
   `GAME_DATA.md` (telemetry, log, files and compatibility), `DESIGN.md`, `DEVELOPMENT.md` (including
   the release pipeline), `SETTINGS.md`, and the README. The old pages were merged rather than
