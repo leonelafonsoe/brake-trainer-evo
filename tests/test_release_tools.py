@@ -176,6 +176,8 @@ def test_the_packaged_build_ships_the_licence_and_notices(tmp_path):
 def test_the_release_workflow_fails_closed_and_stamps_the_build():
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "BRAKE_TRAINER_BUILD: ${{ github.sha }}" in workflow
+    # A uv-managed release must not fall back to the bare setup-python interpreter.
+    assert 'uv run --frozen --no-sync python -c "from brake_trainer import __version__' in workflow
     assert "SHA256SUMS.txt" in workflow
     assert "Checksum mismatch" in workflow
     assert "Missing release asset" in workflow

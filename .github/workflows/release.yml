@@ -48,7 +48,7 @@ jobs:
       - name: Read the version
         id: version
         run: |
-          $v = python -c "from brake_trainer import __version__; print(__version__)"
+          $v = uv run --frozen --no-sync python -c "from brake_trainer import __version__; print(__version__)"
           "value=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Build the installer
@@ -100,7 +100,7 @@ jobs:
 
       - name: Write the release notes
         run: |
-          python scripts/release_notes.py --tag "${{ github.ref_name }}" --repo "${{ github.repository }}" --out release_notes.md
+          uv run --frozen --no-sync python scripts/release_notes.py --tag "${{ github.ref_name }}" --repo "${{ github.repository }}" --out release_notes.md
 
       - name: Publish the release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
