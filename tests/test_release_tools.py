@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from datetime import date
 from pathlib import Path
 
@@ -209,3 +210,19 @@ def test_bump_version_refuses_bad_input(project):
     (project / "CHANGELOG.md").write_text("# Changelog\n\n## Unreleased\n\n## 0.3.8\n- x\n")
     with pytest.raises(ValueError, match="non-empty"):
         bump.bump(project, "0.4.0", date.today())
+
+
+def test_third_party_actions_are_pinned_by_commit_sha():
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            uses = line.strip()
+            if not uses.startswith("uses:") or "./.github" in uses:
+                continue
+            assert re.search(r"@[0-9a-f]{40}(\s|$)", uses), f"{path.name}: {uses}"
+
+
+def test_dependabot_covers_python_and_actions():
+    config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+
+    assert "package-ecosystem: pip" in config
+    assert "package-ecosystem: github-actions" in config
