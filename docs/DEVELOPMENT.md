@@ -84,6 +84,7 @@ regenerate the settings reference after changing a setting.
 | Position history and crossings | `tests/test_timeline.py` |
 | Game-log parsing and tail lifecycle | `tests/test_gamelog_parser.py`, `tests/test_gamelog_tail.py` |
 | Cut attribution from the log and the engine | `tests/test_cut_attribution.py` |
+| Replayable trace through the real engine | `tests/replay.py`, `tests/test_replay_harness.py` |
 | Telemetry reader, audio, process probing | `tests/test_telemetry_audio.py` |
 | Worker thread, queueing, shutdown | `tests/test_worker.py` |
 | Overlay states and settings form | `tests/test_overlay.py`, `tests/test_settings_window.py` |
