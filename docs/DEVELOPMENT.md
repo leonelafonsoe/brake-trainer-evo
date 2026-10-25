@@ -59,7 +59,7 @@ uv run mypy
 uv run pytest -q -W error
 uv run pytest -q -W error --cov    # coverage with the floor from pyproject.toml
 uv run python scripts/gen_settings_doc.py --check
-uv run python scripts/release_notes.py --tag v0.4.2 --check
+uv run python scripts/release_notes.py --tag v0.5.0 --check
 ```
 
 Use `uv run ruff format .` to apply formatting, and `uv run python scripts/gen_settings_doc.py` to

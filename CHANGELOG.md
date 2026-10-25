@@ -4,6 +4,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-25
+
 ### Added
 
 - A pre-commit configuration runs the project's lint, format, type, YAML/TOML and whitespace checks
