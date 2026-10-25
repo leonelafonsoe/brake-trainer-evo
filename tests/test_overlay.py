@@ -115,6 +115,18 @@ def test_a_live_session_shows_the_track_car_distance_and_speed(qapp):
     assert window._sectors._boundaries == (0.0, 0.3, 0.6, 1.0)
 
 
+def test_the_title_has_room_beside_the_dot(qapp):
+    # A stretch item plus an Ignored size policy let the layout give the label zero width: the text
+    # was set but clipped, so the top row showed only the dot.
+    window = _window(qapp)
+    window.show()
+    qapp.processEvents()
+    window.update_state(_live())
+
+    assert window._title.width() > 0
+    assert window._title.text() == "Monza · Ferrari 296 GTB"
+
+
 def test_a_long_track_and_car_name_is_elided_by_width(qapp):
     window = _window(qapp)
     window.show()

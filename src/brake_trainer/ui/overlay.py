@@ -127,9 +127,10 @@ class OverlayWindow(QWidget):
         )
         self._settings_btn.clicked.connect(self.settings_requested)
         self._quit_btn.clicked.connect(self.quit_requested)
-        for w in (self._dot, self._title):
-            top.addWidget(w)
-        top.addStretch(1)
+        top.addWidget(self._dot)
+        # The title takes the free space itself (an Ignored size policy plus a stretch factor), so
+        # it gets a real width to elide into instead of collapsing to zero beside a stretch item.
+        top.addWidget(self._title, 1)
         top.addWidget(self._learn_btn)
         top.addWidget(self._settings_btn)
         top.addWidget(self._quit_btn)
