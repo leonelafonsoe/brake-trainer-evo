@@ -128,6 +128,7 @@ src/brake_trainer/
     limits.py     braking zones and the game's track-limit signals
     cues.py       braking events and the cues they produce
     constants.py  shared constants (a leaf module)
+  fileio.py       one atomic JSON writer (temp file, fsync, replace)
   storage.py      per track + car JSON, quarantine, atomic saves
   metadata.py     app/build/save provenance
   buildinfo.py    which build is running

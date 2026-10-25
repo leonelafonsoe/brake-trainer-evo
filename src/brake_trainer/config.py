@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import math
@@ -13,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .fileio import write_json_atomic
 from .metadata import save_metadata
 from .settings_spec import DEFAULTS, SPEC_BY_NAME
 from .settings_spec import LIMITS as _LIMITS
@@ -184,17 +184,9 @@ def save_settings(settings: Settings, path: Path) -> bool:
     if path in _unreadable_settings:
         log.error("Refusing to overwrite unreadable settings %s", path)
         return False
-    tmp = path.with_suffix(".tmp")
     payload = {**save_metadata(), **settings.to_dict(), "settings_version": SETTINGS_VERSION}
-    try:
-        with tmp.open("w", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, indent=2))
-            handle.flush()
-            os.fsync(handle.fileno())  # durable before the replace, not just in the cache
-        os.replace(tmp, path)
-    except OSError as exc:
-        with contextlib.suppress(OSError):
-            tmp.unlink()
-        log.warning("Could not save settings: %s", exc)
+    detail = write_json_atomic(path, payload, indent=2)
+    if detail is not None:
+        log.warning("Could not save settings: %s", detail)
         return False
     return True

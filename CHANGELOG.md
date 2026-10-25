@@ -33,6 +33,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   a whole sector now asks for confirmation, like deleting an entry does.
 - If the monitor holding the HUD is unplugged or disabled, the overlay moves back to the default
   position instead of staying off-screen.
+- Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
+  cleanup on failure), so the two cannot drift in how they protect a failed write.
 - Documentation is six pages instead of ten: `GUIDE.md` (behaviour and troubleshooting),
   `GAME_DATA.md` (telemetry, log, files and compatibility), `DESIGN.md`, `DEVELOPMENT.md` (including
   the release pipeline), `SETTINGS.md`, and the README. The old pages were merged rather than

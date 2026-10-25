@@ -143,6 +143,7 @@ src/brake_trainer/
   engine/          braking-point learning and cues (pure logic: engine, passes, lines,
                    limits, cues, constants)
   timeline.py      position history and interpolated line crossings
+  fileio.py        atomic JSON writes shared by settings and learned data
   storage.py       per track + car persistence
   telemetry.py     acevo-sdk adapter, restart watchdog, game-exit detection
   gamelog.py       follows the game's log for sector splits and cuts
