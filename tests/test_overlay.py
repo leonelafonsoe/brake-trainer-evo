@@ -117,6 +117,8 @@ def test_a_live_session_shows_the_track_car_distance_and_speed(qapp):
 
 def test_a_long_track_and_car_name_is_elided_by_width(qapp):
     window = _window(qapp)
+    window.show()
+    qapp.processEvents()  # a shown window has a real label width, unlike a hidden one
     state = ViewState(snapshot=Snapshot(track="A" * 40, car="B" * 20), live=True)
 
     window.update_state(state)

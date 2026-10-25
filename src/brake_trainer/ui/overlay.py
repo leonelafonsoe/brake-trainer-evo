@@ -11,6 +11,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QPainter,
     QResizeEvent,
+    QShowEvent,
 )
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
@@ -250,13 +251,20 @@ class OverlayWindow(QWidget):
     def _elide_title(self) -> None:
         """Elide by pixel width, not character count: fonts are proportional.
 
-        The budget is computed from the fixed window width (margins, dot, spacing and the three
-        hover buttons), not from the label's current geometry, which may not be laid out yet.
+        A hidden window has no final geometry, so show the full text until it is shown. That also
+        avoids eliding differently before and after the first layout on another platform's font.
         """
-        buttons = 0
-        if hasattr(self, "_learn_btn") and self._learn_btn.isVisibleTo(self):
-            buttons = 3 * 22 + 3 * 6
-        width = max(80, self.width() - 28 - 10 - 6 - buttons - 12)
+        if not self.isVisible():
+            _text(self._title, self._title_full)
+            if self._title.toolTip():
+                self._title.setToolTip("")
+            return
+        width = self._title.width()
+        if width <= 0:  # layout has not run yet
+            buttons = 0
+            if hasattr(self, "_learn_btn") and self._learn_btn.isVisibleTo(self):
+                buttons = 3 * 22 + 3 * 6
+            width = max(80, self.width() - 28 - 10 - 6 - buttons - 12)
         shown = self._title.fontMetrics().elidedText(
             self._title_full, Qt.TextElideMode.ElideRight, width
         )
@@ -264,6 +272,10 @@ class OverlayWindow(QWidget):
         tip = self._title_full if shown != self._title_full else ""
         if self._title.toolTip() != tip:
             self._title.setToolTip(tip)
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 (Qt API)
+        super().showEvent(event)
+        self._elide_title()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
         super().resizeEvent(event)
