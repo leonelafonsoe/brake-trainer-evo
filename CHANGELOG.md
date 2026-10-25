@@ -56,6 +56,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   brake above") moved to a separate Advanced tab, leaving the default tabs focused on everyday use.
 - The overlay has a "HUD scale" setting (0.75–2.00), applied live. Text, margins, bars and the hover
   buttons scale together, for high-DPI screens or a HUD that is too small/large.
+- `bump_version.py` now updates the "This branch targets …" line in `AGENTS.md` too, so the docs
+  consistency test and the release target cannot drift apart.
 - Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
   cleanup on failure), so the two cannot drift in how they protect a failed write.
 - Settings type validation now lives in `SettingSpec.coerce`: one rule for every field, including
