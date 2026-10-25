@@ -3,23 +3,13 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
-from PySide6.QtGui import (
-    QAction,
-    QColor,
-    QCursor,
-    QGuiApplication,
-    QMouseEvent,
-    QPainter,
-    QResizeEvent,
-    QShowEvent,
-)
+from PySide6.QtGui import QAction, QColor, QCursor, QGuiApplication, QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QMenu,
     QPushButton,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -115,10 +105,6 @@ class OverlayWindow(QWidget):
         top = QHBoxLayout()
         self._dot = _label("●", size=10, color=theme.MUTED)
         self._title = _label("Brake Trainer", size=11, color=theme.TEXT_DIM)
-        # The title gives way to the tool buttons instead of pushing them out of the window.
-        self._title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self._title.setMinimumWidth(0)
-        self._title_full = "Brake Trainer"
         self._learn_btn = _tool_button("⏸", "Pause learning", "Pause learning")
         self._settings_btn = _tool_button("⚙", "Settings", "Settings")
         self._quit_btn = _tool_button("✕", "Quit", "Quit")
@@ -127,10 +113,9 @@ class OverlayWindow(QWidget):
         )
         self._settings_btn.clicked.connect(self.settings_requested)
         self._quit_btn.clicked.connect(self.quit_requested)
-        top.addWidget(self._dot)
-        # The title's width is set explicitly from the window width and the visible buttons (see
-        # _title_budget). A layout stretch alone left it at zero or at the hidden-button width.
-        top.addWidget(self._title)
+        for w in (self._dot, self._title):
+            top.addWidget(w)
+        top.addStretch(1)
         top.addWidget(self._learn_btn)
         top.addWidget(self._settings_btn)
         top.addWidget(self._quit_btn)
@@ -170,8 +155,6 @@ class OverlayWindow(QWidget):
         self._learn_btn.setVisible(visible)
         self._settings_btn.setVisible(visible)
         self._quit_btn.setVisible(visible)
-        if hasattr(self, "_title"):
-            self._elide_title()  # the buttons take room, so re-budget the title immediately
 
     def _apply_flags(self) -> None:
         flags = (
@@ -212,14 +195,15 @@ class OverlayWindow(QWidget):
         snap = state.snapshot
         if not state.game_running and not state.live:
             _style(self._dot, f"color:{theme.MUTED}; font-size:10px;")
-            self._set_title("Waiting for Assetto Corsa EVO…")
+            _text(self._title, "Waiting for Assetto Corsa EVO…")
         else:
             color = theme.GREEN if state.live else theme.AMBER
             _style(self._dot, f"color:{color}; font-size:10px;")
             if snap.track and state.live:
-                self._set_title(f"{snap.track} · {snap.car}")
+                title = f"{snap.track} · {snap.car}"
+                _text(self._title, title if len(title) <= 36 else title[:35] + "…")
             else:
-                self._set_title("Game running — not in a session")
+                _text(self._title, "Game running — not in a session")
 
         self._update_distance(state)
         self._brake.set_value(snap.brake, theme.RED if snap.braking else theme.TEXT)
@@ -246,50 +230,6 @@ class OverlayWindow(QWidget):
                 self._ref.setToolTip(state.error)
             if self._ref.isHidden():
                 self._ref.show()
-
-    def _set_title(self, text: str) -> None:
-        self._title_full = text
-        self._elide_title()
-
-    def _title_budget(self) -> int:
-        """Width left for the title after the window margins, the dot and any visible buttons."""
-        buttons = 0
-        if hasattr(self, "_learn_btn") and self._learn_btn.isVisibleTo(self):
-            buttons = 3 * 22
-        gaps = 4 * 5 if buttons else 5  # one more gap per extra item in the row
-        return max(80, self.width() - 28 - 9 - gaps - buttons)
-
-    def _elide_title(self) -> None:
-        """Elide by pixel width, not character count: fonts are proportional.
-
-        The width is computed rather than read from the label: Qt reserves space for hidden layout
-        items, so the label's own geometry was too narrow (or zero) even when the row had room.
-        A hidden window has no final geometry, so show the full text until it is shown.
-        """
-        budget = self._title_budget()
-        if self._title.width() != budget:
-            self._title.setFixedWidth(budget)
-        if not self.isVisible():
-            _text(self._title, self._title_full)
-            if self._title.toolTip():
-                self._title.setToolTip("")
-            return
-        shown = self._title.fontMetrics().elidedText(
-            self._title_full, Qt.TextElideMode.ElideRight, budget
-        )
-        _text(self._title, shown)
-        tip = self._title_full if shown != self._title_full else ""
-        if self._title.toolTip() != tip:
-            self._title.setToolTip(tip)
-
-    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 (Qt API)
-        super().showEvent(event)
-        self._elide_title()
-
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
-        super().resizeEvent(event)
-        if hasattr(self, "_title"):  # a resize can arrive while _build is still running
-            self._elide_title()
 
     def _update_distance(self, state: ViewState) -> None:
         snap, st = state.snapshot, self._settings

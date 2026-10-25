@@ -29,10 +29,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - The Data tab now renders an immutable snapshot published by the worker. The UI never reads or
   quarantines the learned-data folder itself, so a scan can no longer stall the overlay or race a
   save.
-- The HUD elides the track/car title by pixel width instead of character count, keeps the distance
-  row one height, and the title's tooltip has the full name. The title row now gives the label real
-  space beside the dot instead of collapsing it to zero width. Deleting a whole sector now asks for
-  confirmation, like deleting an entry does.
+- The HUD distance row keeps one height when it switches between a phase word and a number. Deleting
+  a whole sector now asks for confirmation, like deleting an entry does.
 - Documentation is six pages instead of ten: `GUIDE.md` (behaviour and troubleshooting),
   `GAME_DATA.md` (telemetry, log, files and compatibility), `DESIGN.md`, `DEVELOPMENT.md` (including
   the release pipeline), `SETTINGS.md`, and the README. The old pages were merged rather than
