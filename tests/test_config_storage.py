@@ -13,7 +13,7 @@ from brake_trainer import storage as storage_module
 from brake_trainer.buildinfo import build_id
 from brake_trainer.config import SETTINGS_VERSION, Settings, load_settings, save_settings
 from brake_trainer.models import DATA_VERSION, SectorRun, TrackData
-from brake_trainer.storage import DeleteSector, LoadStatus, StoreResult
+from brake_trainer.storage import DeleteRun, DeleteSector, LoadStatus, StoreResult
 
 FIXTURES = Path(__file__).with_name("fixtures") / "settings"
 
@@ -323,6 +323,66 @@ def test_quarantine_never_overwrites_an_earlier_file(store, monkeypatch):
         "Monza__Car_A.corrupt-20261024-120000.json",
         "Monza__Car_A.corrupt-20261024-120000-1.json",
     }
+
+
+def test_two_names_that_slug_the_same_do_not_share_a_file(store):
+    # "Car A" and "Car/A" both become Car_A. The second identity must not overwrite the first.
+    assert store.save(_data("Car A", 1, 18.0))
+    assert store.save(_data("Car/A", 2, 19.0))
+
+    files = sorted(path.name for path in store.directory.glob("*.json"))
+    assert len(files) == 2
+    assert any("--" in name for name in files)  # the colliding identity got a hash suffix
+    assert store.load("Monza", "Car A", 3).total_runs() == 1
+    assert store.load("Monza", "Car/A", 3).total_runs() == 2
+    assert {(d.track, d.car) for d in store.entries()} == {
+        ("Monza", "Car A"),
+        ("Monza", "Car/A"),
+    }
+
+    assert store.delete("Monza", "Car/A").changed
+    assert store.load("Monza", "Car A", 3).total_runs() == 1
+    assert store.load("Monza", "Car/A", 3).total_runs() == 0
+
+
+def test_a_slug_collision_is_resolved_in_either_save_order(store):
+    assert store.save(_data("Car/A", 2, 19.0))
+    assert store.save(_data("Car A", 1, 18.0))
+
+    assert store.load("Monza", "Car/A", 3).total_runs() == 2
+    assert store.load("Monza", "Car A", 3).total_runs() == 1
+
+
+def test_an_existing_slug_named_file_still_loads_and_is_updated_in_place(store):
+    legacy = store.directory / "Monza__Car_A.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps(_data("Car A", 1, 18.0).to_dict()), encoding="utf-8")
+
+    assert store.load("Monza", "Car A", 3).total_runs() == 1
+
+    assert store.save(_data("Car A", 2, 19.0))
+    assert legacy.exists()  # no migration, no orphaned duplicate
+    assert not list(store.directory.glob("*--*.json"))
+    assert store.load("Monza", "Car A", 3).total_runs() == 2
+
+
+def test_deleting_a_run_with_a_duplicate_time_removes_the_named_one(store):
+    data = TrackData.empty("Monza", "Car A", 3)
+    data.sectors[0] = [SectorRun(18.0, [0.05]), SectorRun(18.0, [0.07])]
+    assert store.save(data)
+
+    # The onsets name the row; the time alone would match both.
+    assert store.apply(DeleteRun("Monza", "Car A", 0, 18.0, (0.07,))).changed
+    remaining = store.load("Monza", "Car A", 3).sectors[0]
+    assert [(run.t, run.onsets) for run in remaining] == [(18.0, [0.05])]
+
+    # A stale request for the row that is gone must not fall back to the other one.
+    assert not store.apply(DeleteRun("Monza", "Car A", 0, 18.0, (0.99,))).changed
+    assert len(store.load("Monza", "Car A", 3).sectors[0]) == 1
+
+    # The old time-only form still works for callers that predate the onsets.
+    assert store.apply(DeleteRun("Monza", "Car A", 0, 18.0)).changed
+    assert store.load("Monza", "Car A", 3).sectors[0] == []
 
 
 def test_store_roundtrip(store):

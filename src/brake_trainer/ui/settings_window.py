@@ -599,7 +599,9 @@ class SettingsWindow(QDialog):
                     points = len(run.onsets)
                     label = "braking point" if points == 1 else "braking points"
                     item = QTreeWidgetItem([f"{run.t:.3f} s", f"{points} {label}"])
-                    item.setData(0, _EDIT_ROLE, DeleteRun(d.track, d.car, index, run.t))
+                    item.setData(
+                        0, _EDIT_ROLE, DeleteRun(d.track, d.car, index, run.t, tuple(run.onsets))
+                    )
                     sector.addChild(item)
                 entry.addChild(sector)
             self._tree.addTopLevelItem(entry)

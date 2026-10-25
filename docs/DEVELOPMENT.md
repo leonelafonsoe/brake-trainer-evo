@@ -171,9 +171,12 @@ Boundaries:
 1. If `TrackData.to_dict` becomes unreadable to an older build, bump `DATA_VERSION` in
    `src/brake_trainer/models.py`. Do not bump it for a field an older build can ignore.
 2. Keep an old fixture loading and add a round-trip/migration test.
-3. Preserve the safety rules: never overwrite an unreadable file, quarantine by move, block saves
+3. File names are readable hints, not identity: the names inside the JSON are. A colliding slug
+   gets a `--<hash>` suffix; never let two track/car pairs share a path. A `DeleteRun` names the
+   run by time and onsets, not time alone.
+4. Preserve the safety rules: never overwrite an unreadable file, quarantine by move, block saves
    if the move fails, and report a failed write.
-4. Update `docs/DATA.md`.
+5. Update `docs/DATA.md`.
 
 For settings, bump `SETTINGS_VERSION` when renaming or retiring keys; newer unknown keys are
 preserved, retired keys from older files are dropped.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -89,12 +90,19 @@ class DeleteSector:
 
 @dataclass(frozen=True, slots=True)
 class DeleteRun:
-    """Forget one stored run of a sector (found by its time, as lists change as you drive)."""
+    """Forget one stored run of a sector.
+
+    ``time`` alone cannot name a run: two runs of one sector can have the same time (different
+    laps, same pace) and the fastest list changes as you drive. ``onsets`` is the run's other
+    content, so a delete still names exactly the row the driver picked. ``None`` keeps the old
+    time-only behaviour for callers that predate it.
+    """
 
     track: str
     car: str
     sector: int
     time: float
+    onsets: tuple[float, ...] | None = None
 
 
 DataEdit = DeleteEntry | DeleteSector | DeleteRun
@@ -104,6 +112,15 @@ def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", text).strip("_") or "unknown"
 
 
+def _identity(track: str, car: str) -> str:
+    """A collision-free key for one track + car, independent of the display names' punctuation.
+
+    The slug is only for a readable filename. Two names that slug the same (``Car A`` and
+    ``Car/A``) still have different identities, which the short hash in the filename records.
+    """
+    return f"{track}\0{car}"
+
+
 class TrackStore:
     def __init__(self, directory: Path) -> None:
         self.directory = directory
@@ -111,8 +128,57 @@ class TrackStore:
         self._issues: dict[Path, StorageIssue] = {}
         self._pending_issues: list[StorageIssue] = []
 
-    def _path(self, track: str, car: str) -> Path:
+    def _legacy_path(self, track: str, car: str) -> Path:
+        """The name written before collision handling; still the first choice when it is ours."""
         return self.directory / f"{_slug(track)}__{_slug(car)}.json"
+
+    def _hashed_path(self, track: str, car: str) -> Path:
+        digest = hashlib.sha256(_identity(track, car).encode("utf-8")).hexdigest()[:12]
+        return self.directory / f"{_slug(track)}__{_slug(car)}--{digest}.json"
+
+    @staticmethod
+    def _stored_names(path: Path) -> tuple[str, str] | None:
+        """The track and car recorded in a file, or None if it cannot be read that far.
+
+        This is deliberately cheap and side-effect free: it decides which filename belongs to
+        which identity before a save, so an unreadable file is never overwritten just because its
+        name happens to match.
+        """
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            return str(raw["track"]), str(raw["car"])
+        except (OSError, TypeError, ValueError, KeyError):
+            return None
+
+    def _target(self, track: str, car: str) -> Path:
+        """Where this identity is stored: its hashed name if it has one, else the legacy name.
+
+        A legacy file is ours only when the names inside it match. If it belongs to another
+        identity (a slug collision) or cannot be read, this identity uses the hashed name: two
+        different track/car pairs must never share a file, and an unreadable file must never be
+        overwritten.
+        """
+        hashed = self._hashed_path(track, car)
+        if hashed.exists():
+            return hashed
+        legacy = self._legacy_path(track, car)
+        if not legacy.exists() or self._stored_names(legacy) == (track, car):
+            return legacy
+        return hashed
+
+    def _candidates(self, track: str, car: str) -> list[Path]:
+        """The files that may hold this identity, in the order to read them."""
+        hashed = self._hashed_path(track, car)
+        legacy = self._legacy_path(track, car)
+        paths: list[Path] = []
+        if hashed.exists():
+            paths.append(hashed)
+        # A missing legacy name is a fresh entry. An existing one belongs to us only when its
+        # recorded names match (or it is unreadable, so reading it will quarantine/block it).
+        names = self._stored_names(legacy) if legacy.exists() else (track, car)
+        if names is None or names == (track, car):
+            paths.append(legacy)
+        return paths
 
     @property
     def quarantine_directory(self) -> Path:
@@ -198,17 +264,18 @@ class TrackStore:
         An unusable file is moved to ``data/quarantine/`` and a fresh entry starts. If it cannot
         be moved, the path is blocked for the rest of the process and saves to it are refused.
         """
-        path = self._path(track, car)
-        result = self._read(path)
-        if result.status is LoadStatus.MISSING:
-            return TrackData.empty(track, car, n_sectors)
-        if result.status is not LoadStatus.OK or result.data is None:
-            return TrackData.empty(track, car, n_sectors)
-        if result.data.n_sectors != n_sectors:
-            detail = f"{result.data.n_sectors} sectors, expected {n_sectors}"
-            self._unsafe(path, LoadStatus.LAYOUT_MISMATCH, detail)
-            return TrackData.empty(track, car, n_sectors)
-        return result.data
+        for path in self._candidates(track, car):
+            result = self._read(path)
+            if result.status is LoadStatus.MISSING:
+                continue
+            if result.status is not LoadStatus.OK or result.data is None:
+                continue  # unsafe; try any duplicate, or report the empty entry
+            if result.data.n_sectors != n_sectors:
+                detail = f"{result.data.n_sectors} sectors, expected {n_sectors}"
+                self._unsafe(path, LoadStatus.LAYOUT_MISMATCH, detail)
+                continue
+            return result.data
+        return TrackData.empty(track, car, n_sectors)
 
     def save(self, data: TrackData) -> StoreResult:
         """Write one entry.
@@ -216,7 +283,7 @@ class TrackStore:
         ``ok`` is False if the write failed or the path is blocked, with the reason in ``detail``;
         the temporary file is removed and the previous entry is left untouched.
         """
-        path = self._path(data.track, data.car)
+        path = self._target(data.track, data.car)
         if path in self._blocked:
             detail = "the file could not be read and must not be overwritten"
             log.error("Refusing to overwrite unreadable learned data %s", path.name)
@@ -292,7 +359,7 @@ class TrackStore:
         """
         if isinstance(edit, DeleteEntry):
             return self.delete(edit.track, edit.car)
-        result = self._read(self._path(edit.track, edit.car))
+        result = self._read(self._target(edit.track, edit.car))
         data = result.data
         if result.status is not LoadStatus.OK or data is None:
             return StoreResult()
@@ -304,26 +371,44 @@ class TrackStore:
                 return StoreResult()
             data.sectors[edit.sector] = []
         else:
-            index = next((i for i, r in enumerate(runs) if abs(r.t - edit.time) < 1e-6), None)
+            # The time alone is not an identity: two runs can share it. The onsets name the row
+            # the driver picked; an old time-only request still works, but a request that names
+            # onsets and no longer matches is a no-op rather than a wrong delete.
+            index = next(
+                (
+                    i
+                    for i, run in enumerate(runs)
+                    if abs(run.t - edit.time) < 1e-6
+                    and (edit.onsets is None or tuple(run.onsets) == edit.onsets)
+                ),
+                None,
+            )
             if index is None:
                 return StoreResult()
             del runs[index]
         return self.save(data)
 
     def delete(self, track: str, car: str) -> StoreResult:
-        path = self._path(track, car)
-        try:
-            path.unlink()
-        except FileNotFoundError:
+        paths = [path for path in self._candidates(track, car) if path.exists()]
+        if not paths:
+            for path in self._candidates(track, car):
+                self._blocked.discard(path)
+                self._issues.pop(path, None)
+            return StoreResult()
+        changed = False
+        for path in paths:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                log.warning("Could not delete learned data %s: %s", path.name, exc)
+                return StoreResult(ok=False, detail=str(exc))
+            else:
+                changed = True
             self._blocked.discard(path)
             self._issues.pop(path, None)
-            return StoreResult()
-        except OSError as exc:
-            log.warning("Could not delete learned data %s: %s", path.name, exc)
-            return StoreResult(ok=False, detail=str(exc))
-        self._blocked.discard(path)
-        self._issues.pop(path, None)
-        return StoreResult(changed=True)
+        return StoreResult(changed=changed)
 
     def clear(self) -> int:
         return sum(1 for d in self.entries() if self.delete(d.track, d.car).changed)

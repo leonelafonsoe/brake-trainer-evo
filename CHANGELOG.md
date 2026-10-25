@@ -56,6 +56,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   gap between segments is gone.
 - A buffered log line read across a backwards start/finish wrap no longer drops a sector of the
   next lap.
+- Two different track or car names that reduce to the same filename no longer overwrite each
+  other's data. Deleting a run names its sector, time and braking points, so two runs with the
+  same time cannot remove the wrong one.
 - A cut read between the first sample after the line and the next belongs to the lap its own time
   falls in, not to the sector of the lap that ended.
 - A live lap flag that drops in the frame that crosses a line no longer takes out the new sector;

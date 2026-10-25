@@ -5,11 +5,20 @@ Everything is stored per user in `%APPDATA%\BrakeTrainerEvo\`:
 | Path | Content |
 | --- | --- |
 | `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)), the overlay position, and the version that wrote the file |
-| `data\<track>__<car>.json` | What was learned for one track and car, with the version that wrote it |
+| `data\<track>__<car>.json` | What was learned for one track and car, with the version that wrote it. A colliding name adds `--<hash>` (see below) |
 | `data\quarantine\` | Files this build could not read, kept instead of overwritten (see below) |
 | `brake_trainer.log` | Log (rotated, about 1 MB x 3), starting with one diagnostics line: app version, build, settings/data versions, log path and verbose state |
 
 Set the environment variable `BRAKE_TRAINER_HOME` to use another folder (handy for testing).
+
+## File names
+
+`<track>` and `<car>` are readable slugs of the names stored inside the file: punctuation becomes
+`_`. The identity is the `track` and `car` in the JSON, not the filename. If two different names
+reduce to the same slug (`Car A` and `Car/A` both become `Car_A`), the colliding file gets a short
+hash suffix (`Monza__Car_A--1a2b3c4d5e6f.json`), so one entry can never overwrite another. Files
+written by older builds have no suffix; they still load and are updated in place. Do not rename the
+files by hand: the app finds an entry by the names inside it.
 
 ## Settings compatibility
 
@@ -72,6 +81,14 @@ the session and the app shows a warning instead of failing silently.
   previous file is kept, the half-written temporary file is removed, and the status line says the
   data could not be saved until a later write succeeds. A failed delete is reported the same way,
   so Settings -> Data never claims something was removed when it was not.
+
+## Deleting learned data
+
+Settings -> Data sends one delete for the selected row. A run is named by its sector, its time and
+its braking points (`onsets`); the time alone is not enough because two runs can share one. If the
+entry changed since the tab was drawn and the named run is no longer there, the delete does nothing
+rather than removing a different run: refresh and try again. Deleting an entry removes its file and
+any older duplicate holding the same track and car.
 
 ## Housekeeping
 

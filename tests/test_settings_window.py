@@ -68,10 +68,10 @@ def test_the_data_tree_lists_entries_and_requests_deletes(qapp, store):
 
     window._tree.clearSelection()
     run.setSelected(True)
-    assert window.selected_edits() == [DeleteRun("Monza", "Car A", 0, 18.0)]
+    assert window.selected_edits() == [DeleteRun("Monza", "Car A", 0, 18.0, (0.05,))]
 
     window._delete_selected()
-    assert requested == [DeleteRun("Monza", "Car A", 0, 18.0)]
+    assert requested == [DeleteRun("Monza", "Car A", 0, 18.0, (0.05,))]
 
 
 def test_selecting_a_parent_covers_its_children(qapp, store):
