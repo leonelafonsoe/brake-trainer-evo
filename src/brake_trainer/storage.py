@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import logging
@@ -14,6 +13,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
+from .fileio import write_json_atomic
 from .metadata import save_metadata
 from .models import NewerDataError, TrackData
 
@@ -337,20 +337,11 @@ class TrackStore:
             detail = "the file could not be read and must not be overwritten"
             log.error("Refusing to overwrite unreadable learned data %s", path.name)
             return StoreResult(ok=False, detail=detail)
-        tmp = path.with_suffix(".tmp")
-        try:
-            self.directory.mkdir(parents=True, exist_ok=True)
-            payload = {**save_metadata(), **data.to_dict()}
-            with tmp.open("w", encoding="utf-8") as handle:
-                handle.write(json.dumps(payload))
-                handle.flush()
-                os.fsync(handle.fileno())  # durable before the replace, not just in the cache
-            os.replace(tmp, path)
-        except OSError as exc:
-            with contextlib.suppress(OSError):
-                tmp.unlink()
-            log.warning("Could not save learned data: %s", exc)
-            return StoreResult(ok=False, detail=str(exc))
+        self.directory.mkdir(parents=True, exist_ok=True)
+        failure = write_json_atomic(path, {**save_metadata(), **data.to_dict()})
+        if failure is not None:
+            log.warning("Could not save learned data: %s", failure)
+            return StoreResult(ok=False, detail=failure)
         return StoreResult(changed=True)
 
     def entries(self) -> list[TrackData]:

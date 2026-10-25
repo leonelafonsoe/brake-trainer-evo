@@ -9,6 +9,7 @@ import pytest
 
 from brake_trainer import __version__
 from brake_trainer import config as config_module
+from brake_trainer import fileio as fileio_module
 from brake_trainer import storage as storage_module
 from brake_trainer.buildinfo import build_id
 from brake_trainer.config import SETTINGS_VERSION, Settings, load_settings, save_settings
@@ -126,7 +127,7 @@ def test_a_failed_settings_fsync_keeps_the_old_file_and_removes_the_temporary(
     def full(*args, **kwargs):
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr(config_module.os, "fsync", full)
+    monkeypatch.setattr(fileio_module.os, "fsync", full)
     assert not save_settings(Settings(volume=0.9), path)
 
     assert path.read_text(encoding="utf-8") == original
@@ -269,7 +270,7 @@ def test_a_failed_replace_keeps_the_old_file_and_removes_the_temporary(store, mo
     def refuse(*args, **kwargs):
         raise OSError(errno.EACCES, "Permission denied")
 
-    monkeypatch.setattr(storage_module.os, "replace", refuse)
+    monkeypatch.setattr(fileio_module.os, "replace", refuse)
     result = store.save(_data("Car A", 2))
 
     assert not result.ok and not result.changed
@@ -286,7 +287,7 @@ def test_a_full_disk_is_reported_and_the_temporary_file_is_removed(store, monkey
     def full(*args, **kwargs):
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr(storage_module.os, "fsync", full)
+    monkeypatch.setattr(fileio_module.os, "fsync", full)
     result = store.save(_data("Car A", 2))
 
     assert not result.ok and not result.changed
