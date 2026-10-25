@@ -260,7 +260,9 @@ it.
   opened, and only a track no car has learned yet waits for the log. To learn the lines again,
   delete every entry on the track and drive a lap.
 - `sectors`: one list per sector, fastest run first. Each run has its time `t` in seconds and the
-  track positions `onsets` where braking started in that run.
+  track positions `onsets` where braking started in that run. Runs are sorted on load. A run with a
+  non-positive or non-finite time, or an onset outside 0..1, is treated as corrupt: the file is
+  quarantined rather than used.
 - `early_onsets`: positions where braking started on the passes that could not be timed because the
   sector lines were still being found, or had just changed under the car - one list per pass. Their
   times are worthless (the lines they would use are not known), but they are where the corners are,
