@@ -12,6 +12,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - Dependabot keeps the Python dependencies and the pinned GitHub Actions current.
 - A `SECURITY.md` explains private vulnerability reporting, and the issue templates now include a
   feature request and ask bug reports for the `app=`/`build=` startup line.
+- A replay harness in `tests/replay.py` feeds timestamped telemetry frames and real game-log lines
+  through the engine, so attribution bugs can be reproduced from a small anonymized trace.
 
 ### Changed
 
