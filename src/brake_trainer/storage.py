@@ -73,6 +73,36 @@ class StorageIssue:
 
 
 @dataclass(frozen=True, slots=True)
+class DataRunView:
+    """One stored run as the settings window needs it (no engine state, no mutable lists)."""
+
+    time: float
+    onsets: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DataEntryView:
+    """One track + car entry, summarised for the Data tab."""
+
+    track: str
+    car: str
+    n_sectors: int
+    game_lines: bool
+    sectors: tuple[tuple[DataRunView, ...], ...]
+
+    def total_runs(self) -> int:
+        return sum(len(runs) for runs in self.sectors)
+
+
+@dataclass(frozen=True, slots=True)
+class DataSnapshot:
+    """Everything the Data tab renders, published by the worker thread."""
+
+    entries: tuple[DataEntryView, ...]
+    issues: tuple[StorageIssue, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DeleteEntry:
     """Forget everything learned for a track + car."""
 
@@ -328,6 +358,23 @@ class TrackStore:
             return []
         found = (self._read(p) for p in sorted(self.directory.glob("*.json")))
         return [r.data for r in found if r.status is LoadStatus.OK and r.data is not None]
+
+    def snapshot(self) -> DataSnapshot:
+        """An immutable summary for the UI. Read it on the worker thread, never the UI thread."""
+        entries = tuple(
+            DataEntryView(
+                track=data.track,
+                car=data.car,
+                n_sectors=data.n_sectors,
+                game_lines=data.boundaries is not None,
+                sectors=tuple(
+                    tuple(DataRunView(run.t, tuple(run.onsets)) for run in runs)
+                    for runs in data.sectors
+                ),
+            )
+            for data in self.entries()
+        )
+        return DataSnapshot(entries=entries, issues=tuple(self.issues()))
 
     def find_reference(
         self, track: str, car: str, n_sectors: int, preferred: str = ""

@@ -264,6 +264,37 @@ def test_a_data_edit_requested_by_the_ui_is_applied_on_the_next_pending_pass(qap
     assert changed == [1]
 
 
+def test_the_worker_publishes_the_data_tab_snapshot(qapp, store):
+    data = TrackData.empty("Monza", "Car A", 3)
+    data.sectors[0] = [SectorRun(18.0, [0.05])]
+    assert store.save(data)
+    worker = _worker(store)
+    snapshots: list = []
+    worker.data_snapshot.connect(snapshots.append)
+
+    worker.request_data_refresh()
+    worker._tick()
+
+    _pump(qapp, lambda: bool(snapshots), "a data snapshot")
+    assert snapshots[-1].entries[0].total_runs() == 1
+
+
+def test_an_applied_edit_publishes_a_fresh_snapshot(qapp, store):
+    data = TrackData.empty("Monza", "Car A", 3)
+    data.sectors[0] = [SectorRun(18.0, [0.05])]
+    assert store.save(data)
+    worker = _worker(store)
+    snapshots: list = []
+    worker.data_snapshot.connect(snapshots.append)
+
+    worker.request_edit(DeleteSector("Monza", "Car A", 0))
+    worker._tick()
+
+    _pump(qapp, lambda: bool(snapshots), "a snapshot after the edit")
+    assert snapshots[-1].entries[0].sectors[0] == ()
+    assert not store.load("Monza", "Car A", 3).sectors[0]
+
+
 def test_a_game_log_cut_reaches_the_engine_and_publishes_state(qapp, store):
     worker = _worker(store)
     states: list = []

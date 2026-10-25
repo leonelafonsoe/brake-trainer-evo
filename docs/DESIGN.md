@@ -184,11 +184,16 @@ The overlay matches the minimal in-game HUD: no panel, text with a soft shadow, 
 translucent track. A near-invisible fill keeps the window grabbable (fully transparent pixels let
 clicks fall through to the game). Click-through is optional, with a tray icon as the way back.
 
-### Editing stored data goes through the engine
+### Stored data is read and edited on the worker
 The running engine keeps the current track and car in memory and saves it after every accepted sector.
 If the settings window changed the files directly, the engine would write its old copy straight back
 and undo the deletion (also when quitting). So the UI only *requests* an edit; the worker thread
 applies it between samples and reloads the entry if it is the one in use.
+
+Reading is worker-owned too. The Data tab renders an immutable `DataSnapshot` published by the worker
+(entry and run summaries plus storage issues), so scanning the folder, quarantining a file or racing
+a save can never happen on the UI thread. The UI holds only the data folder's path, for the "Open data
+folder" button.
 
 ### Game exit
 A Windows process handle makes the exit instant and costs nothing while the game runs, unlike listing

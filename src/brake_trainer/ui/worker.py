@@ -29,11 +29,13 @@ _LIVE_TIMEOUT_S = 2.0  # no sample for this long = not live
 class EngineWorker(QThread):
     state = Signal(object)  # ViewState
     game_closed = Signal()
-    data_changed = Signal()  # stored data was edited (refresh the data tab)
+    data_changed = Signal()  # stored data was edited
+    data_snapshot = Signal(object)  # DataSnapshot: the Data tab's read-only view
 
     def __init__(self, holder: SettingsHolder, store: TrackStore, audio: AudioPlayer) -> None:
         super().__init__()
         self._holder = holder
+        self._store = store
         self._audio = audio
         self._engine = BrakeEngine(
             holder.value,
@@ -41,8 +43,10 @@ class EngineWorker(QThread):
             on_cue=audio.play,
             on_message=self._log_message,
             on_warning=self._log_warning,
-            on_data_changed=self.data_changed.emit,
+            on_data_changed=self._on_data_changed,
         )
+        # Set from any thread; the ticker turns it into a snapshot on the worker thread.
+        self._data_refresh = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop: asyncio.Event | None = None
         # Set from any thread, including before the thread has started and before the loop exists.
@@ -65,6 +69,10 @@ class EngineWorker(QThread):
     def request_edit(self, edit: DataEdit) -> None:
         """Delete stored data (applied on the worker thread, so it cannot be undone by a save)."""
         self._engine.queue_edit(edit)
+
+    def request_data_refresh(self) -> None:
+        """Ask the worker to publish a fresh Data tab snapshot. Safe from any thread."""
+        self._data_refresh.set()
 
     def request_stop(self) -> None:
         """Ask the worker to stop. Safe from any thread and before the thread has started.
@@ -100,6 +108,7 @@ class EngineWorker(QThread):
         if self._stop_requested.is_set():
             self._stop.set()  # stop was requested before the loop existed
         log.info(TRACK_LIMITS_NOTE)
+        self._publish_data()
         reader = TelemetryReader(
             lambda: self._holder.value,
             self._on_sample,
@@ -129,6 +138,15 @@ class EngineWorker(QThread):
                     log.error("Worker task failed", exc_info=result)
         if reason is ExitReason.GAME_CLOSED:
             self.game_closed.emit()
+
+    def _on_data_changed(self) -> None:
+        """An edit was applied; tell listeners and send the new Data tab view."""
+        self.data_changed.emit()
+        self._publish_data()
+
+    def _publish_data(self) -> None:
+        """Read the store and publish the immutable summary (worker thread only)."""
+        self.data_snapshot.emit(self._store.snapshot())
 
     def _on_cut(self, reason: str, at: float) -> None:
         """A cut the game wrote to its log: the engine drops the sector it happened in.
@@ -184,7 +202,11 @@ class EngineWorker(QThread):
 
     def _tick(self) -> None:
         """Apply edits and publish state while no samples arrive (e.g. paused in the pits)."""
+        requested = self._data_refresh.is_set()
+        self._data_refresh.clear()
         self._engine.apply_pending()
+        if requested:
+            self._publish_data()
         self._emit()
 
     def _emit(self) -> None:

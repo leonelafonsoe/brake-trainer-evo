@@ -439,6 +439,31 @@ def test_deleting_a_run_with_a_duplicate_time_removes_the_named_one(store):
     assert store.load("Monza", "Car A", 3).sectors[0] == []
 
 
+def test_a_snapshot_summarises_entries_and_issues(store):
+    data = _data("Car A", 2, 18.0)
+    data.boundaries = [0.3, 0.6]
+    assert store.save(data)
+
+    snapshot = store.snapshot()
+
+    assert len(snapshot.entries) == 1
+    entry = snapshot.entries[0]
+    assert (entry.track, entry.car, entry.n_sectors, entry.game_lines) == (
+        "Monza",
+        "Car A",
+        3,
+        True,
+    )
+    assert entry.total_runs() == 2
+    assert entry.sectors[0][0].time == 18.0
+    assert entry.sectors[0][0].onsets == (0.1,)
+    assert snapshot.issues == ()
+
+    (store.directory / "junk.json").write_text("nope", encoding="utf-8")
+    snapshot = store.snapshot()
+    assert len(snapshot.issues) == 1  # the scan itself reports the file it moved aside
+
+
 def test_store_roundtrip(store):
     store.save(_data("Car A", 2))
     assert store.load("Monza", "Car A", 3).total_runs() == 2

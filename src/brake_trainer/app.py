@@ -81,7 +81,7 @@ def main() -> int:
     audio = AudioPlayer(lambda: holder.value)
     worker = EngineWorker(holder, store, audio)
     overlay = OverlayWindow(holder.value)
-    settings_window = SettingsWindow(lambda: holder.value, store)
+    settings_window = SettingsWindow(lambda: holder.value, store.directory)
 
     toggles: dict[str, QAction] = {}  # tray checkboxes by settings field, kept in sync
 
@@ -120,7 +120,8 @@ def main() -> int:
     overlay.moved.connect(controller.move_overlay)
     settings_window.applied.connect(controller.apply)
     settings_window.edit_requested.connect(worker.request_edit)
-    worker.data_changed.connect(settings_window.refresh_data_if_visible)
+    worker.data_snapshot.connect(settings_window.show_data_if_visible)
+    settings_window.data_refresh_requested.connect(worker.request_data_refresh)
     settings_window.test_cue.connect(lambda kind: audio.play(kind, force=True))
 
     # --- tray icon (a way back to the settings even when the overlay is click-through)

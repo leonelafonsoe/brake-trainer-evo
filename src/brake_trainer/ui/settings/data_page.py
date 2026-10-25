@@ -18,14 +18,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...storage import DataEdit, DeleteEntry, DeleteRun, DeleteSector
+from ...storage import DataEdit, DataSnapshot, DeleteEntry, DeleteRun, DeleteSector
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from PySide6.QtCore import SignalInstance
-
-    from ...storage import TrackStore
 
 
 _EDIT_ROLE = Qt.ItemDataRole.UserRole
@@ -35,8 +33,9 @@ class DataPageMixin:
     if TYPE_CHECKING:
         # Provided by SettingsWindow and the diagnostics mixin.
         _tree: QTreeWidget
-        _store: TrackStore
+        _data_dir: Path
         edit_requested: SignalInstance
+        data_refresh_requested: SignalInstance
 
         def _reveal(self, folder: Path) -> None: ...
         def isVisible(self) -> bool: ...
@@ -61,7 +60,7 @@ class DataPageMixin:
         layout.addWidget(self._tree)
         row = QHBoxLayout()
         for text, slot in (
-            ("Refresh", self.refresh_data),
+            ("Refresh", self.request_data),
             ("Delete selected", self._delete_selected),
             ("Open data folder", self._open_folder),
         ):
@@ -75,42 +74,46 @@ class DataPageMixin:
         # opening Settings.
         return page
 
-    def refresh_data_if_visible(self) -> None:
-        """Refresh after a data edit, but never while the window is hidden."""
-        if self.isVisible():
-            self.refresh_data()
+    def request_data(self) -> None:
+        """Ask the worker for a fresh snapshot; it owns the store and does the disk read."""
+        self.data_refresh_requested.emit()
 
-    def refresh_data(self) -> None:
+    def show_data_if_visible(self, snapshot: DataSnapshot) -> None:
+        """Render a snapshot published by the worker, but never while the window is hidden."""
+        if self.isVisible():
+            self.render_data(snapshot)
+
+    def render_data(self, snapshot: DataSnapshot) -> None:
         expanded = set()
         for i in range(self._tree.topLevelItemCount()):
             top = self._tree.topLevelItem(i)
             if top is not None and top.isExpanded():
                 expanded.add(top.data(0, _EDIT_ROLE))
         self._tree.clear()
-        for d in self._store.entries():
-            lines = "game's sector lines" if d.boundaries else "equal splits"
+        for d in snapshot.entries:
+            lines = "game's sector lines" if d.game_lines else "equal splits"
             total = d.total_runs()
             detail = f"{d.n_sectors} sectors · {total} run" + ("" if total == 1 else "s")
             entry = QTreeWidgetItem([f"{d.track} · {d.car}", detail, lines])
             entry_edit = DeleteEntry(d.track, d.car)
             entry.setData(0, _EDIT_ROLE, entry_edit)
             for index, runs in enumerate(d.sectors):
-                best = f"best {runs[0].t:.3f} s · " if runs else ""
+                best = f"best {runs[0].time:.3f} s · " if runs else ""
                 count = f"{len(runs)} run" + ("" if len(runs) == 1 else "s")
                 sector = QTreeWidgetItem([f"S{index + 1}", f"{best}{count}"])
                 sector.setData(0, _EDIT_ROLE, DeleteSector(d.track, d.car, index))
                 for run in runs:
                     points = len(run.onsets)
                     label = "braking point" if points == 1 else "braking points"
-                    item = QTreeWidgetItem([f"{run.t:.3f} s", f"{points} {label}"])
+                    item = QTreeWidgetItem([f"{run.time:.3f} s", f"{points} {label}"])
                     item.setData(
-                        0, _EDIT_ROLE, DeleteRun(d.track, d.car, index, run.t, tuple(run.onsets))
+                        0, _EDIT_ROLE, DeleteRun(d.track, d.car, index, run.time, run.onsets)
                     )
                     sector.addChild(item)
                 entry.addChild(sector)
             self._tree.addTopLevelItem(entry)
             entry.setExpanded(entry_edit in expanded)
-        issues = self._store.issues()
+        issues = snapshot.issues
         if issues:
             group = QTreeWidgetItem([f"Unavailable files ({len(issues)})", "", ""])
             group.setDisabled(True)
@@ -165,4 +168,4 @@ class DataPageMixin:
             self.edit_requested.emit(edit)  # applied by the worker, then the tab refreshes
 
     def _open_folder(self) -> None:
-        self._reveal(self._store.directory)
+        self._reveal(self._data_dir)

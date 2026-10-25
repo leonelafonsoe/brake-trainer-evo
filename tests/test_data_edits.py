@@ -82,8 +82,8 @@ def test_settings_window_data_tree_and_selected_edits(store, qapp):
     from brake_trainer.ui.settings import SettingsWindow
 
     _stored(store)
-    window = SettingsWindow(lambda: Settings(), store)
-    window.refresh_data()  # the tab populates when it is shown
+    window = SettingsWindow(lambda: Settings(), store.directory)
+    window.render_data(store.snapshot())
     tree = window._tree
     assert tree.topLevelItemCount() == 1
     entry = tree.topLevelItem(0)
