@@ -54,6 +54,13 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   needed, and the `connect.txt` fixture. Only the current notification and split lines are read, so
   `parse_line` is stateless and a log that already has content is skipped as a whole instead of
   being read from the top.
+- Seven expert settings that the defaults already handled: "Sound cues" (volume 0 is silent),
+  "Minimum warning distance" (fixed at 35 m), the warning and brake-now tone lengths (fixed at
+  90/120 ms), "Braking ends below" (now always 0.15 below the start threshold), "Skip sector if lap
+  invalidated" (always on; it was a way to defeat the product's promise), and "Own runs before
+  leaving reference" (fixed at 2). The telemetry rate moved to the Diagnostics tab.
+- `SETTINGS_VERSION` is now 4, so a settings file from 0.5.0 or earlier is archived and the app
+  starts from defaults (see [DATA.md](docs/DATA.md)).
 
 ## 0.5.0 - 2026-10-25
 

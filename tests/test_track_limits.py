@@ -76,18 +76,6 @@ def test_sector_with_a_race_cut_is_not_saved(store):
     assert after[0] < before[0] and after[2] < before[2]
 
 
-def test_validity_checks_can_be_switched_off(store):
-    results = []
-    settings = Settings(use_game_log=False, warmup_laps=0, skip_invalid_sectors=False)
-    engine = BrakeEngine(settings, store, on_sector=results.append)
-    driver = Driver(engine)
-    for _ in range(3):
-        driver.lap(CORNERS)
-    results.clear()
-    driver.lap(CORNERS, invalid_from=0.5)
-    assert all(r.duration is not None for r in results if r.sector in (0, 1, 2))
-
-
 def test_a_lap_that_cannot_count_anyway_does_not_name_its_flag(store):
     # Session started from the pits: the game invalidates the lap the car is already on. That lap is
     # a warm-up lap and was never going to count, so the overlay says so rather than opening the

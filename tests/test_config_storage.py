@@ -133,11 +133,6 @@ def test_a_failed_settings_fsync_keeps_the_old_file_and_removes_the_temporary(
     assert not list(tmp_path.glob("*.tmp"))
 
 
-def test_brake_off_stays_below_brake_on():
-    st = Settings(brake_on=0.2, brake_off=0.5).clamped()
-    assert st.brake_off < st.brake_on
-
-
 def test_verbose_logging_is_off_by_default_and_round_trips(tmp_path):
     assert Settings().debug_logging is False
     path = tmp_path / "s.json"

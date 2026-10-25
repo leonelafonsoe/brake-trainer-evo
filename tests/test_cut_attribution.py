@@ -366,14 +366,6 @@ def test_a_cut_in_a_sector_that_was_not_saved_still_shows_as_not_counted(store):
     assert any("S2 won't count" in m for m in messages)
 
 
-def test_cuts_are_ignored_when_invalid_sectors_are_not_skipped(store):
-    engine, driver, results, _ = _engine(store, skip_invalid_sectors=False)
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.55)
-    engine.report_infraction("the game reported a cut", driver.t)
-    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.56, stop=1.003)
-    assert {r.sector: r for r in results}[1].accepted
-
-
 def test_a_cut_in_a_warm_up_sector_is_not_announced(store):
     # The sector was already going to be skipped, so announcing the cut would only repeat what the
     # result is about to say. It still goes into the pass so the result names a reason.

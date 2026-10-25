@@ -29,7 +29,6 @@ _unreadable_settings: set[Path] = set()
 class Settings:
     # --- braking detection ---
     brake_on: float = DEFAULTS["brake_on"]  # brake above this = braking started
-    brake_off: float = DEFAULTS["brake_off"]  # brake below this = braking ended
     min_peak: float = DEFAULTS["min_peak"]  # ignore light touches below this peak
     # km/h that must be shed for an event to count
     min_speed_drop: float = DEFAULTS["min_speed_drop"]
@@ -40,21 +39,14 @@ class Settings:
     top_runs: int = DEFAULTS["top_runs"]  # fastest runs kept per sector
     # laps ignored after leaving the pits (cold tyres and brakes)
     warmup_laps: int = DEFAULTS["warmup_laps"]
-    # sector not counted if the lap was invalidated in it
-    skip_invalid_sectors: bool = DEFAULTS["skip_invalid_sectors"]
-    own_runs_to_replace_ref: int = DEFAULTS["own_runs_to_replace_ref"]
     reference_car: str = DEFAULTS["reference_car"]  # "" = automatic
     # --- cues ---
     lead_s: float = DEFAULTS["lead_s"]
-    min_lead_m: float = DEFAULTS["min_lead_m"]
     here_m: float = DEFAULTS["here_m"]
     skip_zone_if_braking: float = DEFAULTS["skip_zone_if_braking"]
-    sound_enabled: bool = DEFAULTS["sound_enabled"]
     volume: float = DEFAULTS["volume"]
     warn_hz: int = DEFAULTS["warn_hz"]
     here_hz: int = DEFAULTS["here_hz"]
-    warn_ms: int = DEFAULTS["warn_ms"]
-    here_ms: int = DEFAULTS["here_ms"]
     # --- app ---
     telemetry_hz: float = DEFAULTS["telemetry_hz"]
     game_process: str = DEFAULTS["game_process"]
@@ -87,10 +79,7 @@ class Settings:
                 fixed = int(fixed)
             if fixed != value:
                 changes[name] = fixed
-        merged = replace(self, **changes)
-        if merged.brake_off >= merged.brake_on:
-            merged = replace(merged, brake_off=max(0.01, merged.brake_on - 0.05))
-        return merged
+        return replace(self, **changes)
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> Settings:

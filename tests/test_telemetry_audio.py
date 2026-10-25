@@ -276,7 +276,7 @@ def test_make_tone_is_valid_wav_and_volume_scales():
     assert peak(quiet) < peak(loud) / 5
 
 
-def test_audio_player_respects_enabled_flag():
+def test_audio_player_respects_a_zero_volume():
     played = []
     done = threading.Event()
 
@@ -284,7 +284,7 @@ def test_audio_player_respects_enabled_flag():
         played.append(wav)
         done.set()
 
-    holder = {"st": Settings(sound_enabled=False)}
+    holder = {"st": Settings(volume=0.0)}
     player = AudioPlayer(lambda: holder["st"], backend=backend)
     player.play(CueKind.WARN)
     assert played == []

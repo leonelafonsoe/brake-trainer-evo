@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("brake_trainer.engine")
 
+# Borrowed points stop being used once the car has this many runs of its own for the sector.
+_OWN_RUNS_TO_REPLACE_REF = 2
+
 
 def build_zones(
     sectors: Sequence[Sequence[SectorRun]], cluster_m: float, length_m: float
@@ -76,7 +79,7 @@ class LimitsMixin:
             return False
         lo, hi = self._bounds[i], self._bounds[i + 1]
         borrowed = any(lo <= z < hi for z in self._ref_zones)
-        return borrowed and len(self._data.sectors[i]) < self._settings.own_runs_to_replace_ref
+        return borrowed and len(self._data.sectors[i]) < _OWN_RUNS_TO_REPLACE_REF
 
     def _early_runs(self: BrakeEngine) -> list[list[SectorRun]]:  # type: ignore[misc]
         """The kept onsets as stand-in runs, one per pass, filed under the sector they fall in.
@@ -192,7 +195,7 @@ class LimitsMixin:
         frame that crosses a sector line, where the position has already moved on (see
         :meth:`_flag_attribution`).
         """
-        if not self._settings.skip_invalid_sectors or s.lap_valid or self._lap_valid is False:
+        if s.lap_valid or self._lap_valid is False:
             return
         fresh = bool(self._lap_valid)  # a fresh drop, not the state the app found at start-up
         found = self._flag_attribution(pos, prev)
@@ -279,7 +282,7 @@ class LimitsMixin:
         restarts its log: a ``(lap, sector)`` the app already invalidated is not dropped again.
         """
         s = self._last
-        if s is None or self._pass is None or not self._settings.skip_invalid_sectors:
+        if s is None or self._pass is None:
             return
         found = self._at_time(at)
         if found is None:

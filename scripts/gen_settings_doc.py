@@ -25,12 +25,12 @@ Open the settings window from the overlay (hover, then the gear), the overlay's 
 or the tray icon. **Apply** saves and takes effect immediately. Settings are stored in
 `%APPDATA%\\BrakeTrainerEvo\\settings.json`; the "Key" column is the name used in that file.
 
-Every setting applies to the running session; no restart is needed. Two kinds do extra work when
-they change: a different **Preferred reference car** is looked up again, and a lower **Fastest runs
-kept per sector** removes the slower stored runs and rebuilds the braking points. Turning **Follow
-the game's log** off stops waiting for its sector lines (the equal splits stay), and turning it on
-again starts that wait for an entry with no runs yet. The **Telemetry rate** is used the next time
-telemetry capture starts.
+Every setting applies to the running session; no restart is needed, with a few exceptions. A
+different **Preferred reference car** is looked up again, and a lower **Fastest runs kept per
+sector** removes the slower stored runs and rebuilds the braking points. Turning **Follow the game's
+log** off stops waiting for its sector lines (the equal splits stay), and turning it on again starts
+that wait for an entry with no runs yet. The **Telemetry rate** applies the next time telemetry
+capture starts.
 """
 
 

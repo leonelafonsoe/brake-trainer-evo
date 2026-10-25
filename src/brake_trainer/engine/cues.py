@@ -10,6 +10,11 @@ from ..models import CueKind, Sample
 if TYPE_CHECKING:
     from .engine import BrakeEngine
 
+# Braking ends this far below the start threshold. The same 0.15 gap the old two-setting pair
+# defaulted to (0.25 start / 0.10 release), without asking the driver to keep two numbers in step.
+_BRAKE_HYSTERESIS = 0.15
+_MIN_LEAD_M = 35.0  # at very low speed the warning never comes closer than this
+
 
 @dataclass(slots=True)
 class _BrakeEvent:
@@ -38,7 +43,7 @@ class CuesMixin:
             if not e.counted and e.peak >= st.min_peak and shed >= st.min_speed_drop:
                 e.counted = True
                 self._add_onset(e.pos)
-            if s.brake <= st.brake_off:
+            if s.brake <= max(0.01, st.brake_on - _BRAKE_HYSTERESIS):
                 self._braking, self._event = False, None
 
     def _add_onset(self: BrakeEngine, pos: float) -> None:  # type: ignore[misc]
@@ -56,7 +61,7 @@ class CuesMixin:
 
     def _lead_m(self: BrakeEngine, speed_kmh: float) -> float:  # type: ignore[misc]
         st = self._settings
-        return max(st.min_lead_m, max(speed_kmh / 3.6, 0.1) * st.lead_s)
+        return max(_MIN_LEAD_M, max(speed_kmh / 3.6, 0.1) * st.lead_s)
 
     def _emit_cues(self: BrakeEngine, s: Sample, pos: float) -> None:  # type: ignore[misc]
         st = self._settings

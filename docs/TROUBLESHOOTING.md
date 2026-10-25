@@ -68,7 +68,7 @@ the screen. The text has a soft shadow, but a fully transparent window cannot gu
 ## Sound
 
 **No beeps**
-Check Settings -> Cues: "Sound cues" on, volume above 0, and use the "Test" buttons. The beeps
+Check Settings -> Cues: volume above 0, and use the "Test" buttons. The beeps
 play through the default Windows audio device. Also check that learning has produced braking points
 at all: the status line shows "No braking points yet" until it has.
 

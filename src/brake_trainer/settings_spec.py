@@ -15,7 +15,7 @@ Kind = Literal["bool", "int", "optint", "float", "text"]
 
 # Bumped when the stored settings layout changes. A file with any other version is archived and the
 # app starts from defaults (see config.load_settings): there is no migration code to keep.
-SETTINGS_VERSION = 3
+SETTINGS_VERSION = 4
 
 TAB_ORDER: tuple[str, ...] = ("Cues", "Detection", "Sectors", "Overlay", "App", "Diagnostics")
 
@@ -54,14 +54,6 @@ class SettingSpec:
 
 SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
-        name="sound_enabled",
-        kind="bool",
-        default=True,
-        tab="Cues",
-        label="Sound cues",
-        tip="Turn all cue sounds on or off. The overlay keeps working.",
-    ),
-    SettingSpec(
         name="volume",
         kind="float",
         default=0.6,
@@ -84,19 +76,6 @@ SPECS: tuple[SettingSpec, ...] = (
         decimals=1,
         suffix=" s",
         tip="The low beep sounds this many seconds before the braking point.",
-    ),
-    SettingSpec(
-        name="min_lead_m",
-        kind="float",
-        default=35.0,
-        tab="Cues",
-        label="Minimum warning distance",
-        lo=5.0,
-        hi=300.0,
-        step=5,
-        decimals=0,
-        suffix=" m",
-        tip="At low speed the warning never comes closer than this.",
     ),
     SettingSpec(
         name="here_m",
@@ -134,18 +113,6 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Pitch of the low warning beep (braking point coming up).",
     ),
     SettingSpec(
-        name="warn_ms",
-        kind="int",
-        default=90,
-        tab="Cues",
-        label="Warning length",
-        lo=30,
-        hi=500,
-        step=10,
-        suffix=" ms",
-        tip="Length of the warning beep.",
-    ),
-    SettingSpec(
         name="here_hz",
         kind="int",
         default=1800,
@@ -158,18 +125,6 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Pitch of the high beep (you are at the braking point).",
     ),
     SettingSpec(
-        name="here_ms",
-        kind="int",
-        default=120,
-        tab="Cues",
-        label="Brake-now length",
-        lo=30,
-        hi=500,
-        step=10,
-        suffix=" ms",
-        tip="Length of the high beep.",
-    ),
-    SettingSpec(
         name="brake_on",
         kind="float",
         default=0.25,
@@ -179,17 +134,6 @@ SPECS: tuple[SettingSpec, ...] = (
         hi=0.95,
         step=0.05,
         tip="Pedal position that counts as the start of a braking event.",
-    ),
-    SettingSpec(
-        name="brake_off",
-        kind="float",
-        default=0.1,
-        tab="Detection",
-        label="Braking ends below",
-        lo=0.01,
-        hi=0.9,
-        step=0.01,
-        tip="Pedal position below which a braking event ends.",
     ),
     SettingSpec(
         name="min_peak",
@@ -254,14 +198,6 @@ SPECS: tuple[SettingSpec, ...] = (
         special="Off",
     ),
     SettingSpec(
-        name="skip_invalid_sectors",
-        kind="bool",
-        default=True,
-        tab="Sectors",
-        label="Skip sector if lap invalidated",
-        tip="A sector where the game invalidates your lap (track limits, cuts) is not saved.",
-    ),
-    SettingSpec(
         name="top_runs",
         kind="int",
         default=3,
@@ -270,16 +206,6 @@ SPECS: tuple[SettingSpec, ...] = (
         lo=1,
         hi=10,
         tip="Cue points are the median of these runs. 1 = copy your single best run.",
-    ),
-    SettingSpec(
-        name="own_runs_to_replace_ref",
-        kind="int",
-        default=2,
-        tab="Sectors",
-        label="Own runs before leaving reference",
-        lo=1,
-        hi=10,
-        tip="With a new car, borrowed points are used until you have this many runs.",
     ),
     SettingSpec(
         name="reference_car",
@@ -370,7 +296,7 @@ SPECS: tuple[SettingSpec, ...] = (
         name="telemetry_hz",
         kind="float",
         default=60.0,
-        tab="App",
+        tab="Diagnostics",
         label="Telemetry rate",
         lo=5.0,
         hi=60.0,
