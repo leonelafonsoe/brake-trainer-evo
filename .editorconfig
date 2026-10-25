@@ -14,6 +14,8 @@ indent_size = 2
 [*.md]
 trim_trailing_whitespace = false
 
-# Real game-log fixtures are evidence: preserve their trailing spaces.
-[tests/fixtures/game_log/*.txt]
+# Real fixtures are evidence: preserve their exact bytes, including trailing spaces and the
+# absence of a final newline.
+[tests/fixtures/**]
+insert_final_newline = false
 trim_trailing_whitespace = false

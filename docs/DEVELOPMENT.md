@@ -95,6 +95,7 @@ regenerate the settings reference after changing a setting.
 | Worker thread, queueing, shutdown | `tests/test_worker.py` |
 | Overlay states and settings form | `tests/test_overlay.py`, `tests/test_settings_window.py` |
 | Composition root, single instance | `tests/test_app.py` |
+| Pure layers do not import Qt/adapters | `tests/test_architecture.py` |
 | Settings application, save warnings, shutdown | `tests/test_controller.py` |
 | Status line and widget geometry | `tests/test_status.py`, `tests/test_widgets.py` |
 | Docs, links, release tools, generated files | `tests/test_docs.py`, `tests/test_docs_links.py`, `tests/test_release_tools.py` |

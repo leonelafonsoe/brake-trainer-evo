@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.ico binary
 *.png binary
+# Real game-log and track-data excerpts are evidence: keep the exact bytes the game/app wrote.
+tests/fixtures/** -text

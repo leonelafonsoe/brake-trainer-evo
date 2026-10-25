@@ -266,6 +266,16 @@ def test_the_installer_has_metadata_and_detects_a_running_app():
     assert "CreateMutexW" in app and "BrakeTrainerEvo.App" in app
 
 
+def test_nightly_and_release_audit_the_locked_dependencies():
+    gates = (ROOT / ".github" / "actions" / "gates" / "action.yml").read_text(encoding="utf-8")
+    assert "pip-audit" in gates
+    assert "inputs.audit == 'true'" in gates
+
+    for name in ("nightly.yml", "release.yml"):
+        workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        assert 'audit: "true"' in workflow, name
+
+
 def test_the_security_workflow_audits_the_locked_dependencies():
     workflow = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
 

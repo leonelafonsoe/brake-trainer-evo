@@ -41,6 +41,7 @@ jobs:
         uses: ./.github/actions/gates
         with:
           coverage: "true"
+          audit: "true"
 
       - name: Build the executable
         env:

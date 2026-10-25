@@ -14,6 +14,10 @@ inputs:
     description: Measure coverage, enforce the floor and write coverage.xml.
     required: false
     default: "false"
+  audit:
+    description: Audit the locked dependencies with pip-audit.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -43,3 +47,11 @@ runs:
       shell: bash
       # The floor lives in pyproject.toml, so a local run enforces the same number as CI.
       run: uv run --locked --no-sync pytest -q -W error --cov --cov-report=term-missing --cov-report=xml
+    - name: Dependency audit
+      if: inputs.audit == 'true'
+      shell: bash
+      run: |
+        uv export --locked --all-extras --no-hashes --format requirements-txt \
+          > "$RUNNER_TEMP/requirements-audit.txt"
+        uv run --locked --no-sync pip-audit -r "$RUNNER_TEMP/requirements-audit.txt" \
+          --no-deps --disable-pip --desc

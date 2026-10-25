@@ -22,6 +22,10 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   match the rest of the window. Apply is the default dialog button (Enter no longer risks Reset),
   the overlay buttons have accessible names, and the default overlay position follows the screen
   under the cursor.
+- An architecture test enforces that the pure layers never import Qt, the UI or the adapters, and
+  real fixture bytes are marked binary in Git so a Windows checkout cannot rewrite them.
+- Nightly and Release run `pip-audit` against the locked dependencies, and the weekly Security
+  workflow is back on the same `setup-python` release as the other workflows.
 
 ### Fixed
 
