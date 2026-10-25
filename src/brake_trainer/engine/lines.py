@@ -149,37 +149,38 @@ class LinesMixin:
         belong to the track.
         """
         data = self._data
-        if data is None or index not in (0, 1):
-            return
-        if not self._settings.use_game_log:
+        if data is None or index not in (0, 1) or not self._settings.use_game_log:
             return
         if data.boundaries is not None:
-            # Already learned: the lines stay where they are. The game's own split still says where
-            # its line really is, so compare it with the learned one (verbose log only). Nothing is
-            # decided here, so the history is not touched at all unless that log is being written.
-            if log.isEnabledFor(logging.DEBUG):
-                found = self._at_time(at)
-                if found is None:
-                    log.debug(
-                        "splits: index %d written at %.3f is older than the kept history", index, at
-                    )
-                elif found.in_pit or not _split_position_ok(index, found.pos):
-                    log.debug(
-                        "splits: index %d at %.1f%% of the lap is not a sector line "
-                        "(in pit=%s, lap %d)",
-                        index,
-                        found.pos * 100.0,
-                        found.in_pit,
-                        found.lap,
-                    )
-                else:
-                    self._audit_split(index, found.lap, at, found)
+            self._audit_later_split(index, at)
             return
         if data.total_runs():
             # A stored run is timed between two lines, so moving them would silently re-file every
             # sector. Learning only ever happens on a fresh entry, before any run is saved;
             # deleting the track's data is what learns the lines again.
             return
+        self._learn_split(index, at)
+
+    def _audit_later_split(self: BrakeEngine, index: int, at: float) -> None:  # type: ignore[misc]
+        """Compare a split with the line already learned. Verbose log only; never moves a line."""
+        if not log.isEnabledFor(logging.DEBUG):
+            return
+        found = self._at_time(at)
+        if found is None:
+            log.debug("splits: index %d written at %.3f is older than the kept history", index, at)
+        elif found.in_pit or not _split_position_ok(index, found.pos):
+            log.debug(
+                "splits: index %d at %.1f%% of the lap is not a sector line (in pit=%s, lap %d)",
+                index,
+                found.pos * 100.0,
+                found.in_pit,
+                found.lap,
+            )
+        else:
+            self._audit_split(index, found.lap, at, found)
+
+    def _learn_split(self: BrakeEngine, index: int, at: float) -> None:  # type: ignore[misc]
+        """Learn one inner line from a split on a fresh entry, once both lines share a lap."""
         found = self._at_time(at)
         if found is None:
             log.debug("splits: index %d written at %.3f is older than the kept history", index, at)
