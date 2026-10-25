@@ -143,7 +143,8 @@ src/brake_trainer/
   models.py        data types
   config.py        settings (frozen dataclass, validated, JSON)
   settings_spec.py settings metadata: labels, ranges, tabs and defaults
-  engine.py        braking-point learning and cues (pure logic)
+  engine/          braking-point learning and cues (pure logic: engine, passes, lines,
+                   limits, cues, constants)
   timeline.py      position history and interpolated line crossings
   storage.py       per track + car persistence
   telemetry.py     acevo-sdk adapter, restart watchdog, game-exit detection
