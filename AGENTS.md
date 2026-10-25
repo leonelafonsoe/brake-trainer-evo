@@ -44,6 +44,7 @@ uv run pre-commit run --all-files
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy
+uv run mypy --platform win32
 uv run pytest -q -W error
 uv run pytest -q -W error --cov   # enforces the coverage floor
 uv run python scripts/gen_settings_doc.py --check

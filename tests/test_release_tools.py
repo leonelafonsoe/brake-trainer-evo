@@ -302,6 +302,12 @@ def test_the_installer_has_metadata_and_detects_a_running_app():
     assert "CreateMutexW" in app and "BrakeTrainerEvo.App" in app
 
 
+def test_the_gates_check_windows_types():
+    gates = (ROOT / ".github" / "actions" / "gates" / "action.yml").read_text(encoding="utf-8")
+
+    assert "mypy --platform win32" in gates
+
+
 def test_every_windows_build_is_smoke_tested():
     for name in ("ci.yml", "nightly.yml", "release.yml"):
         workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")

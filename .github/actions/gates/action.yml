@@ -34,6 +34,11 @@ runs:
       if: inputs.static == 'true'
       shell: bash
       run: uv run --locked --no-sync mypy
+    - name: Types (Windows)
+      if: inputs.static == 'true'
+      shell: bash
+      # Run on Linux too: ctypes.windll and the Win32 stubs are otherwise only checked by Nightly.
+      run: uv run --locked --no-sync mypy --platform win32
     - name: Generated settings reference
       if: inputs.static == 'true'
       shell: bash

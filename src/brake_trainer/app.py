@@ -38,7 +38,7 @@ def _create_app_mutex() -> bool:
 
         kernel32 = ctypes.windll.kernel32
         _app_mutex = kernel32.CreateMutexW(None, False, "BrakeTrainerEvo.App")
-        return kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+        return bool(kernel32.GetLastError() != 183)  # ERROR_ALREADY_EXISTS
     except Exception:  # pragma: no cover - ctypes failure must not stop the app
         return True
 
