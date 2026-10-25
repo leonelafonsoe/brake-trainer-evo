@@ -1,406 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import os
-import time
-from dataclasses import replace
-from datetime import datetime
-from pathlib import Path
 
 import pytest
 
-from brake_trainer import gamelog as gamelog_module
 from brake_trainer.config import Settings
 from brake_trainer.engine import _HISTORY_S, N_SECTORS, BrakeEngine, _LapRun
-from brake_trainer.gamelog import (
-    DEFAULT_LOG_DIR,
-    REPORTED_CUT,
-    GameLogSupervisor,
-    GameLogTail,
-    LogState,
-    line_time,
-    parse_line,
-)
 from brake_trainer.models import SectorRun, SectorStatus, TrackData
 from brake_trainer.timeline import crossing_between
 
 from .conftest import DT, LENGTH, Driver
-
-PLAYER = "0a1b2c3d-1111-2222-3333-444455556666"
-AI = "ffffffff-aaaa-bbbb-cccc-000011112222"
-CONNECT = (
-    "[2026-10-14 21:00:00.100] [network] [info] 76561198000000001 connected (true) on car "
-    f"ferrari_296_gtb, with new carId {PLAYER}"
-)
-AI_CONNECT = (
-    f"[2026-10-14 21:00:00.200] [network] [info] 0 connected (false) on car bmw_m4, "
-    f"with new carId {AI}"
-)
-# One HUD notification per cut, written when the game judges it (build 0.5+).
-NOTIFICATION = (
-    "[2026-10-16 20:41:38.703] [gameface] [info] "
-    "Adding notification UINotificationType_SessionPenalty "
-)
-# The end of one of the game's three sectors, written the moment the car crosses its line.
-SPLIT = (
-    "[2026-10-16 20:41:00.000] [gameplay] [info] "
-    "Received split: isStart false, isEnd false, index 1 "
-)
-# Real build 0.9.1 excerpts; see tests/fixtures/game_log/README.md.
-FIXTURES = Path(__file__).with_name("fixtures") / "game_log"
-
-
-def limits(car: str, tyres: int, inside: float) -> str:
-    return (
-        f"[2026-10-14 21:05:00.000] [physics] [info] Limits: car {car} "
-        f"tyres out changed: 3 -> {tyres} with {inside}m inside"
-    )
-
-
-def player_state() -> LogState:
-    state = LogState()
-    parse_line(CONNECT, state)
-    parse_line(AI_CONNECT, state)
-    return state
-
-
-def test_the_games_cut_notification_is_reported():
-    event = parse_line(NOTIFICATION, LogState())
-    assert event is not None and event.cut and event.split == -1
-    assert parse_line("[x] some other line", LogState()) is None
-
-
-def test_the_penalty_type_warning_is_not_a_second_cut():
-    # The current build follows every SessionPenalty notification with
-    # `false {PENALTY_CLEARED_KEY}`. That line says which HUD text the notification carries, not
-    # that no cut happened: the notification is the cut verdict, and the warning adds nothing.
-    state = LogState()
-    assert parse_line(NOTIFICATION, state)
-    cleared = "[2026-10-23 01:34:55.051] [gameface] [warning] false {PENALTY_CLEARED_KEY} #296 "
-    assert parse_line(cleared, state) is None
-
-
-def _parse_fixture(name: str) -> tuple[LogState, list[tuple[str, int]]]:
-    """Parse a real game-log excerpt, returning its state and ``(cut, split)`` events."""
-    state = LogState()
-    events: list[tuple[str, int]] = []
-    for line in (FIXTURES / name).read_text(encoding="utf-8").splitlines():
-        event = parse_line(line, state)
-        if event is not None:
-            events.append((event.cut, event.split))
-    return state, events
-
-
-def test_a_real_monza_notification_block_reports_one_cut_after_its_split():
-    _, events = _parse_fixture("notification_block.txt")
-    assert events == [("", 0), (REPORTED_CUT, -1)]
-
-
-def test_real_monza_sector_lines_report_all_three_indices():
-    _, events = _parse_fixture("splits.txt")
-    assert events == [("", 0), ("", 1), ("", 2)]
-
-
-def test_a_real_connect_line_learns_the_players_car():
-    state, events = _parse_fixture("connect.txt")
-    assert events == []
-    assert state.player_uuids == {"0123456789abcdeffedcba9876543210"}
-
-
-def test_real_lines_around_a_notification_do_not_add_a_second_event():
-    _, events = _parse_fixture("noise.txt")
-    assert events == []
-
-
-def test_the_games_sector_splits_are_reported():
-    event = parse_line(SPLIT, LogState())
-    assert event is not None and event.split == 1 and event.cut == ""
-    # The end of the third sector is the start/finish line, which is not a sector line to learn.
-    last = parse_line("[t] Received split: isStart true, isEnd true, index 2 ", LogState())
-    assert last is not None and last.split == 2
-
-
-def test_a_violation_is_all_four_tyres_out_two_metres_or_more_for_the_player():
-    state = player_state()
-    assert parse_line(limits(PLAYER, 4, 2.62), state)
-    assert parse_line(limits(PLAYER, 4, 2.0), state)
-    assert not parse_line(limits(PLAYER, 4, 1.4), state)  # brief excursion: tolerated
-    assert not parse_line(limits(PLAYER, 3, 3.0), state)  # not all four tyres
-    assert not parse_line(limits(PLAYER, 4, 12.52), state)  # teleported to the pits
-    assert not parse_line(limits(AI, 4, 3.0), state)  # someone else's car
-    # A limits line this build cannot read is ignored, not guessed at.
-    assert not parse_line("[t] Limits: car broken tyres out changed", state)
-
-
-def test_the_player_is_the_car_with_a_steam_id_and_unknown_cars_are_ignored():
-    state = LogState()
-    assert not parse_line(limits(PLAYER, 4, 3.0), state)  # nothing known yet
-    parse_line(CONNECT, state)
-    assert parse_line(limits(PLAYER, 4, 3.0), state)
-    # the first car with a non-Steam id is the player's when no Steam id is ever seen
-    offline = LogState()
-    parse_line(AI_CONNECT, offline)
-    assert parse_line(limits(AI, 4, 3.0), offline)
-
-
-async def _wait(condition, timeout=3.0):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        if condition():
-            return True
-        await asyncio.sleep(0.01)
-    return False
-
-
-async def test_tail_reports_only_new_cuts_and_follows_newer_logs(tmp_path: Path):
-    old = tmp_path / "old.txt"
-    old.write_text("\n".join([CONNECT, NOTIFICATION]) + "\n", encoding="utf-8")
-    hits: list[tuple[str, float]] = []
-    tail = GameLogTail(tmp_path, lambda reason, at: hits.append((reason, at)))
-    await tail.poll_once()
-    assert hits == []  # history is not replayed
-
-    with old.open("a", encoding="utf-8") as fh:
-        fh.write(limits(AI, 4, 3.0) + "\n")  # not the player
-        fh.write(NOTIFICATION[:30])  # a line written in two pieces
-    await tail.poll_once()
-    assert hits == []
-
-    with old.open("a", encoding="utf-8") as fh:
-        fh.write(NOTIFICATION[30:] + "\n")
-    await tail.poll_once()
-    assert len(hits) == 1
-    # The time is the line's own, not when it was read: the game buffers this log.
-    assert hits[0][1] == datetime(2026, 10, 16, 20, 41, 38, 703000).timestamp()
-
-    new = tmp_path / "new.txt"  # the game was restarted
-    new.write_text(CONNECT + "\n" + NOTIFICATION + "\n", encoding="utf-8")
-    os.utime(new, (time.time() + 5, time.time() + 5))
-    await tail.poll_once()
-    assert len(hits) == 1  # its first content is history too
-
-    with new.open("a", encoding="utf-8") as fh:
-        fh.write(NOTIFICATION + "\n")
-    await tail.poll_once()
-    assert len(hits) == 2
-
-
-async def test_tail_reports_the_sector_splits_it_reads(tmp_path: Path):
-    log = tmp_path / "log.txt"
-    log.write_text(CONNECT + "\n", encoding="utf-8")
-    splits: list[tuple[int, float]] = []
-    tail = GameLogTail(
-        tmp_path,
-        lambda reason, at: None,
-        on_split=lambda index, at: splits.append((index, at)),
-    )
-    await tail.poll_once()
-    assert splits == []  # history is not replayed
-
-    with log.open("a", encoding="utf-8") as fh:
-        fh.write(SPLIT + "\n")
-    await tail.poll_once()
-    assert len(splits) == 1
-    assert splits[0][0] == 1
-    assert splits[0][1] == datetime(2026, 10, 16, 20, 41, 0, 0).timestamp()
-
-
-async def test_run_reads_new_lines_and_stops_when_asked(tmp_path: Path):
-    # poll_once() is the test seam; run() is what the worker actually uses. Keep the loop itself
-    # covered, including the fast path that only reads and does not rescan the folder.
-    log = tmp_path / "log.txt"
-    log.write_text(CONNECT + "\n", encoding="utf-8")
-    hits: list[tuple[str, float]] = []
-    tail = GameLogTail(
-        tmp_path, lambda reason, at: hits.append((reason, at)), poll_s=0.01, rescan_s=10.0
-    )
-    stop = asyncio.Event()
-    task = asyncio.create_task(tail.run(stop))
-    assert await _wait(lambda: tail._live)
-    assert hits == []  # history is not replayed
-
-    with log.open("a", encoding="utf-8") as fh:
-        fh.write(NOTIFICATION + "\n")
-    assert await _wait(lambda: len(hits) == 1)
-    stop.set()
-    await asyncio.wait_for(task, 2)
-
-
-async def test_a_log_that_disappears_between_scans_is_ignored(tmp_path: Path):
-    # The game can rotate or delete its log while the reader is between scans. That is a missed
-    # read, not a crash.
-    log = tmp_path / "log.txt"
-    log.write_text(CONNECT + "\n", encoding="utf-8")
-    tail = GameLogTail(tmp_path, lambda reason, at: None)
-    await tail.poll_once()
-
-    log.unlink()
-    await tail.poll_once()
-
-    assert tail._path == log  # it keeps the path it knew; the next scan picks up a new file
-
-
-def test_a_line_time_is_read_from_the_line_and_missing_ones_are_not_guessed():
-    assert line_time(NOTIFICATION) == datetime(2026, 10, 16, 20, 41, 38, 703000).timestamp()
-    assert line_time("[no timestamp here]") is None
-    assert line_time("[2026-13-99 99:99:99.999] broken") is None
-
-
-async def test_tail_without_a_log_folder_just_says_so(tmp_path: Path):
-    messages: list[str] = []
-    tail = GameLogTail(
-        tmp_path / "missing",
-        lambda reason, at: None,
-        messages.append,
-    )
-    await tail.poll_once()
-    assert any("No game log found" in m for m in messages)
-
-
-async def test_a_larger_replacement_file_is_read_from_the_top_not_the_old_offset(
-    tmp_path: Path,
-):
-    # The game starts a new log on every run; it can be larger than the one before. The old code
-    # only reset when the file was *smaller*, so it resumed at the previous offset and reported the
-    # middle of the new log's history as if it had just happened.
-    log = tmp_path / "log.txt"
-    original = CONNECT + "\n"
-    log.write_text(original, encoding="utf-8")
-    hits: list[tuple[str, float]] = []
-    tail = GameLogTail(tmp_path, lambda reason, at: hits.append((reason, at)))
-    await tail.poll_once()
-    assert tail._live
-
-    replacement = tmp_path / "next.txt"
-    replacement.write_text(original + NOTIFICATION + "\n" + "x" * 200 + "\n", encoding="utf-8")
-    os.replace(replacement, log)  # a new inode, larger than the old file
-    await tail.poll_once()
-    assert hits == []  # the new file's existing content is history too
-
-    with log.open("a", encoding="utf-8") as fh:
-        fh.write(NOTIFICATION + "\n")
-    await tail.poll_once()
-    assert len(hits) == 1
-
-
-async def test_only_the_start_of_a_large_log_is_read(tmp_path: Path, monkeypatch):
-    # A stale log can be megabytes long. Only its top can name the player's car, and nothing in it
-    # can be reported, so the rest is skipped instead of read and parsed line by line.
-    monkeypatch.setattr(gamelog_module, "_MAX_FIRST_READ_BYTES", 300)
-    log = tmp_path / "log.txt"
-    log.write_text(CONNECT + "\n" + "x" * 500 + "\n" + NOTIFICATION + "\n", encoding="utf-8")
-    hits: list[tuple[str, float]] = []
-    tail = GameLogTail(tmp_path, lambda reason, at: hits.append((reason, at)))
-    await tail.poll_once()
-    assert tail._live
-    assert tail._offset == log.stat().st_size  # the rest of the history was skipped
-    assert hits == []
-
-    with log.open("a", encoding="utf-8") as fh:
-        fh.write(NOTIFICATION + "\n")
-    await tail.poll_once()
-    assert len(hits) == 1
-
-
-async def test_an_undated_event_is_skipped_and_warned_about_once(tmp_path: Path):
-    # The line's own time is what places it. Without one, using the read time would file a buffered
-    # event minutes late, so it is dropped - and the driver is told why, once.
-    log = tmp_path / "log.txt"
-    log.write_text(CONNECT + "\n", encoding="utf-8")
-    hits: list[tuple[str, float]] = []
-    messages: list[str] = []
-    tail = GameLogTail(tmp_path, lambda reason, at: hits.append((reason, at)), messages.append)
-    await tail.poll_once()
-    assert tail._live
-
-    with log.open("a", encoding="utf-8") as fh:
-        fh.write(
-            "[gameface] [info] Adding notification UINotificationType_SessionPenalty\n"
-            "[gameface] [info] Adding notification UINotificationType_SessionPenalty\n"
-        )
-    await tail.poll_once()
-    assert hits == []
-    assert messages.count("Ignoring game-log lines without a timestamp") == 1
-
-    with log.open("a", encoding="utf-8") as fh:
-        fh.write(NOTIFICATION + "\n")
-    await tail.poll_once()
-    assert len(hits) == 1
-
-
-class FakeTail:
-    """Stands in for the real tail: records its folder and when it was stopped."""
-
-    created: list[FakeTail] = []
-
-    def __init__(self, directory, on_cut, on_message, on_split=lambda index, at: None) -> None:
-        self.directory = directory
-        self.started = asyncio.Event()
-        self.finished = asyncio.Event()
-        FakeTail.created.append(self)
-
-    async def run(self, stop: asyncio.Event) -> None:
-        self.started.set()
-        try:
-            await stop.wait()
-        finally:
-            self.finished.set()
-
-
-async def test_the_supervisor_follows_runtime_settings(tmp_path: Path, monkeypatch):
-    FakeTail.created.clear()
-    monkeypatch.setattr(gamelog_module, "GameLogTail", FakeTail)
-    current = {"settings": Settings(use_game_log=False)}
-    stop = asyncio.Event()
-    supervisor = GameLogSupervisor(
-        lambda: current["settings"], lambda reason, at: None, poll_s=0.01
-    )
-    task = asyncio.create_task(supervisor.run(stop))
-    await asyncio.sleep(0.05)
-    assert FakeTail.created == []  # disabled: no tail at all
-
-    current["settings"] = replace(current["settings"], use_game_log=True)
-    assert await _wait(lambda: len(FakeTail.created) == 1)
-    first = FakeTail.created[0]
-    assert first.directory == DEFAULT_LOG_DIR  # empty folder = the usual place
-
-    current["settings"] = replace(current["settings"], game_log_dir=str(tmp_path))
-    assert await _wait(lambda: len(FakeTail.created) == 2)
-    assert first.finished.is_set()  # the old tail was stopped, not left running
-    assert FakeTail.created[1].directory == tmp_path
-
-    current["settings"] = replace(current["settings"], use_game_log=False)
-    assert await _wait(lambda: FakeTail.created[1].finished.is_set())
-
-    stop.set()
-    await asyncio.wait_for(task, 2)
-
-
-async def test_cancelling_the_supervisor_stops_its_tail(monkeypatch):
-    FakeTail.created.clear()
-    monkeypatch.setattr(gamelog_module, "GameLogTail", FakeTail)
-    stop = asyncio.Event()
-    supervisor = GameLogSupervisor(
-        lambda: Settings(use_game_log=True), lambda reason, at: None, poll_s=0.01
-    )
-    task = asyncio.create_task(supervisor.run(stop))
-    assert await _wait(lambda: len(FakeTail.created) == 1)
-
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert FakeTail.created[0].finished.is_set()  # no tail outlives the worker's loop
-
-
-# ---- the engine side
-
-
-CORNERS = [0.20, 0.50, 0.80]
-# The real Monza lines and lap length from the stored Ferrari 296 GT3 entry: its S1/S2 split is
-# 1949 m and the S2/S3 split 3804 m of a 5793 m lap.
-MONZA_LENGTH_M = 5793.0
-MONZA_LINES = (0.33644832163172367, 0.6567313191597194)
+from .engine_helpers import CORNERS, MONZA_LENGTH_M, MONZA_LINES
 
 
 def _engine(store, boundaries=None, length=LENGTH, **settings):
@@ -443,34 +53,34 @@ def test_a_cut_is_dropped_in_the_sector_where_the_game_reports_it(store):
     assert any("S2 won't count" in m for m in messages)
 
 
-@pytest.mark.parametrize("reported_at", [0.671, 0.683, 0.716, 0.726])
-def test_a_monza_cut_at_ascari_drops_s3_not_the_sector_behind_it(store, reported_at):
-    # The field logs from the old build, which trusted the report position, put cuts at 67.1% and
-    # 68.3% (Ascari) and the app was told about a cut at 71.6%/72.6% (curve 10, the last Ascari
-    # before Parabolica). All are past the 65.67% S2/S3 line, so all are S3. Reading the report
-    # back by a fixed 500 m moved them into S2 - the wrong sector on the bar.
+# The field logs from the old build, which trusted the report position, put cuts at 67.1% and
+# 68.3% (Ascari) and the app was told about a cut at 71.6%/72.6% (curve 10, the last Ascari
+# before Parabolica). All are past the 65.67% S2/S3 line, so all are S3. Reading the report
+# back by a fixed 500 m moved them into S2 - the wrong sector on the bar.
+# 36.3% of the app's lap is Lesmo 1, in S2. A fixed 500 m read-back put it at 27.7%, in S1, and
+# took back the clean S1 run instead of the cut S2 one.
+MONZA_CUTS = [
+    pytest.param(0.671, 2, id="ascari-67.1"),
+    pytest.param(0.683, 2, id="ascari-68.3"),
+    pytest.param(0.716, 2, id="ascari-71.6"),
+    pytest.param(0.726, 2, id="ascari-72.6"),
+    pytest.param(0.363, 1, id="lesmo-36.3"),
+]
+
+
+@pytest.mark.parametrize(("reported_at", "sector"), MONZA_CUTS)
+def test_a_monza_cut_drops_the_sector_the_game_reported_it_in(store, reported_at, sector):
     engine, driver, _, messages = _engine(store, boundaries=MONZA_LINES, length=MONZA_LENGTH_M)
     driver.lap(CORNERS, speed_fn=lambda p: 215, stop=reported_at)
     engine.report_infraction("the game reported a cut", driver.t)
 
     lap = engine._lap_no
-    assert (lap, 2) in engine._invalid_sectors  # S3, where the game reported the cut
-    assert (lap, 1) not in engine._invalid_sectors  # not S2, a fixed distance behind it
-    assert any("S3" in m and ("won't count" in m or "taken back" in m) for m in messages)
-    assert not any("S2" in m for m in messages if "reported a cut" in m)
-
-
-def test_a_monza_cut_at_lesmo_drops_s2_not_s1(store):
-    # 36.3% of the app's lap is Lesmo 1, in S2. A fixed 500 m read-back put it at 27.7%, in S1, and
-    # took back the clean S1 run instead of the cut S2 one.
-    engine, driver, _, messages = _engine(store, boundaries=MONZA_LINES, length=MONZA_LENGTH_M)
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.363)
-    engine.report_infraction("the game reported a cut", driver.t)
-
-    lap = engine._lap_no
-    assert (lap, 1) in engine._invalid_sectors  # S2, where the game reported the cut
-    assert (lap, 0) not in engine._invalid_sectors  # not S1, a fixed distance behind it
-    assert any("S2" in m and ("won't count" in m or "taken back" in m) for m in messages)
+    assert (lap, sector) in engine._invalid_sectors  # where the game reported the cut
+    assert (lap, sector - 1) not in engine._invalid_sectors  # not a fixed distance behind it
+    assert any(
+        f"S{sector + 1}" in m and ("won't count" in m or "taken back" in m) for m in messages
+    )
+    assert not any(f"S{sector}" in m for m in messages if "reported a cut" in m)
 
 
 def test_a_monza_cut_at_ascari_read_late_takes_back_s3_not_s2(store):
@@ -519,22 +129,33 @@ def test_a_cut_read_late_is_still_dropped_in_the_sector_it_happened_in(store):
     assert engine.snapshot().sector == 2
 
 
-def test_two_cuts_read_in_one_batch_each_drop_their_own_sector(store):
-    # A buffered log can hold a minute of lines, so a batch can carry cuts from far apart. Each is
-    # attributed from its own time: both sectors go, and the clean one between them stays.
-    engine, driver, _, _ = _engine(store)
-    driver.lap(CORNERS, speed_fn=lambda p: 215, stop=0.30)  # a cut judged in S1
-    first = driver.t
-    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.31, stop=0.90)  # one judged in S3
-    second = driver.t
-    driver.lap(CORNERS, speed_fn=lambda p: 215, start=0.91, stop=0.95)  # read only now, together
-    engine.report_infraction("the game reported a cut", first)
-    engine.report_infraction("the game reported a cut", second)
+# A buffered log can hold a minute of lines, so a batch can carry cuts from far apart. Each is
+# attributed from its own time: both sectors go, and the clean one between them stays.
+# Two reports can also arrive in one read, seconds apart, one in S1 and another in S2: the second
+# must not be folded into the first, even though the app saw them close together in time.
+TWO_CUT_BATCHES = [
+    pytest.param((0.30, 0.90), (0, 2), 1, id="one-batch-s1-and-s3"),
+    pytest.param((0.30, 0.60), (0, 1), None, id="seconds-apart-s1-and-s2"),
+]
+
+
+@pytest.mark.parametrize(("positions", "pending", "clean"), TWO_CUT_BATCHES)
+def test_two_cuts_read_in_one_batch_each_drop_their_own_sector(store, positions, pending, clean):
+    engine, driver, _, messages = _engine(store)
+    times = []
+    for position in positions:
+        driver.feed(position, 215.0, 0.0)
+        times.append(driver.t)
+    for at in times:  # read only now, together
+        engine.report_infraction("the game reported a cut", at)
+
+    assert sum("the game reported a cut" in m for m in messages) == 2
     status = engine.snapshot().sector_status
-    assert status[0] is SectorStatus.PENDING  # S1
-    assert status[2] is SectorStatus.PENDING  # S3, the sector being driven
-    assert status[1] is not SectorStatus.PENDING  # S2, between them, was clean
-    assert engine.snapshot().pass_flag == "off track"  # S3 is where the second one is attributed
+    for sector in pending:
+        assert status[sector] is SectorStatus.PENDING
+    if clean is not None:  # the sector between the two, where the batch has one
+        assert status[clean] is not SectorStatus.PENDING
+    assert engine.snapshot().pass_flag == "off track"  # the sector being driven is one of them
 
 
 def test_a_cut_read_a_lap_late_takes_back_that_laps_run_not_a_later_ones(store):
@@ -636,24 +257,6 @@ def test_two_late_reported_cuts_drop_only_their_own_sectors(store):
     assert stored_times(store, 1) == before[1]  # S2's faster run was taken back
     assert by_sector[2].duration is None and "off track" in by_sector[2].note  # S3 dropped
     assert by_sector[0].accepted  # the clean sector is kept
-
-
-def test_two_cuts_reported_seconds_apart_in_different_sectors_both_count(store):
-    # Two reports can arrive in one read, seconds apart: one cut in S1 and another in S2. The second
-    # must not be folded into the first, even though the app saw them close together in time.
-    engine, driver, _, messages = _engine(store)
-    driver.feed(0.30, 150.0, 0.0)
-    first = driver.t
-    driver.feed(0.60, 150.0, 0.0)
-    second = driver.t
-
-    engine.report_infraction("the game reported a cut", first)
-    engine.report_infraction("the game reported a cut", second)
-
-    assert sum("the game reported a cut" in m for m in messages) == 2
-    status = engine.snapshot().sector_status
-    assert status[0] is SectorStatus.PENDING  # S1, where the first report was written
-    assert status[1] is SectorStatus.PENDING  # S2, where the second was written
 
 
 def test_a_cut_reported_in_the_frame_that_wraps_the_line_stays_in_the_laps_last_sector(store):

@@ -77,10 +77,11 @@ regenerate the settings reference after changing a setting.
 
 | Area | Tests |
 | --- | --- |
-| Engine, sectors, cues, early passes | `tests/test_engine.py`, `tests/test_data_edits.py` |
+| Engine, sectors, cues, early passes | `tests/test_engine_learning.py`, `tests/test_sector_lines.py`, `tests/test_track_limits.py`, `tests/test_data_edits.py` |
+| Storage, save failures and stored/legacy data | `tests/test_engine_storage.py`, `tests/test_config_storage.py` |
 | Position history and crossings | `tests/test_timeline.py` |
-| Storage, settings, quarantine and save failures | `tests/test_config_storage.py` |
-| Game-log parsing and tail lifecycle | `tests/test_gamelog.py` |
+| Game-log parsing and tail lifecycle | `tests/test_gamelog_parser.py`, `tests/test_gamelog_tail.py` |
+| Cut attribution from the log and the engine | `tests/test_cut_attribution.py` |
 | Telemetry reader, audio, process probing | `tests/test_telemetry_audio.py` |
 | Worker thread, queueing, shutdown | `tests/test_worker.py` |
 | Overlay states and settings form | `tests/test_overlay.py`, `tests/test_settings_window.py` |
