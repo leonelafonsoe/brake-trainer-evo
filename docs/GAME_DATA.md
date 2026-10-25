@@ -290,9 +290,9 @@ any older duplicate holding the same track and car.
 
 - **Delete part of the data**: Settings -> Data shows each track and car as a tree: entry, then its
   sectors, then the runs kept for each sector. Select a single run (for example a time you got in a
-  slipstream), a whole sector, or a whole entry, and press "Delete selected". Deleting an entry asks
-  for confirmation. The change is applied by the running app itself, so it is not undone by the app
-  saving its own copy.
+  slipstream), a whole sector, or a whole entry, and press "Delete selected". Deleting an entry or a
+  sector asks for confirmation. The change is applied by the running app itself, so it is not undone
+  by the app saving its own copy.
 - **Start over**: delete the files in `data\`. Files the app could not read are kept under
   `data\quarantine\`; delete those too if you do not need them for support.
 - **Reset settings**: delete `settings.json` (and any `settings.invalid-*.json` or

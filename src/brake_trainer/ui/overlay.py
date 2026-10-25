@@ -126,6 +126,9 @@ class OverlayWindow(QWidget):
         nxt.addWidget(_caption("NEXT BRAKE"))
         nxt.addStretch(1)
         self._distance = _label("—", size=20, bold=True)
+        # The phase words use a smaller font; a fixed height keeps the row (and the window) still.
+        self._distance.setFixedHeight(24)
+        self._distance.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         nxt.addWidget(self._distance)
         root.addLayout(nxt)
         self._approach = BarWidget(height=4)
