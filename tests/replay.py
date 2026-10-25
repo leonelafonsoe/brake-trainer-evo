@@ -49,13 +49,14 @@ class Replay:
         car: str = "Car A",
         length_m: float = DEFAULT_LENGTH_M,
         dt: float = DEFAULT_DT,
+        start: float = 0.0,
     ) -> None:
         self.engine = engine
         self.track = track
         self.car = car
         self.length_m = length_m
         self.dt = dt
-        self.t = 0.0
+        self.t = start
         self._log = LogState()
 
     def feed(self, frame: ReplayFrame) -> None:
