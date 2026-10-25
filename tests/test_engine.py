@@ -1200,3 +1200,38 @@ def test_verbose_logging_traces_the_track_limit_signals(store, caplog):
     assert "race_cut up" in text and "gained=250 ms" in text
     assert "race_cut clear" in text
     assert "lap_valid None -> True" in text
+
+
+def test_each_accepted_sector_saves_and_rebuilds_zones_once(store, monkeypatch):
+    # On Windows with real-time antivirus, a second JSON write per sector can stall the telemetry
+    # loop. Keep the common path at one save and one rebuild, with a single rebuild when the session
+    # starts.
+    results = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0),
+        store,
+        on_sector=results.append,
+    )
+    driver = Driver(engine)
+    saves: list[int] = []
+    rebuilds: list[int] = []
+    real_save, real_rebuild = store.save, engine._rebuild_zones
+
+    def save(data):
+        saves.append(1)
+        return real_save(data)
+
+    def rebuild():
+        rebuilds.append(1)
+        real_rebuild()
+
+    monkeypatch.setattr(store, "save", save)
+    monkeypatch.setattr(engine, "_rebuild_zones", rebuild)
+
+    for _ in range(5):
+        driver.lap(CORNERS)
+
+    accepted = sum(1 for result in results if result.duration is not None and result.accepted)
+    assert accepted > 0
+    assert len(saves) == accepted
+    assert len(rebuilds) == accepted + 1  # the session's first zone build
