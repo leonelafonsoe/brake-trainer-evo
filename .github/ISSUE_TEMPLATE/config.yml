@@ -1,1 +1,6 @@
 blank_issues_enabled: true
+
+contact_links:
+  - name: Report a security issue privately
+    url: https://github.com/leonelafonsoe/brake-trainer-evo/security/advisories/new
+    about: Please do not report vulnerabilities as public issues.

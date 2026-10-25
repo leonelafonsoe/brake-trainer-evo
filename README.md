@@ -134,6 +134,7 @@ the top centre of the main screen.
 | [Data files](docs/DATA.md) | Where files live and the format of the learned data |
 | [About this project](docs/ABOUT.md) | How it was made (AI-written), what was verified and how |
 | [Releasing](docs/RELEASING.md) | How pull requests, nightly builds and versioned releases work |
+| [Security policy](SECURITY.md) | How to report a vulnerability privately |
 | [Changelog](CHANGELOG.md) | Version history |
 
 ## Project layout
