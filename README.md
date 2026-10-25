@@ -129,6 +129,7 @@ the top centre of the main screen.
 | [Settings reference](docs/SETTINGS.md) | Every setting with defaults, ranges and what it does |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Installation problems, no overlay, no sound, nothing learned |
 | [Design notes](docs/DESIGN.md) | Architecture and the reasoning behind the main decisions |
+| [Development](docs/DEVELOPMENT.md) | Setup, checks, architecture map and change recipes |
 | [Telemetry notes](docs/TELEMETRY.md) | Which game data is used, SDK quirks, caveats |
 | [Data files](docs/DATA.md) | Where files live and the format of the learned data |
 | [About this project](docs/ABOUT.md) | How it was made (AI-written), what was verified and how |
@@ -174,7 +175,9 @@ pytest              # tests
 py scripts/gen_settings_doc.py   # regenerate docs/SETTINGS.md after changing settings
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests are welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution rules and
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for setup, checks and change recipes. If you use an AI
+agent, [AGENTS.md](AGENTS.md) is the short working guide. Pull requests are welcome.
 
 ## Limitations
 

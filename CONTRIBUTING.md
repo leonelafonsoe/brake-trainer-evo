@@ -4,6 +4,10 @@ Bug reports, ideas and pull requests are welcome.
 
 ## Set up
 
+For the longer version — architecture, change recipes and debugging — see
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). If you are working with an AI agent, point it at
+[AGENTS.md](AGENTS.md).
+
 ```powershell
 git clone <your fork>
 cd brake-trainer-evo
