@@ -16,6 +16,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - Settings metadata now lives in one registry: defaults, ranges, labels, tips and tabs are defined
   once and used by the config loader, the settings window and the generated reference, so they
   cannot drift. The hidden overlay position is explicit rather than inferred.
+- The overlay updates its text and styles only when the value actually changes, instead of on every
+  telemetry frame.
 - The engine is now a package (`brake_trainer.engine/`) instead of one 1600-line module: session
   and storage, sector passes, sector lines, braking zones and track limits, cues and shared
   constants each live in their own file. The public import path is unchanged and behaviour is

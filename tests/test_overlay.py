@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel
 
 from brake_trainer.config import Settings
 from brake_trainer.models import SectorStatus, Snapshot, ViewState
@@ -131,3 +132,30 @@ def test_updating_settings_toggles_pause_and_window_flags(qapp):
     assert window._learn_btn.text() == "▶"
     assert window._learn_btn.toolTip() == "Resume learning"
     assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+
+
+def test_an_identical_state_does_not_rewrite_text_or_styles(qapp, monkeypatch):
+    # The worker publishes about 20 times a second. Repainting an unchanged label or stylesheet
+    # every frame is wasted work in the overlay, which sits over the game.
+    window = _window(qapp)
+    state = _live(next_zone_m=150.0, lead_m=90.0, speed_kmh=180.0)
+    window.update_state(state)
+
+    calls = {"style": 0, "text": 0}
+    original_style = QLabel.setStyleSheet
+    original_text = QLabel.setText
+
+    def style(widget, css):
+        calls["style"] += 1
+        original_style(widget, css)
+
+    def text(widget, value):
+        calls["text"] += 1
+        original_text(widget, value)
+
+    monkeypatch.setattr(QLabel, "setStyleSheet", style)
+    monkeypatch.setattr(QLabel, "setText", text)
+
+    window.update_state(state)
+
+    assert calls == {"style": 0, "text": 0}
