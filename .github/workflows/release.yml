@@ -60,7 +60,9 @@ jobs:
       - name: Build the installer
         id: installer
         run: |
-          choco install innosetup --no-progress -y
+          # Pinned deliberately: a new installer compiler is a release change to review, not a
+          # silent upgrade between releases. Bump this version in its own PR after a test build.
+          choco install innosetup --version=6.7.1 --no-progress -y
           # The package's major version and install location can change: find the compiler rather
           # than assuming "Inno Setup 6" under Program Files (x86).
           $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup*\ISCC.exe", "$env:ProgramFiles\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue |

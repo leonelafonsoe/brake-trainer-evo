@@ -182,6 +182,7 @@ def test_the_release_workflow_fails_closed_and_stamps_the_build():
     assert "SHA256SUMS.txt" in workflow
     assert "Checksum mismatch" in workflow
     assert "Missing release asset" in workflow
+    assert "choco install innosetup --version=6.7.1" in workflow  # pinned, not latest
     # The old checksum step silently skipped whichever file was absent.
     assert "-ErrorAction SilentlyContinue |\n            ForEach-Object" not in workflow
     # The publish list is exact, not a glob that could match an old artifact.
