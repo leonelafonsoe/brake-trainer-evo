@@ -21,13 +21,16 @@ from collections.abc import Callable
 from ..config import Settings
 from ..models import (
     CueKind,
+    DropReason,
     Sample,
+    SectorOutcome,
     SectorResult,
     SectorRun,
     SectorStatus,
     Snapshot,
     TrackData,
 )
+from ..outcomes import pass_flag_text
 from ..storage import DataEdit, TrackStore
 from ..timeline import (
     JUMP_LAP,
@@ -104,9 +107,9 @@ class BrakeEngine(PassesMixin, LinesMixin, LimitsMixin, CuesMixin):
         self._lap_runs: dict[tuple[int, int], _LapRun] = {}
         self._lines_lost: list[_LostPass] = []  # sectors the lines arrived too late for (yet)
         self._invalid_sectors: set[tuple[int, int]] = set()  # (lap, sector) the game invalidated
-        # (lap, sector) -> why it did not count, for sectors already out for another reason. A cut
+        # (lap, sector) -> the typed outcome, for sectors already out for another reason. A cut
         # reported later for one of them changes nothing, so its message is not repeated.
-        self._lap_notes: dict[tuple[int, int], str] = {}
+        self._lap_notes: dict[tuple[int, int], SectorOutcome] = {}
         # The previous sample's race-cut state, for the verbose log.
         self._prev_cut_active: bool = False
         self._prev_cut_gained: int = 0
@@ -293,9 +296,9 @@ class BrakeEngine(PassesMixin, LinesMixin, LimitsMixin, CuesMixin):
             if s.in_pit:
                 self._pass.clean = False
             if self._laps_done < st.warmup_laps:
-                self._flag("warm-up lap")
+                self._flag(DropReason.WARM_UP)
             if self._learning_lines:
-                self._flag("finding the sector lines")
+                self._flag(DropReason.FINDING_LINES)
             self._check_track_limits(
                 s, pos, None if jump or prev_pos is None else (prev_pos, prev_lap)
             )
@@ -345,7 +348,7 @@ class BrakeEngine(PassesMixin, LinesMixin, LimitsMixin, CuesMixin):
                 self._data and self._data.boundaries is None and self._data.total_runs()
             ),
             last_result_age=(s.t - self._last_result_t) if self._last_result else None,
-            pass_flag=self._pass_flag(),
+            pass_flag=pass_flag_text(self._pass_flag()),
             last_result=self._last_result,
             late_cut=self._late_cut,
             late_cut_age=(s.t - self._late_cut_t) if self._late_cut else None,

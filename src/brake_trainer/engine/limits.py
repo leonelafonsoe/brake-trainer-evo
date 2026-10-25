@@ -7,7 +7,7 @@ import statistics
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ..models import Sample, SectorRun, SectorStatus
+from ..models import DropReason, Sample, SectorRun, SectorStatus
 from .constants import _CUT_WARNING, _HISTORY_S
 
 if TYPE_CHECKING:
@@ -166,7 +166,7 @@ class LimitsMixin:
         self._lap_saw_off = True
         idx = self._sector_of(pos)
         quiet = self._already_out(self._lap_no, idx)  # before _attribute flags this pass
-        if self._attribute("off track", pos, self._lap_no) is None:
+        if self._attribute(DropReason.OFF_TRACK, pos, self._lap_no) is None:
             log.debug(
                 "limits: race cut at %.1f%% (S%d) is in a sector already invalidated: not said",
                 pos * 100.0,
@@ -207,7 +207,7 @@ class LimitsMixin:
         # count".
         run = self._pass if lap == self._lap_no and idx == self._sector else None
         already = self._already_out(lap, idx) or (run is not None and not run.clean)
-        took_back = self._attribute("lap invalidated", where, lap)
+        took_back = self._attribute(DropReason.LAP_INVALIDATED, where, lap)
         if took_back is None:
             log.debug(
                 "limits: lap flag fell at %.1f%% (S%d), a sector already invalidated: not said",
@@ -296,7 +296,7 @@ class LimitsMixin:
         where = pos
         idx = self._sector_of(where)
         quiet = self._already_out(lap, idx)  # before _attribute flags this pass
-        took_back = self._attribute("off track", where, lap)
+        took_back = self._attribute(DropReason.OFF_TRACK, where, lap)
         if took_back is None:
             log.debug(
                 "limits: %s written at %.3f invalidates S%d of %s, already invalidated: "
@@ -366,7 +366,7 @@ class LimitsMixin:
         outcome = "had its stored run taken back" if took_back else "won't count"
         return f"S{self._sector_of(where) + 1} {outcome}"
 
-    def _attribute(self: BrakeEngine, reason: str, where: float, lap: int) -> bool | None:  # type: ignore[misc]
+    def _attribute(self: BrakeEngine, reason: DropReason, where: float, lap: int) -> bool | None:  # type: ignore[misc]
         """Make the sector of ``lap`` at ``where`` not count.
 
         Returns True when a stored run was taken back, False when the sector had none, and None

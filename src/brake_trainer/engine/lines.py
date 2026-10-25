@@ -7,9 +7,10 @@ from bisect import bisect_right
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ..models import SectorResult, SectorRun, SectorStatus
+from ..models import DropReason, SectorResult, SectorRun, SectorStatus
+from ..outcomes import LINES_REASONS
 from ..timeline import CarAt, clamp_pos
-from .constants import _HISTORY_S, _LINE_MATCH, _LINES_REASONS, _LINES_WAIT_LAPS
+from .constants import _HISTORY_S, _LINE_MATCH, _LINES_WAIT_LAPS
 from .passes import _LapRun, _LostPass, _Pass
 
 if TYPE_CHECKING:
@@ -123,7 +124,7 @@ class LinesMixin:
         self._learning_lines = False
         # The sector in progress started on the equal splits, which are now final: it is timed
         # between exactly the lines it will close on, so the wait no longer keeps it from counting.
-        self._unflag("finding the sector lines")
+        self._unflag(DropReason.FINDING_LINES)
         # The equal splits are the lines for good now, so the passes dropped on them were timed
         # between exactly these lines after all: store them rather than lose the first laps.
         changed = False
@@ -284,7 +285,7 @@ class LinesMixin:
             if on_shared_line and still_in_it:
                 self._sector = self._sector_of(run.start_pos)
                 # It was flagged for being driven while the lines were unknown; they are known now.
-                self._unflag("finding the sector lines")
+                self._unflag(DropReason.FINDING_LINES)
             else:
                 self._reanchor(run, pos, t)
         if self._settings.learning_enabled:
@@ -310,9 +311,9 @@ class LinesMixin:
         if start is None or start > t:
             self._keep_onsets(run)  # the sector is lost, but the driver's braking points are not
             self._restart_pass(idx, t, pos)
-            self._flag("the lines were learned mid-sector")
+            self._flag(DropReason.LINES_MOVED)
             return
-        reasons = run.flagged - _LINES_REASONS
+        reasons = run.flagged - LINES_REASONS
         self._sector = idx
         self._pass = _Pass(
             start,
