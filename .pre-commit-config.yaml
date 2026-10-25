@@ -1,0 +1,38 @@
+# Fast local checks that mirror the CI gates. Install once with:
+#   pre-commit install
+# then run everything with:
+#   pre-commit run --all-files
+minimum_pre_commit_version: "3.7.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: end-of-file-fixer
+        exclude: ^tests/fixtures/
+      - id: trailing-whitespace
+        # Real game-log fixtures keep the exact bytes the game wrote, including trailing spaces.
+        exclude: ^tests/fixtures/game_log/
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      # Use the project's own mypy environment: it needs PySide6 and acevo-sdk, which an isolated
+      # mirrors-mypy environment would not have.
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        pass_filenames: false
+        types: [python]

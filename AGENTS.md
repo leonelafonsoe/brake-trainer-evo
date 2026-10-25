@@ -42,13 +42,14 @@ Run all of these before calling a change done. They are the same gates CI, Night
 use (`.github/actions/gates/action.yml`):
 
 ```bash
+pre-commit run --all-files
 ruff format --check .
 ruff check .
 mypy
 pytest -q -W error
 pytest -q -W error --cov          # enforces the coverage floor
 python scripts/gen_settings_doc.py --check
-python scripts/release_notes.py --tag v0.4.0 --check
+python scripts/release_notes.py --tag v0.4.2 --check
 ```
 
 - A warning is an error (`filterwarnings = ["error"]`). Fix the warning; do not filter it away.

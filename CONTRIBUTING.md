@@ -14,6 +14,7 @@ cd brake-trainer-evo
 py -m venv .venv
 .venv\Scripts\Activate.ps1          # or call .venv\Scripts\python.exe directly
 pip install -e ".[dev]"
+pre-commit install                  # optional: run the fast checks on every commit
 ```
 
 You do not need Windows or the game to run the tests: the engine is pure Python and the
