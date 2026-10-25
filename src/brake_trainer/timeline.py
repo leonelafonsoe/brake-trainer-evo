@@ -161,7 +161,7 @@ class PositionTimeline:
             ):
                 span = point.pos - previous.pos
                 if span > 0.0:
-                    return previous.t + (point.t - previous.t) * ((line - previous.pos) / span)
+                    return crossing_between(previous.t, previous.pos, point.t, point.pos, line)
                 return point.t
             previous = point
         return None
@@ -187,7 +187,7 @@ class PositionTimeline:
             if high.pos > 0.5 and low.pos < 0.05:  # the start/finish line between these two
                 span = (1.0 - high.pos) + low.pos
                 if span > 0.0:
-                    return high.t + (low.t - high.t) * ((1.0 - high.pos) / span)
+                    return crossing_between(high.t, high.pos, low.t, low.pos, 0.0)
         return None
 
 
