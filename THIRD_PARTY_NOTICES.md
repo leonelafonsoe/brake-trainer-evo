@@ -15,8 +15,9 @@ not part of the program.
 If you distribute a built executable, it contains PySide6 and Qt. The LGPL asks you to pass on
 its license text and not to prevent users from replacing the Qt libraries. The default
 **folder build** (`scripts/build_exe.py`) keeps them as separate files, which satisfies this more
-easily than a single-file build. This is a summary, not legal advice; read the Qt licensing page
-if you plan to redistribute binaries.
+easily than a single-file build. The MIT and LGPLv3 texts travel beside the program in `licenses/`;
+this is a summary, not legal advice. Read the Qt licensing page if you plan to redistribute
+binaries.
 
 ## Inspiration (not a dependency)
 
