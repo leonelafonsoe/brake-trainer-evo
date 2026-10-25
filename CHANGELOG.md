@@ -50,6 +50,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   jumping back to the default spot.
 - Closing the settings window with unapplied changes now asks before discarding them; a hidden
   window (for example during shutdown) still closes silently.
+- The release workflow pins Inno Setup to 6.7.1, so a new installer compiler arrives as a reviewed
+  change instead of silently between releases.
 - Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
   cleanup on failure), so the two cannot drift in how they protect a failed write.
 - Settings type validation now lives in `SettingSpec.coerce`: one rule for every field, including
