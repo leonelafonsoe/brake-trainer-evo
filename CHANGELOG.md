@@ -4,6 +4,12 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+### Added
+
+- A pre-commit configuration runs the project's lint, format, type, YAML/TOML and whitespace checks
+  before a commit, and `.editorconfig` keeps editors consistent. Real fixture files are excluded
+  from whitespace fixes.
+
 ## 0.4.2 - 2026-10-25
 
 ### Fixed

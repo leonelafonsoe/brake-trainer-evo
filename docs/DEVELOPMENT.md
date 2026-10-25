@@ -25,6 +25,7 @@ cd brake-trainer-evo
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+pre-commit install                  # optional: mirror the checks on every commit
 export QT_QPA_PLATFORM=offscreen    # the UI tests must not need a display
 ```
 
@@ -53,13 +54,14 @@ BRAKE_TRAINER_HOME=/tmp/brake-trainer-dev python -m brake_trainer
 Run the same gates as CI (`.github/actions/gates/action.yml`):
 
 ```bash
+pre-commit run --all-files     # ruff, formatting, YAML/TOML, whitespace, mypy
 ruff format --check .
 ruff check .
 mypy
 pytest -q -W error
 pytest -q -W error --cov          # coverage with the floor from pyproject.toml
 python scripts/gen_settings_doc.py --check
-python scripts/release_notes.py --tag v0.4.0 --check
+python scripts/release_notes.py --tag v0.4.2 --check
 ```
 
 Use `ruff format .` to apply formatting, and `python scripts/gen_settings_doc.py` to regenerate the
