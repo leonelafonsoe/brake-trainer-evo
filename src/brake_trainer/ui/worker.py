@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -42,6 +44,8 @@ class EngineWorker(QThread):
         )
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop: asyncio.Event | None = None
+        # Set from any thread, including before the thread has started and before the loop exists.
+        self._stop_requested = threading.Event()
         self._game_running = False
         self._last_sample = 0.0
         self._last_emit = 0.0
@@ -61,8 +65,17 @@ class EngineWorker(QThread):
         self._engine.queue_edit(edit)
 
     def request_stop(self) -> None:
-        if self._loop is not None and self._stop is not None:
-            self._loop.call_soon_threadsafe(self._stop.set)
+        """Ask the worker to stop. Safe from any thread and before the thread has started.
+
+        The asyncio event may not exist yet (the thread was never started, or ``_main`` is still
+        setting up), so the request is also kept in a plain event that ``_main`` checks before it
+        waits for telemetry.
+        """
+        self._stop_requested.set()
+        loop, stop = self._loop, self._stop
+        if loop is not None and stop is not None:
+            with contextlib.suppress(RuntimeError):  # the loop has already closed
+                loop.call_soon_threadsafe(stop.set)
 
     # ------------------------------------------------------------------ worker thread
 
@@ -71,10 +84,16 @@ class EngineWorker(QThread):
             asyncio.run(self._main())
         except Exception:
             log.exception("Telemetry worker crashed")
+        finally:
+            self._loop = None
+            self._stop = None
+            self._engine.flush()  # exactly once, including when the loop failed to start
 
     async def _main(self) -> None:
         self._loop = asyncio.get_running_loop()
         self._stop = asyncio.Event()
+        if self._stop_requested.is_set():
+            self._stop.set()  # stop was requested before the loop existed
         log.info(TRACK_LIMITS_NOTE)
         reader = TelemetryReader(
             lambda: self._holder.value,
@@ -91,7 +110,6 @@ class EngineWorker(QThread):
             ticker.cancel()
             if tail is not None:
                 tail.cancel()
-            self._engine.flush()
         if reason is ExitReason.GAME_CLOSED:
             self.game_closed.emit()
 

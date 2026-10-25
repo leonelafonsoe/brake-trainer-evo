@@ -135,9 +135,19 @@ def main() -> int:
 
     def shutdown() -> None:
         log.info("Shutting down")
+        if not save_settings(holder.value, settings_path()):
+            log.error("Could not save settings to %s", settings_path())
         worker.request_stop()
-        worker.wait(5000)
-        save_settings(holder.value, settings_path())
+        if not worker.wait(5000):
+            # A live QThread must not be destroyed when main() returns. terminate() is a last
+            # resort: it can skip the engine's final flush, so say so rather than hiding it.
+            log.error(
+                "Telemetry worker did not stop within 5 s; terminating it "
+                "(its final data flush may be lost)"
+            )
+            worker.terminate()
+            if not worker.wait(1000):
+                log.error("Telemetry worker is still running after terminate(); exiting anyway")
 
     app.aboutToQuit.connect(shutdown)
 
