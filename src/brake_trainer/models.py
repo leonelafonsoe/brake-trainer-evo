@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypedDict
 
 # Bumped when a change to TrackData.to_dict would make an older build misread a file. The loader
 # refuses a newer version instead of filing runs under boundaries or fields it does not understand;
@@ -88,6 +90,25 @@ class Sample:
     timing_invalid: bool = False  # graphics timing state: the current lap marked invalid
 
 
+class SectorRunDict(TypedDict):
+    """The on-disk shape of one stored run."""
+
+    t: float
+    onsets: list[float]
+
+
+class TrackDataDict(TypedDict):
+    """The on-disk shape of one learned track + car entry (without the provenance fields)."""
+
+    version: int
+    track: str
+    car: str
+    n_sectors: int
+    boundaries: list[float] | None
+    sectors: list[list[SectorRunDict]]
+    early_onsets: list[list[float]]
+
+
 @dataclass(slots=True)
 class SectorRun:
     """One clean pass through a sector: its duration and where braking started."""
@@ -95,12 +116,21 @@ class SectorRun:
     t: float
     onsets: list[float] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> SectorRunDict:
         return {"t": self.t, "onsets": self.onsets}
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> SectorRun:
-        return cls(float(raw["t"]), [float(p) for p in raw.get("onsets", [])])
+    def from_dict(cls, raw: Mapping[str, Any]) -> SectorRun:
+        t = float(raw["t"])
+        if not math.isfinite(t) or t <= 0:
+            raise ValueError(f"run time must be positive and finite, got {t!r}")
+        raw_onsets = raw.get("onsets", [])
+        if not isinstance(raw_onsets, list):
+            raise ValueError("run onsets must be a list")
+        onsets = [float(p) for p in raw_onsets]
+        if not all(math.isfinite(p) and 0.0 <= p <= 1.0 for p in onsets):
+            raise ValueError("run onsets must be finite positions between 0 and 1")
+        return cls(t, onsets)
 
 
 @dataclass(slots=True)
@@ -132,7 +162,7 @@ class TrackData:
     def best_total(self) -> float:
         return sum(runs[0].t for runs in self.sectors if runs)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> TrackDataDict:
         return {
             "version": DATA_VERSION,
             "track": self.track,
@@ -144,14 +174,18 @@ class TrackData:
         }
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> TrackData:
+    def from_dict(cls, raw: Mapping[str, Any]) -> TrackData:
         version = int(raw.get("version", DATA_VERSION))
         if version > DATA_VERSION:
             raise NewerDataError(f"data version {version} is newer than {DATA_VERSION}")
         n = int(raw["n_sectors"])
+        if n <= 0:
+            raise ValueError("sector count must be positive")
         sectors = [[SectorRun.from_dict(r) for r in runs] for runs in raw["sectors"]]
         if len(sectors) != n:
             raise ValueError("sector count mismatch")
+        for runs in sectors:
+            runs.sort(key=lambda run: run.t)  # fastest first is an invariant, not a convention
         bounds: list[float] | None = None
         raw_bounds = raw.get("boundaries")
         if isinstance(raw_bounds, list) and len(raw_bounds) == n - 1:
@@ -171,12 +205,20 @@ class TrackData:
     def _early_onsets(raw: Any) -> list[list[float]]:
         if not isinstance(raw, list):
             return []
-        keep = [
-            [float(p) for p in chunk if isinstance(p, int | float)]
-            for chunk in raw
-            if isinstance(chunk, list)
-        ]
-        return [chunk for chunk in keep if chunk]
+        keep: list[list[float]] = []
+        for chunk in raw:
+            if not isinstance(chunk, list):
+                continue
+            onsets: list[float] = []
+            for p in chunk:
+                if not isinstance(p, int | float):
+                    continue
+                number = float(p)
+                if math.isfinite(number) and 0.0 <= number <= 1.0:
+                    onsets.append(number)
+            if onsets:
+                keep.append(onsets)
+        return keep
 
 
 @dataclass(frozen=True, slots=True)

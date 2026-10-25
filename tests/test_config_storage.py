@@ -165,6 +165,47 @@ def test_saved_files_carry_the_app_version_build_and_save_time(tmp_path, store):
     assert raw_data["version"] == DATA_VERSION  # the data format version is still its own field
 
 
+def test_runs_are_sorted_fastest_first_on_load():
+    raw = _data("Car A", 2, 18.0).to_dict()
+    raw["sectors"][0].reverse()
+
+    data = TrackData.from_dict(raw)
+
+    assert [run.t for run in data.sectors[0]] == [18.0, 19.0]
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        {"t": 0.0, "onsets": []},
+        {"t": -1.0, "onsets": []},
+        {"t": float("nan"), "onsets": []},
+        {"t": 18.0, "onsets": [1.5]},
+        {"t": 18.0, "onsets": [-0.1]},
+        {"t": 18.0, "onsets": [float("inf")]},
+        {"t": 18.0, "onsets": "nope"},
+    ],
+)
+def test_a_malformed_run_is_refused(run):
+    raw = _data("Car A", 1).to_dict()
+    raw["sectors"][0] = [run]
+
+    with pytest.raises(ValueError):
+        TrackData.from_dict(raw)
+
+
+def test_a_bad_run_is_quarantined_instead_of_used(store):
+    raw = _data("Car A", 1).to_dict()
+    raw["sectors"][0][0]["t"] = 0.0
+    path = store.directory / "Monza__Car_A.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    assert store.load("Monza", "Car A", 3).total_runs() == 0
+    assert not path.exists()
+    assert list(store.quarantine_directory.glob("Monza__Car_A.corrupt-*.json"))
+
+
 def test_a_newer_data_version_is_refused():
     # The app version in a file is provenance, but the data format version gates how the runs may
     # be read: a newer layout must not be filed under this build's boundaries.
