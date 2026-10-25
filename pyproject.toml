@@ -73,4 +73,4 @@ show_missing = true
 skip_covered = true
 # A floor, not a target: it stops the suite from quietly losing ground. Raise it as coverage
 # improves; never lower it to make a change pass.
-fail_under = 78
+fail_under = 84

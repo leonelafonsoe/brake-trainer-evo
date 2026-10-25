@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import struct
 import threading
 import time
@@ -10,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from brake_trainer import audio as audio_module
 from brake_trainer.audio import AudioPlayer, make_tone
 from brake_trainer.config import Settings
 from brake_trainer.models import CueKind
@@ -277,6 +279,26 @@ def test_audio_player_respects_enabled_flag():
     player.play(CueKind.HERE, force=True)
     assert done.wait(1)  # the cue runs on its own thread; wait for it, do not sleep
     assert len(played) == 1
+
+
+def test_a_failing_audio_backend_never_reaches_the_driver(monkeypatch, caplog):
+    # A removed headset or a locked audio device must not take the overlay down mid-lap.
+    def broken(wav: bytes) -> None:
+        raise OSError("no audio device")
+
+    player = AudioPlayer(lambda: Settings(), backend=broken)
+
+    class InlineThread:
+        def __init__(self, target, args=(), daemon=None) -> None:
+            self._target, self._args = target, args
+
+        def start(self) -> None:
+            self._target(*self._args)
+
+    monkeypatch.setattr(audio_module.threading, "Thread", InlineThread)
+    with caplog.at_level(logging.ERROR, logger="brake_trainer.audio"):
+        player.play(CueKind.WARN, force=True)  # the failure is logged, not raised
+    assert "Could not play cue" in caplog.text
 
 
 async def test_reader_reports_a_capture_start_failure_and_recovers(monkeypatch):

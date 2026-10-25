@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from dataclasses import replace
 
 from brake_trainer.audio import AudioPlayer
 from brake_trainer.config import Settings, SettingsHolder
 from brake_trainer.engine import BrakeEngine
+from brake_trainer.models import Sample, SectorRun, TrackData
+from brake_trainer.storage import DeleteRun, DeleteSector
 from brake_trainer.telemetry import ExitReason
 from brake_trainer.ui import worker as worker_module
 from brake_trainer.ui.worker import EngineWorker
@@ -165,3 +168,107 @@ def test_a_telemetry_error_reaches_the_view_state_and_clears_on_recovery(qapp, s
 
     worker._on_telemetry_error("")
     assert states[-1].error == ""
+
+
+def _pump(qapp, condition, what: str, timeout: float = 2.0) -> None:
+    """Process queued Qt signals until ``condition`` is true (or fail with a useful message)."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        qapp.processEvents()
+        if condition():
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"timed out waiting for {what}")
+
+
+def test_the_worker_streams_samples_and_reports_the_game_closing(qapp, store, monkeypatch):
+    class SamplingReader:
+        def __init__(self, get_settings, on_sample, *args, **kwargs) -> None:
+            self._on_sample = on_sample
+
+        async def run(self, stop) -> ExitReason:
+            self._on_sample(
+                Sample(
+                    track="Monza",
+                    car="Car A",
+                    length_m=5000.0,
+                    pos=0.1,
+                    brake=0.0,
+                    speed_kmh=123.0,
+                    in_pit=False,
+                    t=1.0,
+                )
+            )
+            return ExitReason.GAME_CLOSED
+
+    monkeypatch.setattr(worker_module, "TelemetryReader", SamplingReader)
+    worker = _worker(store)
+    states: list = []
+    closed: list = []
+    worker.state.connect(states.append)
+    worker.game_closed.connect(lambda: closed.append(1))
+
+    worker.start()
+    assert worker.wait(5000)
+    _pump(qapp, lambda: bool(states) and bool(closed), "a live state and game_closed")
+
+    live = [state for state in states if state.live]
+    assert live and live[-1].snapshot.track == "Monza"
+    assert live[-1].snapshot.speed_kmh == 123.0
+    assert closed == [1]
+
+
+def test_a_sample_older_than_the_timeout_is_not_shown_as_live(qapp, store):
+    worker = _worker(store)
+    states: list = []
+    worker.state.connect(states.append)
+
+    worker._on_sample(
+        Sample(
+            track="Monza",
+            car="Car A",
+            length_m=5000.0,
+            pos=0.1,
+            brake=0.0,
+            speed_kmh=100.0,
+            in_pit=False,
+            t=1.0,
+        )
+    )
+    assert states[-1].live
+
+    worker._last_sample -= worker_module._LIVE_TIMEOUT_S + 0.1
+    worker._emit()
+    assert not states[-1].live  # the reader has gone quiet; the HUD must not freeze on old data
+
+
+def test_a_data_edit_requested_by_the_ui_is_applied_on_the_next_pending_pass(qapp, store):
+    data = TrackData.empty("Monza", "Car A", 3)
+    data.sectors[0] = [SectorRun(18.0, [0.05]), SectorRun(19.0, [])]
+    assert store.save(data)
+    worker = _worker(store)
+    changed: list = []
+    worker.data_changed.connect(lambda: changed.append(1))
+
+    worker.request_edit(DeleteRun("Monza", "Car A", 0, 18.0))
+    # Queued, not applied from the UI thread: the file is untouched until the worker's pass.
+    assert len(store.load("Monza", "Car A", 3).sectors[0]) == 2
+
+    assert worker._engine.apply_pending() is True
+    assert [run.t for run in store.load("Monza", "Car A", 3).sectors[0]] == [19.0]
+    assert changed == [1]
+
+
+def test_a_sector_delete_requested_by_the_ui_passes_through_the_worker(qapp, store):
+    data = TrackData.empty("Monza", "Car A", 3)
+    data.sectors[0] = [SectorRun(18.0, [0.05])]
+    data.sectors[1] = [SectorRun(20.0, [0.4])]
+    assert store.save(data)
+    worker = _worker(store)
+
+    worker.request_edit(DeleteSector("Monza", "Car A", 0))
+
+    assert worker._engine.apply_pending() is True
+    reloaded = store.load("Monza", "Car A", 3)
+    assert reloaded.sectors[0] == []
+    assert [run.t for run in reloaded.sectors[1]] == [20.0]

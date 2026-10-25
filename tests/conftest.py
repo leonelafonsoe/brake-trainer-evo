@@ -108,6 +108,21 @@ def qapp():
 
 
 @pytest.fixture
+def close_qt_windows(qapp):
+    """Destroy any top-level window a test made before the interpreter tears Qt down.
+
+    Modules that build widgets mark themselves with
+    ``pytestmark = pytest.mark.usefixtures("close_qt_windows")``. Leaving top-level widgets for
+    the GC mixes Python and C++ destruction order; on exit that can double-free the QApplication.
+    """
+    yield
+    for widget in qapp.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    qapp.processEvents()
+
+
+@pytest.fixture
 def store(tmp_path):
     return TrackStore(tmp_path / "data")
 
