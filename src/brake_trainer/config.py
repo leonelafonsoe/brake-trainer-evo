@@ -114,8 +114,9 @@ class Settings:
 
         A file from a *newer* build is not migrated: its version is left alone and a warning is
         logged. This build cannot know what changed after its own version, and writing the version
-        down would make the next build migrate the file a second time. Saving from here still
-        writes only the settings this build knows, so a newer build's extra keys are dropped.
+        down would make the next build migrate the file a second time. Saving from here keeps that
+        version and the keys this build does not know, so the newer build still finds its choices
+        (see :func:`save_settings`).
         """
         defaults = cls()
         values: dict[str, Any] = {}
