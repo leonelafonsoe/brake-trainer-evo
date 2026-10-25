@@ -21,6 +21,11 @@ def test_nothing_to_say_when_not_live():
     assert status_line(snap(), ST, live=False) is None
 
 
+def test_a_storage_warning_outranks_the_normal_status():
+    text = "Data file Monza__Car_A moved to quarantine"
+    assert status_line(snap(storage_warning=text), ST, True) == (text, theme.RED)
+
+
 def test_current_sector_that_will_not_count_has_top_priority():
     text, colour = status_line(snap(pass_flag="lap invalidated", warming_up=True), ST, True)
     assert text == "S3 won't count · lap invalidated" and colour == theme.RED

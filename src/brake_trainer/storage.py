@@ -7,12 +7,48 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 
 from .metadata import save_metadata
-from .models import TrackData
+from .models import NewerDataError, TrackData
 
 log = logging.getLogger(__name__)
+
+QUARANTINE_DIR = "quarantine"
+
+
+class LoadStatus(str, Enum):
+    """Why a learned-data file could or could not be used."""
+
+    OK = "ok"
+    MISSING = "missing"
+    CORRUPT = "corrupt"
+    NEWER = "newer"
+    LAYOUT_MISMATCH = "layout_mismatch"
+
+
+@dataclass(frozen=True, slots=True)
+class LoadResult:
+    status: LoadStatus
+    data: TrackData | None = None
+    detail: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class StorageIssue:
+    """A file this build could not use, and what happened to it."""
+
+    path: Path
+    status: LoadStatus
+    detail: str
+    quarantine_path: Path | None = None
+
+    @property
+    def blocked(self) -> bool:
+        """True when the file could not be moved and must not be overwritten."""
+        return self.quarantine_path is None
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,29 +88,115 @@ def _slug(text: str) -> str:
 class TrackStore:
     def __init__(self, directory: Path) -> None:
         self.directory = directory
+        self._blocked: set[Path] = set()
+        self._issues: dict[Path, StorageIssue] = {}
+        self._pending_issues: list[StorageIssue] = []
 
     def _path(self, track: str, car: str) -> Path:
         return self.directory / f"{_slug(track)}__{_slug(car)}.json"
 
-    @staticmethod
-    def _read(path: Path) -> TrackData | None:
+    @property
+    def quarantine_directory(self) -> Path:
+        return self.directory / QUARANTINE_DIR
+
+    def issues(self) -> list[StorageIssue]:
+        """Every unsafe file seen this process, including ones already quarantined."""
+        return [self._issues[path] for path in sorted(self._issues)]
+
+    def take_issues(self) -> list[StorageIssue]:
+        """New issues since the last call, for the engine to surface once."""
+        pending, self._pending_issues = self._pending_issues, []
+        return pending
+
+    def _record(self, issue: StorageIssue) -> None:
+        self._issues[issue.path] = issue
+        self._pending_issues.append(issue)
+
+    def _quarantine(self, path: Path, status: LoadStatus) -> Path | None:
+        """Move an unsafe file aside, returning its new path or ``None`` if that failed."""
         try:
-            return TrackData.from_dict(json.loads(path.read_text(encoding="utf-8")))
-        except FileNotFoundError:
-            return None  # no data yet: never driven, or the entry was just deleted
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            log.debug("Skipping unreadable data file %s (%s)", path.name, exc)
+            folder = self.quarantine_directory
+            folder.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            target = folder / f"{path.stem}.{status.value}-{stamp}{path.suffix}"
+            counter = 1
+            while target.exists():
+                target = folder / f"{path.stem}.{status.value}-{stamp}-{counter}{path.suffix}"
+                counter += 1
+            os.replace(path, target)
+            return target
+        except OSError as exc:
+            log.warning("Could not quarantine %s: %s", path, exc)
             return None
 
-    def load(self, track: str, car: str, n_sectors: int) -> TrackData:
-        """Stored data for this combination, or an empty set if none (or a different layout)."""
-        data = self._read(self._path(track, car))
-        if data is None or data.n_sectors != n_sectors:
-            return TrackData.empty(track, car, n_sectors)
-        return data
+    def _unsafe(self, path: Path, status: LoadStatus, detail: str) -> LoadResult:
+        """Archive an unusable file, or block it if it cannot be moved.
 
-    def save(self, data: TrackData) -> None:
+        A quarantined file is gone from the data folder, so the next save starts a fresh entry
+        there. A blocked file stays put and is never overwritten by this process.
+        """
+        quarantine = self._quarantine(path, status)
+        if quarantine is not None:
+            log.warning(
+                "Learned data %s could not be read (%s); moved to %s",
+                path.name,
+                detail,
+                quarantine,
+            )
+            self._record(StorageIssue(path, status, detail, quarantine))
+        else:
+            self._blocked.add(path)
+            log.error(
+                "Learned data %s could not be read (%s) and could not be moved; "
+                "it will not be overwritten",
+                path.name,
+                detail,
+            )
+            self._record(StorageIssue(path, status, detail))
+        return LoadResult(status, detail=detail)
+
+    def _read(self, path: Path) -> LoadResult:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return LoadResult(LoadStatus.MISSING)  # no data yet, or the entry was just deleted
+        except OSError as exc:
+            return self._unsafe(path, LoadStatus.CORRUPT, f"could not read: {exc}")
+        except (TypeError, ValueError) as exc:
+            return self._unsafe(path, LoadStatus.CORRUPT, f"invalid JSON: {exc}")
+
+        try:
+            data = TrackData.from_dict(raw)
+        except NewerDataError as exc:
+            return self._unsafe(path, LoadStatus.NEWER, str(exc))
+        except (KeyError, TypeError, ValueError) as exc:
+            return self._unsafe(path, LoadStatus.CORRUPT, f"invalid data: {exc}")
+        return LoadResult(LoadStatus.OK, data)
+
+    def load(self, track: str, car: str, n_sectors: int) -> TrackData:
+        """Stored data for this combination, or an empty set if none (or a different layout).
+
+        An unusable file is moved to ``data/quarantine/`` and a fresh entry starts. If it cannot
+        be moved, the path is blocked for the rest of the process and saves to it are refused.
+        """
+        path = self._path(track, car)
+        result = self._read(path)
+        if result.status is LoadStatus.MISSING:
+            return TrackData.empty(track, car, n_sectors)
+        if result.status is not LoadStatus.OK or result.data is None:
+            return TrackData.empty(track, car, n_sectors)
+        if result.data.n_sectors != n_sectors:
+            detail = f"{result.data.n_sectors} sectors, expected {n_sectors}"
+            self._unsafe(path, LoadStatus.LAYOUT_MISMATCH, detail)
+            return TrackData.empty(track, car, n_sectors)
+        return result.data
+
+    def save(self, data: TrackData) -> bool:
+        """Write one entry. Returns False if the write failed or the path is blocked."""
         path = self._path(data.track, data.car)
+        if path in self._blocked:
+            log.error("Refusing to overwrite unreadable learned data %s", path.name)
+            return False
         tmp = path.with_suffix(".tmp")
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
@@ -83,12 +205,14 @@ class TrackStore:
             os.replace(tmp, path)
         except OSError as exc:
             log.warning("Could not save learned data: %s", exc)
+            return False
+        return True
 
     def entries(self) -> list[TrackData]:
         if not self.directory.exists():
             return []
         found = (self._read(p) for p in sorted(self.directory.glob("*.json")))
-        return [d for d in found if d is not None]
+        return [r.data for r in found if r.status is LoadStatus.OK and r.data is not None]
 
     def find_reference(
         self, track: str, car: str, n_sectors: int, preferred: str = ""
@@ -128,16 +252,18 @@ class TrackStore:
                 and other.boundaries
             ):
                 data.boundaries = list(other.boundaries)
-                self.save(data)
-                return other.car
+                return other.car if self.save(data) else ""
         return ""
 
     def apply(self, edit: DataEdit) -> bool:
         """Apply an edit to the stored files. Returns False if there was nothing to change."""
         if isinstance(edit, DeleteEntry):
             return self.delete(edit.track, edit.car)
-        data = self._read(self._path(edit.track, edit.car))
-        if data is None or not 0 <= edit.sector < data.n_sectors:
+        result = self._read(self._path(edit.track, edit.car))
+        data = result.data
+        if result.status is not LoadStatus.OK or data is None:
+            return False
+        if not 0 <= edit.sector < data.n_sectors:
             return False
         runs = data.sectors[edit.sector]
         if isinstance(edit, DeleteSector):
@@ -149,15 +275,21 @@ class TrackStore:
             if index is None:
                 return False
             del runs[index]
-        self.save(data)
-        return True
+        return self.save(data)
 
     def delete(self, track: str, car: str) -> bool:
+        path = self._path(track, car)
         try:
-            self._path(track, car).unlink()
-            return True
+            path.unlink()
+        except FileNotFoundError:
+            self._blocked.discard(path)
+            self._issues.pop(path, None)
+            return False
         except OSError:
             return False
+        self._blocked.discard(path)
+        self._issues.pop(path, None)
+        return True
 
     def clear(self) -> int:
         return sum(self.delete(d.track, d.car) for d in self.entries())

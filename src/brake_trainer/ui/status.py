@@ -39,6 +39,10 @@ def status_line(snap: Snapshot, settings: Settings, live: bool) -> tuple[str, st
     """
     if not live:
         return None
+    if snap.storage_warning:
+        # A learned-data file could not be read. The Data tab has the path and the reason; this
+        # line only needs to stop the driver wondering why the entry looks empty.
+        return (snap.storage_warning, theme.RED)
     if snap.late_cut and snap.late_cut_age is not None and snap.late_cut_age < LATE_CUT_SHOW_S:
         # The sector bar has moved on to another lap, so this is the only place it can appear.
         return (snap.late_cut, theme.RED)

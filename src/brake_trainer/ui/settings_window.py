@@ -604,6 +604,26 @@ class SettingsWindow(QDialog):
                 entry.addChild(sector)
             self._tree.addTopLevelItem(entry)
             entry.setExpanded(entry_edit in expanded)
+        issues = self._store.issues()
+        if issues:
+            group = QTreeWidgetItem([f"Unavailable files ({len(issues)})", "", ""])
+            group.setDisabled(True)
+            for issue in issues:
+                outcome = (
+                    f"moved to {issue.quarantine_path.name}"
+                    if issue.quarantine_path is not None
+                    else "read-only — not overwritten"
+                )
+                item = QTreeWidgetItem(
+                    [f"⚠ {issue.path.stem}", f"{issue.status.value}: {issue.detail}", outcome]
+                )
+                item.setDisabled(True)
+                item.setToolTip(0, str(issue.path))
+                if issue.quarantine_path is not None:
+                    item.setToolTip(2, str(issue.quarantine_path))
+                group.addChild(item)
+            self._tree.addTopLevelItem(group)
+            group.setExpanded(True)
 
     def selected_edits(self) -> list[DataEdit]:
         """The edits for the selected rows. A selected entry covers its sectors and runs."""
@@ -616,7 +636,9 @@ class SettingsWindow(QDialog):
                 covered = covered or id(parent) in chosen
                 parent = parent.parent()
             if not covered:
-                edits.append(item.data(0, _EDIT_ROLE))
+                edit = item.data(0, _EDIT_ROLE)
+                if edit is not None:
+                    edits.append(edit)
         return edits
 
     def _delete_selected(self) -> None:

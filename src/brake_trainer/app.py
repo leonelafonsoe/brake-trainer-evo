@@ -9,7 +9,7 @@ from dataclasses import replace
 from typing import Any
 
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from .audio import AudioPlayer
 from .config import Settings, SettingsHolder, load_settings, save_settings
@@ -60,10 +60,24 @@ def main() -> int:
     settings_window = SettingsWindow(lambda: holder.value, store)
 
     toggles: dict[str, QAction] = {}  # tray checkboxes by settings field, kept in sync
+    save_warning_shown = False
 
     def apply(settings: Settings) -> None:
+        nonlocal save_warning_shown
         holder.value = settings
-        save_settings(settings, settings_path())
+        if not save_settings(settings, settings_path()) and not save_warning_shown:
+            # Applying still works for this session; make the risk visible instead of losing the
+            # change silently at exit.
+            save_warning_shown = True
+            log.error("Could not save settings to %s", settings_path())
+            QMessageBox.warning(
+                settings_window,
+                "Settings not saved",
+                "The settings could not be written to:\n"
+                f"{settings_path()}\n\n"
+                "They apply for this session, but may be lost when the app exits. "
+                "Check that the folder is writable.",
+            )
         worker.update_settings(settings)
         overlay.apply_settings(settings)
         set_debug(forced_debug or settings.debug_logging)  # takes effect immediately

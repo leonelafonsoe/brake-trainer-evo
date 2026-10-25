@@ -12,6 +12,10 @@ from typing import Any
 DATA_VERSION = 1
 
 
+class NewerDataError(ValueError):
+    """The file was written by a newer learned-data layout than this build understands."""
+
+
 class SectorStatus(str, Enum):
     """F1-style sector colouring for the current lap."""
 
@@ -104,7 +108,7 @@ class TrackData:
     def from_dict(cls, raw: dict[str, Any]) -> TrackData:
         version = int(raw.get("version", DATA_VERSION))
         if version > DATA_VERSION:
-            raise ValueError(f"data version {version} is newer than {DATA_VERSION}")
+            raise NewerDataError(f"data version {version} is newer than {DATA_VERSION}")
         n = int(raw["n_sectors"])
         sectors = [[SectorRun.from_dict(r) for r in runs] for runs in raw["sectors"]]
         if len(sectors) != n:
@@ -213,6 +217,9 @@ class Snapshot:
     # says it instead.
     late_cut: str = ""
     late_cut_age: float | None = None  # seconds since that report
+    # A learned-data file this build could not read. The Data tab has the full detail; the status
+    # line only needs to tell the driver that the entry was not loaded (or is read-only).
+    storage_warning: str = ""
 
 
 @dataclass(frozen=True, slots=True)

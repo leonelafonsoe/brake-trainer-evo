@@ -17,6 +17,9 @@ log = logging.getLogger(__name__)
 # Bumped when a stored setting needs to change meaning; see Settings.from_dict.
 SETTINGS_VERSION = 3
 
+# Stamped into every file; the loader ignores them, so they are never carried over from an old file.
+_METADATA_KEYS = frozenset({"app_version", "build", "saved_at"})
+
 # (min, max) per numeric field; values outside are clamped on load / apply.
 _LIMITS: dict[str, tuple[float, float]] = {
     "brake_on": (0.05, 0.95),
@@ -173,11 +176,44 @@ def load_settings(path: Path) -> Settings:
     return Settings()
 
 
-def save_settings(settings: Settings, path: Path) -> None:
+def _preserved_settings(path: Path) -> tuple[dict[str, Any], int]:
+    """Unknown keys and version from an existing file, when it is from a newer build.
+
+    Retired keys from an older/equal file are deliberately not preserved: they are migration
+    leftovers, not settings this build does not understand. A newer file's unknown keys are kept so
+    that saving from an older build does not delete choices the newer build made.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}, 0
+    if not isinstance(raw, dict):
+        return {}, 0
+    try:
+        version = int(raw.get("settings_version", 0))
+    except (TypeError, ValueError):
+        version = 0
+    if version <= SETTINGS_VERSION:
+        return {}, version
+    known = {f.name for f in fields(Settings)} | _METADATA_KEYS
+    extras = {key: value for key, value in raw.items() if key not in known}
+    return extras, version
+
+
+def save_settings(settings: Settings, path: Path) -> bool:
+    """Write settings, keeping unknown keys from a newer file. Returns False on a failed write."""
     tmp = path.with_suffix(".tmp")
-    payload = {**save_metadata(), **settings.to_dict()}
+    extras, stored_version = _preserved_settings(path)
+    payload = {
+        **save_metadata(),
+        **extras,
+        **settings.to_dict(),
+        "settings_version": max(settings.settings_version, stored_version),
+    }
     try:
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         os.replace(tmp, path)
     except OSError as exc:
         log.warning("Could not save settings: %s", exc)
+        return False
+    return True
