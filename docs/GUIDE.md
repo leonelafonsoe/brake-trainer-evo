@@ -283,7 +283,8 @@ settings from the tray.
 
 **The overlay is off-screen or in the wrong place**
 Right-click it (or the tray icon) -> "Reset position". It returns to the top centre of the screen
-under the cursor.
+under the cursor. If the monitor the HUD was on is unplugged or disabled, it moves back to the
+default position by itself.
 
 **The text is hard to read on a bright background**
 Raise "Background opacity" in Settings -> Overlay, or lower the game's brightness at the top of the

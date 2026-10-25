@@ -31,6 +31,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   save.
 - The HUD distance row keeps one height when it switches between a phase word and a number. Deleting
   a whole sector now asks for confirmation, like deleting an entry does.
+- If the monitor holding the HUD is unplugged or disabled, the overlay moves back to the default
+  position instead of staying off-screen.
 - Documentation is six pages instead of ten: `GUIDE.md` (behaviour and troubleshooting),
   `GAME_DATA.md` (telemetry, log, files and compatibility), `DESIGN.md`, `DEVELOPMENT.md` (including
   the release pipeline), `SETTINGS.md`, and the README. The old pages were merged rather than
