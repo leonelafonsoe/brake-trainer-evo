@@ -54,6 +54,26 @@ def test_the_default_position_is_on_the_primary_screen(qapp):
     assert area.contains(window.pos())
 
 
+def test_losing_the_hud_screen_moves_it_back_to_the_default(qapp, monkeypatch):
+    window = _window(qapp)
+    calls: list[int] = []
+    monkeypatch.setattr(window, "move_to_default", lambda: calls.append(1))
+
+    window._screen_removed(window.screen())
+
+    assert calls == [1]
+
+
+def test_removing_another_screen_leaves_the_hud_alone(qapp, monkeypatch):
+    window = _window(qapp)
+    calls: list[int] = []
+    monkeypatch.setattr(window, "move_to_default", lambda: calls.append(1))
+
+    window._screen_removed(object())  # not the screen this window is on
+
+    assert calls == []
+
+
 def test_a_saved_position_inside_a_screen_is_restored(qapp):
     from PySide6.QtGui import QGuiApplication
 

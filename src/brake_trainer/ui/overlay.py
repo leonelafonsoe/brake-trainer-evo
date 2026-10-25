@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QCursor, QGuiApplication, QMouseEvent, QPainter
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QCursor,
+    QGuiApplication,
+    QMouseEvent,
+    QPainter,
+    QScreen,
+)
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -92,6 +100,9 @@ class OverlayWindow(QWidget):
         self.setFixedWidth(300)
         self._build()
         self._apply_flags()
+        app = QGuiApplication.instance()
+        if isinstance(app, QGuiApplication):
+            app.screenRemoved.connect(self._screen_removed)
         self.apply_settings(settings)
         self.update_state(ViewState(snapshot=Snapshot()))
 
@@ -265,6 +276,13 @@ class OverlayWindow(QWidget):
         self.adjustSize()
         area = screen.availableGeometry()
         self.move(area.x() + (area.width() - self.width()) // 2, area.y() + 16)
+
+    def _screen_removed(self, screen: QScreen) -> None:
+        """Bring the HUD back if the monitor it was on is unplugged or disabled."""
+        if self.screen() is not screen and QGuiApplication.screenAt(self.frameGeometry().center()):
+            return
+        self.move_to_default()
+        self.moved.emit(self.x(), self.y())
 
     def place(self, x: int | None, y: int | None) -> None:
         """Restore a saved position, or use the default if it is unset or off every screen."""
