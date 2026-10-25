@@ -28,6 +28,7 @@ dev = [
     "pytest-cov>=5",
     "pytest-timeout>=2.3",
     "pre-commit>=3.7",
+    "pip-audit>=2.7",
     "ruff>=0.5",
     "mypy>=1.10",
     "pyinstaller>=6.6",

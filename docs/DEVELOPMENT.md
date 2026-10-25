@@ -72,6 +72,8 @@ regenerate the settings reference after changing a setting.
   improves, never lower it to let a change through.
 - **Strict config and markers.** `--strict-config --strict-markers` rejects a typo in
   `pyproject.toml` or an unregistered `@pytest.mark`.
+- **Dependency audit.** `.github/workflows/security.yml` runs `pip-audit` against the exported
+  `uv.lock` weekly and when dependencies change.
 
 ## Where the tests live
 
