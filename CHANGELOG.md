@@ -9,12 +9,15 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - A pre-commit configuration runs the project's lint, format, type, YAML/TOML and whitespace checks
   before a commit, and `.editorconfig` keeps editors consistent. Real fixture files are excluded
   from whitespace fixes.
+- Dependabot keeps the Python dependencies and the pinned GitHub Actions current.
 
 ### Changed
 
 - Settings metadata now lives in one registry: defaults, ranges, labels, tips and tabs are defined
   once and used by the config loader, the settings window and the generated reference, so they
   cannot drift. The hidden overlay position is explicit rather than inferred.
+- GitHub Actions are pinned to commit SHAs, and PySide6 is bounded below 7 so a major upgrade cannot
+  land unreviewed.
 
 ## 0.4.2 - 2026-10-25
 
