@@ -9,6 +9,7 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - A pre-commit configuration runs the project's lint, format, type, YAML/TOML and whitespace checks
   before a commit, and `.editorconfig` keeps editors consistent. Real fixture files are excluded
   from whitespace fixes.
+- Dependabot keeps the Python dependencies and the pinned GitHub Actions current.
 
 ### Changed
 
@@ -19,6 +20,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   and storage, sector passes, sector lines, braking zones and track limits, cues and shared
   constants each live in their own file. The public import path is unchanged and behaviour is
   identical.
+- GitHub Actions are pinned to commit SHAs, and PySide6 is bounded below 7 so a major upgrade cannot
+  land unreviewed.
 
 ## 0.4.2 - 2026-10-25
 
