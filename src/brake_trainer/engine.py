@@ -234,7 +234,6 @@ class BrakeEngine:
         self._ref: TrackData | None = None
         self._zones: list[float] = []
         self._ref_zones: list[float] = []  # braking points borrowed from another car
-        self._reload = False
         self._last: Sample | None = None
         self._last_result: SectorResult | None = None
         self._last_result_t = 0.0
@@ -288,13 +287,67 @@ class BrakeEngine:
         return self._settings
 
     def apply_settings(self, settings: Settings) -> None:
-        """Swap in new settings; takes effect on the next sample (zones are rebuilt).
+        """Swap in new settings and apply the ones that change session state.
 
         Only the thread that runs :meth:`update` may call this. The UI queues a change with
         :meth:`queue_settings` instead, so it cannot land between a sample's own reads.
+
+        Most settings are read on every sample and need no work here. The exceptions are the ones
+        that decide what is stored: a new reference car is looked up again, a smaller run count
+        trims what is kept, and turning the game log on or off starts or settles the wait for its
+        sector lines. Zones are rebuilt once, so a change shows up without waiting for a sample.
         """
-        self._settings = settings
-        self._reload = True
+        if settings == self._settings:
+            return
+        old, self._settings = self._settings, settings
+        self._apply_settings_diff(old, settings)
+        if self._data is not None:
+            self._rebuild_zones()
+
+    def _apply_settings_diff(self, old: Settings, new: Settings) -> None:
+        """Apply the settings that are not simply read when they are needed."""
+        if self._data is None:
+            return
+        if old.reference_car != new.reference_car:
+            self._ref = self._store.find_reference(
+                self._data.track, self._data.car, self._n, new.reference_car
+            )
+            self._announce_reference()
+        if new.top_runs < old.top_runs:
+            self._trim_runs(new.top_runs)
+        if old.use_game_log != new.use_game_log:
+            if new.use_game_log:
+                self._start_line_learning()
+            else:
+                self._settle_lines(
+                    "'Follow the game's log' was turned off: using equal sector lines."
+                )
+
+    def _trim_runs(self, keep: int) -> bool:
+        """Keep only the fastest ``keep`` runs per sector after the setting was reduced."""
+        if self._data is None:
+            return False
+        changed = False
+        for i, runs in enumerate(self._data.sectors):
+            if len(runs) > keep:
+                self._data.sectors[i] = sorted(runs, key=lambda r: r.t)[:keep]
+                changed = True
+        if changed:
+            self._store.save(self._data)
+            self._on_message(
+                f"Keeping the {keep} fastest runs per sector: slower stored runs were removed"
+            )
+        return changed
+
+    def _start_line_learning(self) -> None:
+        """Wait for the game's splits again, if this entry has nothing that would be re-filed."""
+        data = self._data
+        if data is None or data.boundaries is not None or data.total_runs():
+            return
+        self._learning_lines = True
+        self._lines_laps = 0
+        self._splits.clear()
+        self._on_message("Waiting for the game's sector lines again")
 
     def queue_settings(self, settings: Settings) -> None:
         """Ask for new settings. Safe from any thread; applied by :meth:`apply_pending` on the
@@ -513,15 +566,18 @@ class BrakeEngine:
                     "Settings > Data to learn them again."
                 )
             if self._ref:
-                active = [f"S{i + 1}" for i in range(n) if self._using_ref(i)]
-                if active:
-                    self._on_message(
-                        f"Using {self._ref.car} as a rough reference for {', '.join(active)} "
-                        "until you have your own runs"
-                    )
-        elif self._reload:
-            self._rebuild_zones()
-        self._reload = False
+                self._announce_reference()
+
+    def _announce_reference(self) -> None:
+        """Say which car the braking points are borrowed from, and for which sectors."""
+        if self._ref is None:
+            return
+        active = [f"S{i + 1}" for i in range(self._n) if self._using_ref(i)]
+        if active:
+            self._on_message(
+                f"Using {self._ref.car} as a rough reference for {', '.join(active)} "
+                "until you have your own runs"
+            )
 
     def _note_storage_issues(self) -> None:
         """Log unsafe data files once and keep a short version for the status line."""
@@ -1055,7 +1111,24 @@ class BrakeEngine:
         self._lines_laps += 1
         if self._lines_laps < _LINES_WAIT_LAPS:
             return
+        if self._settle_lines(
+            f"The game's log brought no sector splits in {_LINES_WAIT_LAPS} laps: using equal "
+            "sector lines. This build may not write them, or 'Follow the game's log' may be off "
+            "in Settings > App."
+        ):
+            self._rebuild_zones()
+
+    def _settle_lines(self, message: str) -> bool:
+        """Stop waiting for the game's lines and keep the passes they were too late for.
+
+        Returns whether stored runs changed, so the caller can rebuild the zones.
+        """
+        if not self._learning_lines:
+            return False
         self._learning_lines = False
+        # The sector in progress started on the equal splits, which are now final: it is timed
+        # between exactly the lines it will close on, so the wait no longer keeps it from counting.
+        self._unflag("finding the sector lines")
         # The equal splits are the lines for good now, so the passes dropped on them were timed
         # between exactly these lines after all: store them rather than lose the first laps.
         changed = False
@@ -1063,13 +1136,9 @@ class BrakeEngine:
             changed = self._store_late(entry, round(entry.end - entry.run.t0, 3)) or changed
         self._lines_lost.clear()
         if changed and self._data is not None:
-            self._rebuild_zones()
             self._store.save(self._data)
-        self._on_message(
-            f"The game's log brought no sector splits in {_LINES_WAIT_LAPS} laps: using equal "
-            "sector lines. This build may not write them, or 'Follow the game's log' may be off "
-            "in Settings > App."
-        )
+        self._on_message(message)
+        return changed
 
     def report_split(self, index: int, at: float) -> None:
         """The game's log reported a sector split; learn the line it crossed.

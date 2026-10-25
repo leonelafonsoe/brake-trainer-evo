@@ -102,6 +102,70 @@ def test_settings_change_rebuilds_zones(make_engine):
     assert driver.engine.snapshot().n_sectors == N_SECTORS
 
 
+def test_a_new_reference_car_takes_effect_without_a_session_change(make_engine):
+    from dataclasses import replace
+
+    a = Driver(make_engine(), car="Car A")
+    for _ in range(4):
+        a.lap(CORNERS)
+    a.engine.flush()
+    b = Driver(make_engine(), car="Car B")
+    for _ in range(4):
+        b.lap([c - 0.03 for c in CORNERS])
+    b.engine.flush()
+
+    c = Driver(make_engine(reference_car="Car A"), car="Car C")
+    c.feed(0.0001, 100.0, 0.0)
+    assert c.engine.snapshot().reference_car == "Car A"
+
+    c.engine.apply_settings(replace(c.engine.settings, reference_car="Car B"))
+
+    snap = c.engine.snapshot()  # no further sample: the change is already live
+    assert snap.reference_car == "Car B"
+    assert [round(z, 2) for z in snap.zones] == [round(x - 0.03, 2) for x in CORNERS]
+
+
+def test_reducing_top_runs_keeps_only_the_fastest_stored_runs(store):
+    from dataclasses import replace
+
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0, top_runs=5), store)
+    driver = Driver(engine)
+    for speed in (205, 200, 195, 190, 185, 180, 175):
+        driver.lap(CORNERS, speed_fn=lambda p, v=speed: v)
+    engine.flush()
+    before = store.load("Monza", "Car A", N_SECTORS)
+    assert all(len(runs) == 5 for runs in before.sectors)
+    fastest = [sorted(r.t for r in runs) for runs in before.sectors]
+
+    engine.apply_settings(replace(engine.settings, top_runs=2))
+
+    after = store.load("Monza", "Car A", N_SECTORS)
+    assert all(len(runs) == 2 for runs in after.sectors)
+    assert [[r.t for r in runs] for runs in after.sectors] == [times[:2] for times in fastest]
+    assert engine.snapshot().zones  # rebuilt from what is left
+
+
+def test_turning_the_game_log_off_stops_waiting_for_its_sector_lines(store):
+    from dataclasses import replace
+
+    messages: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=True, warmup_laps=0), store, on_message=messages.append
+    )
+    driver = Driver(engine)
+    driver.feed(0.0001, 100.0, 0.0)
+    assert engine._learning_lines  # a fresh entry waits for the game's own lines
+
+    engine.apply_settings(replace(engine.settings, use_game_log=False))
+
+    assert not engine._learning_lines
+    assert any("turned off" in m for m in messages)
+    assert engine.snapshot().boundaries == (0.0, 1 / 3, 2 / 3, 1.0)
+
+    engine.apply_settings(replace(engine.settings, use_game_log=True))
+    assert engine._learning_lines  # nothing stored yet, so it can wait again
+
+
 def test_sector_colours_follow_the_results(make_engine):
     from brake_trainer.models import SectorStatus as S
 

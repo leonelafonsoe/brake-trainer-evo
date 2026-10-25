@@ -58,6 +58,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - A deleted or never-driven data entry is no longer logged as an unreadable file.
 - Turning the game log on or off, or pointing it at another folder, now takes effect without
   restarting the app.
+- A change to the preferred reference car, the number of runs kept per sector, or the game-log
+  switch now applies to the session in progress; the borrowed braking points are looked up again
+  and a lower run count removes the slower stored runs.
 - A game log replaced by a larger one (the game starts a new file on every run) is read from its
   top instead of resuming at the old offset, and a line without a timestamp is skipped instead of
   being filed at the time it was read.
