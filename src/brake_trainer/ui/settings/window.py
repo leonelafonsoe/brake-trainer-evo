@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Signal
@@ -19,7 +20,6 @@ from PySide6.QtWidgets import (
 from ...config import Settings
 from ...models import CueKind
 from ...settings_spec import TABS, SettingSpec
-from ...storage import TrackStore
 from .about_page import AboutPageMixin
 from .data_page import DataPageMixin
 from .diagnostics_page import DiagnosticsPageMixin
@@ -30,9 +30,10 @@ class SettingsWindow(FormMixin, DiagnosticsPageMixin, DataPageMixin, AboutPageMi
     applied = Signal(object)  # Settings
     test_cue = Signal(object)  # CueKind
     edit_requested = Signal(object)  # DataEdit
+    data_refresh_requested = Signal()
 
     _get_settings: Callable[[], Settings]
-    _store: TrackStore
+    _data_dir: Path
     _widgets: dict[str, tuple[SettingSpec, QWidget]]
     _tabs: QTabWidget
     _tree: QTreeWidget
@@ -40,12 +41,12 @@ class SettingsWindow(FormMixin, DiagnosticsPageMixin, DataPageMixin, AboutPageMi
     def __init__(
         self,
         get_settings: Callable[[], Settings],
-        store: TrackStore,
+        data_dir: Path,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._get_settings = get_settings
-        self._store = store
+        self._data_dir = data_dir
         self._widgets: dict[str, tuple[SettingSpec, QWidget]] = {}
         self.setWindowTitle("Brake Trainer — Settings")
         self.setMinimumWidth(560)
@@ -89,5 +90,5 @@ class SettingsWindow(FormMixin, DiagnosticsPageMixin, DataPageMixin, AboutPageMi
 
     def showEvent(self, event: Any) -> None:  # noqa: N802
         self.load(self._get_settings())
-        self.refresh_data()
+        self.data_refresh_requested.emit()
         super().showEvent(event)

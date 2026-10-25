@@ -26,7 +26,12 @@ pytestmark = pytest.mark.usefixtures("close_qt_windows")
 
 
 def _window(qapp, store, current: Settings | None = None) -> SettingsWindow:
-    return SettingsWindow(lambda: current or Settings(), store)
+    return SettingsWindow(lambda: current or Settings(), store.directory)
+
+
+def _render(window: SettingsWindow, store) -> None:
+    """Feed the snapshot the worker would publish."""
+    window.render_data(store.snapshot())
 
 
 def _stored(store) -> TrackData:
@@ -47,18 +52,19 @@ def test_building_the_window_does_not_scan_the_data_folder(qapp, store, monkeypa
     assert calls == []  # the scan waits until the window is shown
 
 
-def test_the_data_tab_refreshes_only_while_visible(qapp, store, monkeypatch):
+def test_a_data_snapshot_is_rendered_only_while_visible(qapp, store, monkeypatch):
     window = _window(qapp, store)
-    calls: list[int] = []
-    monkeypatch.setattr(window, "refresh_data", lambda: calls.append(1))
+    snapshot = store.snapshot()
+    calls: list = []
+    monkeypatch.setattr(window, "render_data", lambda snap: calls.append(snap))
 
     monkeypatch.setattr(window, "isVisible", lambda: False)
-    window.refresh_data_if_visible()
+    window.show_data_if_visible(snapshot)
     assert calls == []
 
     monkeypatch.setattr(window, "isVisible", lambda: True)
-    window.refresh_data_if_visible()
-    assert calls == [1]
+    window.show_data_if_visible(snapshot)
+    assert calls == [snapshot]
 
 
 def test_apply_is_the_default_button_and_reset_is_not(qapp, store):
@@ -144,7 +150,7 @@ def test_collect_preserves_the_hidden_overlay_position(qapp, store):
 def test_the_data_tree_lists_entries_and_requests_deletes(qapp, store):
     _stored(store)
     window = _window(qapp, store)
-    window.refresh_data()  # the tab populates when it is shown
+    _render(window, store)
     requested: list = []
     window.edit_requested.connect(requested.append)
 
@@ -170,7 +176,7 @@ def test_the_data_tree_lists_entries_and_requests_deletes(qapp, store):
 def test_selecting_a_parent_covers_its_children(qapp, store):
     _stored(store)
     window = _window(qapp, store)
-    window.refresh_data()
+    _render(window, store)
     top = window._tree.topLevelItem(0)
     assert top is not None
 
@@ -183,7 +189,7 @@ def test_selecting_a_parent_covers_its_children(qapp, store):
 def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
     _stored(store)
     window = _window(qapp, store)
-    window.refresh_data()
+    _render(window, store)
     requested: list = []
     window.edit_requested.connect(requested.append)
     top = window._tree.topLevelItem(0)
@@ -211,12 +217,12 @@ def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
 def test_refreshing_keeps_an_expanded_entry_open(qapp, store):
     _stored(store)
     window = _window(qapp, store)
-    window.refresh_data()
+    _render(window, store)
     top = window._tree.topLevelItem(0)
     assert top is not None
 
     top.setExpanded(True)
-    window.refresh_data()
+    _render(window, store)
 
     refreshed = window._tree.topLevelItem(0)
     assert refreshed is not None and refreshed.isExpanded()

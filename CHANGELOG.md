@@ -26,6 +26,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   real fixture bytes are marked binary in Git so a Windows checkout cannot rewrite them.
 - Nightly and Release run `pip-audit` against the locked dependencies, and the weekly Security
   workflow is back on the same `setup-python` release as the other workflows.
+- The Data tab now renders an immutable snapshot published by the worker. The UI never reads or
+  quarantines the learned-data folder itself, so a scan can no longer stall the overlay or race a
+  save.
 - Documentation is six pages instead of ten: `GUIDE.md` (behaviour and troubleshooting),
   `GAME_DATA.md` (telemetry, log, files and compatibility), `DESIGN.md`, `DEVELOPMENT.md` (including
   the release pipeline), `SETTINGS.md`, and the README. The old pages were merged rather than
