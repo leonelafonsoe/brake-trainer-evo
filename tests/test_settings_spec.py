@@ -32,7 +32,9 @@ def test_registry_covers_every_settings_field_exactly_once():
 def test_visible_hidden_and_internal_fields_are_explicit():
     visible = [spec.name for specs in TABS.values() for spec in specs]
 
-    assert visible == [spec.name for spec in SPECS if spec.visible]
+    # TABS groups by tab, so its flattened order need not match SPECS; every visible spec must
+    # still appear exactly once.
+    assert set(visible) == {spec.name for spec in SPECS if spec.visible}
     assert len(visible) == len(set(visible))
     assert tuple(TABS) == TAB_ORDER
     assert {spec.name for spec in HIDDEN} == {"overlay_x", "overlay_y", "window_geometry"}

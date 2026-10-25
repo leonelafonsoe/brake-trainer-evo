@@ -18,7 +18,15 @@ Kind = Literal["bool", "int", "optint", "float", "text"]
 # app starts from defaults (see config.load_settings): there is no migration code to keep.
 SETTINGS_VERSION = 4
 
-TAB_ORDER: tuple[str, ...] = ("Cues", "Detection", "Sectors", "Overlay", "App", "Diagnostics")
+TAB_ORDER: tuple[str, ...] = (
+    "Cues",
+    "Detection",
+    "Sectors",
+    "Overlay",
+    "App",
+    "Diagnostics",
+    "Advanced",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +127,7 @@ SPECS: tuple[SettingSpec, ...] = (
         name="skip_zone_if_braking",
         kind="float",
         default=0.1,
-        tab="Cues",
+        tab="Advanced",
         label="Skip cue if brake above",
         lo=0.0,
         hi=1.0,
@@ -165,7 +173,7 @@ SPECS: tuple[SettingSpec, ...] = (
         name="min_peak",
         kind="float",
         default=0.4,
-        tab="Detection",
+        tab="Advanced",
         label="Minimum peak pressure",
         lo=0.1,
         hi=1.0,
@@ -188,7 +196,7 @@ SPECS: tuple[SettingSpec, ...] = (
         name="cluster_m",
         kind="float",
         default=40.0,
-        tab="Detection",
+        tab="Advanced",
         label="Same-corner distance",
         lo=5.0,
         hi=200.0,

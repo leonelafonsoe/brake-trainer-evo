@@ -21,7 +21,6 @@ capture starts.
 | Volume | `volume` | 0.6 | 0 - 1 | Loudness of the beeps, from 0 (silent) to 1. |
 | Warning lead time | `lead_s` | 1.6 s | 0.3 - 5 s | The low beep sounds this many seconds before the braking point. |
 | 'Brake now' window | `here_m` | 8 m | 2 - 50 m | The high beep sounds when you are this close to the point. |
-| Skip cue if brake above | `skip_zone_if_braking` | 0.1 | 0 - 1 | No beep if you are already braking harder than this. |
 | Warning tone | `warn_hz` | 900 Hz | 200 - 4000 Hz | Pitch of the low warning beep (braking point coming up). |
 | Brake-now tone | `here_hz` | 1800 Hz | 200 - 4000 Hz | Pitch of the high beep (you are at the braking point). |
 
@@ -30,9 +29,7 @@ capture starts.
 | Setting | Key | Default | Range | What it does |
 | --- | --- | --- | --- | --- |
 | Braking starts above | `brake_on` | 0.25 | 0.05 - 0.95 | Pedal position that counts as the start of a braking event. |
-| Minimum peak pressure | `min_peak` | 0.4 | 0.1 - 1 | Light brake touches below this peak are ignored. |
 | Minimum speed shed | `min_speed_drop` | 15 km/h | 1 - 100 km/h | A braking event must slow the car by at least this much. |
-| Same-corner distance | `cluster_m` | 40 m | 5 - 200 m | Braking starts closer than this are treated as the same corner. |
 
 ## Sectors
 
@@ -67,6 +64,14 @@ capture starts.
 | --- | --- | --- | --- | --- |
 | Telemetry rate | `telemetry_hz` | 60 Hz | 5 - 60 Hz | How often telemetry is read. Higher makes live data a little smoother; 60 is plenty. Sector lines are interpolated between samples rather than snapped to them, so it can refine the estimate only up to the rate the game publishes. A change applies the next time telemetry starts (after a restart or a reconnection), not to the live capture. |
 | Verbose (debug) logging | `debug_logging` | off | on / off | Write extra detail to the log, including the game's track-limit signals (the race cut and the lap flag) at every change. Turn it on, reproduce a problem, then share the log file. |
+
+## Advanced
+
+| Setting | Key | Default | Range | What it does |
+| --- | --- | --- | --- | --- |
+| Skip cue if brake above | `skip_zone_if_braking` | 0.1 | 0 - 1 | No beep if you are already braking harder than this. |
+| Minimum peak pressure | `min_peak` | 0.4 | 0.1 - 1 | Light brake touches below this peak are ignored. |
+| Same-corner distance | `cluster_m` | 40 m | 5 - 200 m | Braking starts closer than this are treated as the same corner. |
 
 ## Stored but not shown in the window
 

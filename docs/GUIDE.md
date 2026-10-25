@@ -336,8 +336,8 @@ pushes a cut into the next sector nor greys a sector of the lap you are driving 
 
 **Corners are missing or doubled**
 Braking points closer than "Same-corner distance" (40 m) count as one corner. Tune it in Settings ->
-Detection. Light braking never counts: raise or lower "Minimum peak pressure" and "Minimum speed
-shed" to match your pedal and driving style.
+Advanced, together with "Minimum peak pressure". Light braking never counts: adjust those and
+"Minimum speed shed" (Detection) to match your pedal and driving style.
 
 **A corner sits in the middle of a sector (a sector line cuts a chicane)**
 The app uses the game's own sector lines, so this should not happen: the game puts them at corner
