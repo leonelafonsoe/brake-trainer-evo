@@ -128,9 +128,9 @@ class OverlayWindow(QWidget):
         self._settings_btn.clicked.connect(self.settings_requested)
         self._quit_btn.clicked.connect(self.quit_requested)
         top.addWidget(self._dot)
-        # The title takes the free space itself (an Ignored size policy plus a stretch factor), so
-        # it gets a real width to elide into instead of collapsing to zero beside a stretch item.
-        top.addWidget(self._title, 1)
+        # The title's width is set explicitly from the window width and the visible buttons (see
+        # _title_budget). A layout stretch alone left it at zero or at the hidden-button width.
+        top.addWidget(self._title)
         top.addWidget(self._learn_btn)
         top.addWidget(self._settings_btn)
         top.addWidget(self._quit_btn)
@@ -170,6 +170,8 @@ class OverlayWindow(QWidget):
         self._learn_btn.setVisible(visible)
         self._settings_btn.setVisible(visible)
         self._quit_btn.setVisible(visible)
+        if hasattr(self, "_title"):
+            self._elide_title()  # the buttons take room, so re-budget the title immediately
 
     def _apply_flags(self) -> None:
         flags = (
@@ -249,25 +251,31 @@ class OverlayWindow(QWidget):
         self._title_full = text
         self._elide_title()
 
+    def _title_budget(self) -> int:
+        """Width left for the title after the window margins, the dot and any visible buttons."""
+        buttons = 0
+        if hasattr(self, "_learn_btn") and self._learn_btn.isVisibleTo(self):
+            buttons = 3 * 22
+        gaps = 4 * 5 if buttons else 5  # one more gap per extra item in the row
+        return max(80, self.width() - 28 - 9 - gaps - buttons)
+
     def _elide_title(self) -> None:
         """Elide by pixel width, not character count: fonts are proportional.
 
-        A hidden window has no final geometry, so show the full text until it is shown. That also
-        avoids eliding differently before and after the first layout on another platform's font.
+        The width is computed rather than read from the label: Qt reserves space for hidden layout
+        items, so the label's own geometry was too narrow (or zero) even when the row had room.
+        A hidden window has no final geometry, so show the full text until it is shown.
         """
+        budget = self._title_budget()
+        if self._title.width() != budget:
+            self._title.setFixedWidth(budget)
         if not self.isVisible():
             _text(self._title, self._title_full)
             if self._title.toolTip():
                 self._title.setToolTip("")
             return
-        width = self._title.width()
-        if width <= 0:  # layout has not run yet
-            buttons = 0
-            if hasattr(self, "_learn_btn") and self._learn_btn.isVisibleTo(self):
-                buttons = 3 * 22 + 3 * 6
-            width = max(80, self.width() - 28 - 10 - 6 - buttons - 12)
         shown = self._title.fontMetrics().elidedText(
-            self._title_full, Qt.TextElideMode.ElideRight, width
+            self._title_full, Qt.TextElideMode.ElideRight, budget
         )
         _text(self._title, shown)
         tip = self._title_full if shown != self._title_full else ""
