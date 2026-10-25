@@ -35,7 +35,7 @@ def test_visible_hidden_and_internal_fields_are_explicit():
     assert visible == [spec.name for spec in SPECS if spec.visible]
     assert len(visible) == len(set(visible))
     assert tuple(TABS) == TAB_ORDER
-    assert {spec.name for spec in HIDDEN} == {"overlay_x", "overlay_y"}
+    assert {spec.name for spec in HIDDEN} == {"overlay_x", "overlay_y", "window_geometry"}
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda spec: spec.name)

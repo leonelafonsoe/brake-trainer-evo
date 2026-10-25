@@ -67,6 +67,22 @@ def test_a_data_snapshot_is_rendered_only_while_visible(qapp, store, monkeypatch
     assert calls == [snapshot]
 
 
+def test_the_window_geometry_is_saved_and_restored(qapp, store):
+    window = _window(qapp, store)
+    window.resize(640, 520)
+    emitted: list[str] = []
+    window.geometry_changed.connect(emitted.append)
+    window.show()
+    qapp.processEvents()
+    window.save_geometry()
+
+    assert emitted and emitted[0]
+    window.close()
+
+    restored = _window(qapp, store, Settings(window_geometry=emitted[0]))
+    assert restored.size() == window.size()
+
+
 def test_apply_is_the_default_button_and_reset_is_not(qapp, store):
     window = _window(qapp, store)
     apply_btn = window.findChild(QPushButton, "apply")

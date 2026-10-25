@@ -70,6 +70,7 @@ capture starts.
 
 ## Stored but not shown in the window
 
+- `window_geometry` (default empty)
 - `overlay_x` (default auto)
 - `overlay_y` (default auto)
 

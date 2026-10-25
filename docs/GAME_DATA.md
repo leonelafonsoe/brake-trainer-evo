@@ -187,7 +187,7 @@ Everything is stored per user in `%APPDATA%\BrakeTrainerEvo\`:
 
 | Path | Content |
 | --- | --- |
-| `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)), the overlay position, and the version that wrote the file |
+| `settings.json` | Your settings (see [SETTINGS.md](SETTINGS.md)), the overlay and settings-window position, and the version that wrote the file |
 | `settings.invalid-<stamp>.json` | A settings file this build could not read, kept instead of overwritten (see below) |
 | `settings.version-<n>-<stamp>.json` | A settings file from another layout, kept instead of migrated (see below) |
 | `data\<track>__<car>.json` | What was learned for one track and car, with the version that wrote it. A colliding name adds `--<hash>` (see below) |

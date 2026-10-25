@@ -124,6 +124,7 @@ def main() -> int:
     settings_window.edit_requested.connect(worker.request_edit)
     worker.data_snapshot.connect(settings_window.show_data_if_visible)
     settings_window.data_refresh_requested.connect(worker.request_data_refresh)
+    settings_window.geometry_changed.connect(controller.save_window_geometry)
     settings_window.test_cue.connect(lambda kind: audio.play(kind, force=True))
 
     # --- tray icon (a way back to the settings even when the overlay is click-through)
@@ -148,6 +149,7 @@ def main() -> int:
     tray.setContextMenu(menu)
     tray.show()
 
+    app.aboutToQuit.connect(settings_window.save_geometry)
     app.aboutToQuit.connect(controller.shutdown)
 
     overlay.place(holder.value.overlay_x, holder.value.overlay_y)

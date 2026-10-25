@@ -121,6 +121,15 @@ class AppController:
     def move_overlay(self, x: int, y: int) -> None:
         self.apply(replace(self._holder.value, overlay_x=x, overlay_y=y))
 
+    def save_window_geometry(self, geometry: str) -> None:
+        """Persist the settings dialog's geometry without re-applying settings anywhere else."""
+        if not geometry or geometry == self._holder.value.window_geometry:
+            return
+        self._holder.value = replace(self._holder.value, window_geometry=geometry)
+        path = self._settings_path()
+        if not self._save(self._holder.value, path):
+            log.error("Could not save settings to %s", path)
+
     # ------------------------------------------------------------------ lifecycle
 
     def shutdown(self) -> None:

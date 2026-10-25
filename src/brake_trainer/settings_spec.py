@@ -349,6 +349,11 @@ SPECS: tuple[SettingSpec, ...] = (
         ),
     ),
     SettingSpec(
+        name="window_geometry",
+        kind="text",
+        default="",
+    ),
+    SettingSpec(
         name="overlay_x",
         kind="optint",
         default=None,
