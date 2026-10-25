@@ -25,6 +25,21 @@ from brake_trainer.buildinfo import BUILD_FILE, build_id  # noqa: E402
 
 NAME = "BrakeTrainerEvo"
 DEFAULT_ICON = ROOT / "packaging" / "icon.ico"
+NOTICES = ("LICENSE", "THIRD_PARTY_NOTICES.md")
+
+
+def copy_notices(target: Path, root: Path = ROOT) -> None:
+    """Put the licence and third-party notices beside the program.
+
+    They travel with the portable zip and, because the installer copies this folder, with an
+    installed copy too. A missing file fails the build rather than shipping without it.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    for name in NOTICES:
+        source = root / name
+        if not source.is_file():
+            raise FileNotFoundError(f"missing distribution file: {source}")
+        shutil.copy2(source, target / name)
 
 
 def main() -> int:
@@ -76,6 +91,13 @@ def main() -> int:
         result = subprocess.run(cmd, cwd=ROOT, check=False)
     if result.returncode:
         return result.returncode
+
+    target = ROOT / "dist" if args.onefile else ROOT / "dist" / NAME
+    try:
+        copy_notices(target)
+    except OSError as exc:
+        print(f"Could not copy the licence and notices: {exc}", file=sys.stderr)
+        return 1
 
     if args.onefile:
         print(f"\nDone: {ROOT / 'dist' / (NAME + '.exe')}")

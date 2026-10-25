@@ -141,6 +141,24 @@ def test_every_workflow_that_tests_or_publishes_runs_the_shared_gates():
     assert "fail_under = " in pyproject
 
 
+def test_the_packaged_build_ships_the_licence_and_notices(tmp_path):
+    build = _load("build_exe")
+    source = tmp_path / "source"
+    source.mkdir()
+    for name in build.NOTICES:
+        (source / name).write_text(name, encoding="utf-8")
+    target = tmp_path / "dist" / "BrakeTrainerEvo"
+
+    build.copy_notices(target, source)
+
+    for name in build.NOTICES:
+        assert (target / name).read_text(encoding="utf-8") == name
+
+    # A missing licence must fail the build, not publish a package without one.
+    with pytest.raises(FileNotFoundError):
+        build.copy_notices(target, tmp_path / "empty")
+
+
 def test_the_release_workflow_fails_closed_and_stamps_the_build():
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "BRAKE_TRAINER_BUILD: ${{ github.sha }}" in workflow
