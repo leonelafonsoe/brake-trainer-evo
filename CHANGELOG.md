@@ -48,6 +48,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   the timing arithmetic is identical and the tests pin the same results.
 - The settings window remembers its position and size, so it reopens where it was left instead of
   jumping back to the default spot.
+- Closing the settings window with unapplied changes now asks before discarding them; a hidden
+  window (for example during shutdown) still closes silently.
 - Settings and learned data now share one atomic JSON writer (temporary file, `fsync`, `replace`,
   cleanup on failure), so the two cannot drift in how they protect a failed write.
 - Settings type validation now lives in `SettingSpec.coerce`: one rule for every field, including

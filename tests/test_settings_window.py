@@ -20,6 +20,7 @@ from brake_trainer.settings_spec import TABS, SettingSpec
 from brake_trainer.storage import DeleteEntry, DeleteRun, DeleteSector
 from brake_trainer.ui.settings import SettingsWindow
 from brake_trainer.ui.settings import data_page as data_page_module
+from brake_trainer.ui.settings import window as settings_window_module
 from brake_trainer.ui.settings.form import _get, _set
 
 pytestmark = pytest.mark.usefixtures("close_qt_windows")
@@ -65,6 +66,44 @@ def test_a_data_snapshot_is_rendered_only_while_visible(qapp, store, monkeypatch
     monkeypatch.setattr(window, "isVisible", lambda: True)
     window.show_data_if_visible(snapshot)
     assert calls == [snapshot]
+
+
+def test_a_hidden_window_closes_without_asking(qapp, store, monkeypatch):
+    window = _window(qapp, store)
+    window.load(Settings(volume=0.4))  # different from the current settings
+    asked: list[int] = []
+    monkeypatch.setattr(
+        settings_window_module.QMessageBox,
+        "question",
+        lambda *args, **kwargs: asked.append(1) or QMessageBox.StandardButton.Yes,
+    )
+
+    window.close()
+
+    assert asked == []
+
+
+def test_a_visible_window_asks_before_discarding(qapp, store, monkeypatch):
+    window = _window(qapp, store)
+    window.show()
+    qapp.processEvents()
+    window.load(Settings(volume=0.4))
+    answers = iter([QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes])
+    asked: list[int] = []
+
+    def question(*args, **kwargs):
+        asked.append(1)
+        return next(answers)
+
+    monkeypatch.setattr(settings_window_module.QMessageBox, "question", question)
+
+    window.close()
+    assert asked == [1]
+    assert window.isVisible()  # "No" keeps the dialog open
+
+    window.close()
+    assert asked == [1, 1]
+    assert not window.isVisible()
 
 
 def test_the_window_geometry_is_saved_and_restored(qapp, store):
