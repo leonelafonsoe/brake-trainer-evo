@@ -49,6 +49,19 @@ def bump(root: Path, version: str, today: date) -> None:
             raise ValueError(f"could not find the version in {path.name}")
         path.write_text(new, encoding="utf-8")
 
+    agents_path = root / "AGENTS.md"
+    if agents_path.exists():
+        text = agents_path.read_text(encoding="utf-8")
+        new, count = re.subn(
+            r"This branch targets \*\*\d+\.\d+\.\d+\*\*",
+            f"This branch targets **{version}**",
+            text,
+            count=1,
+        )
+        if count != 1:
+            raise ValueError("could not find the target version in AGENTS.md")
+        agents_path.write_text(new, encoding="utf-8")
+
     if (root / "uv.lock").exists():
         # CI installs with --locked, so the lock's root version must move with pyproject.toml.
         subprocess.run(["uv", "lock"], cwd=root, check=True)

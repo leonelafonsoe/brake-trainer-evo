@@ -44,6 +44,7 @@ def project(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\nversion = "0.3.8"\n')
     (tmp_path / "src" / "brake_trainer" / "__init__.py").write_text('__version__ = "0.3.8"\n')
     (tmp_path / "CHANGELOG.md").write_text(CHANGELOG)
+    (tmp_path / "AGENTS.md").write_text("This branch targets **0.3.8**. Bump only for a release.\n")
     return tmp_path
 
 
@@ -203,6 +204,7 @@ def test_bump_version_updates_everything_and_keeps_an_empty_unreleased(project):
     assert notes.changelog_section(text, "Unreleased") == ""
     assert 'version = "0.3.9"' in (project / "pyproject.toml").read_text()
     assert '__version__ = "0.3.9"' in (project / "src/brake_trainer/__init__.py").read_text()
+    assert "This branch targets **0.3.9**" in (project / "AGENTS.md").read_text()
     assert notes.check_release("v0.3.9", project)[0] == "0.3.9"
 
 
