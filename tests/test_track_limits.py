@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from brake_trainer.config import Settings
-from brake_trainer.engine import BrakeEngine
+from brake_trainer.engine import BrakeEngine, race_cut_active
 
 from .conftest import Driver
 from .engine_helpers import CORNERS
@@ -106,6 +108,41 @@ def test_a_second_off_is_caught_by_the_games_race_cut_signal(store):
     assert "invalidated" in by_sector[0].note
     assert by_sector[1].duration is None and "off track" in by_sector[1].note
     assert by_sector[2].accepted  # the sector without an off-track is kept
+
+
+@pytest.mark.parametrize(
+    ("gained", "deadline", "active"),
+    [
+        (0, 0, False),
+        (1, 0, True),
+        (320, 0, True),
+        (320, 150, True),
+        (60_000, 5_000, True),
+        (0, 150, False),  # a give-back distance with no time gained is not a cut
+        (-1, 150, False),
+        (60_001, 150, False),
+        (320, -1, False),
+        (320, 5_001, False),
+    ],
+)
+def test_race_cut_active_only_accepts_a_plausible_pair(gained, deadline, active):
+    assert race_cut_active(gained, deadline) is active
+
+
+@pytest.mark.parametrize(("gained", "deadline"), [(10**6, 120), (320, 6_000), (0, 120)])
+def test_an_implausible_race_cut_pair_cannot_drop_a_sector(store, gained, deadline):
+    # A shifted graphics block decodes to an arbitrary pair. A positive gain drops a sector, so an
+    # implausible one must be read as no cut even when a Sample carries it straight to the engine.
+    messages: list[str] = []
+    engine = BrakeEngine(
+        Settings(use_game_log=False, warmup_laps=0), store, on_message=messages.append
+    )
+    driver = Driver(engine)
+    driver.feed(0.10, 150.0, 0.0)
+    for p in (0.11, 0.12, 0.13):
+        driver.feed(p, 150.0, 0.0, cut_gained_ms=gained, cut_deadline_m=deadline)
+    assert not any("Off the track" in m for m in messages)
+    assert engine.snapshot().pass_flag == ""
 
 
 def test_one_race_cut_is_flagged_once(store):

@@ -21,7 +21,7 @@ make a branch and PR, and keep the gates green.
 
 | Item | Value | Risk | Effort |
 |---|---|---|---|
-| Race-cut pair: guard it (or remove it) | Safety / correctness | Medium | S-M |
+| Race-cut pair | Done: guarded at read and in the engine | — | — |
 | Global pause hotkey | Driver UX | Medium-high | M |
 | Windows adapter tests | Reliability | Low | S |
 | Settings key renames | Cosmetic / internal | Medium (settings reset) | M |
@@ -34,37 +34,15 @@ make a branch and PR, and keep the gates green.
 
 ---
 
-## 1. Race-cut pair: add a plausibility guard (recommended) or remove it
+## 1. Race-cut pair: guarded (done)
 
-**Where:** `src/brake_trainer/telemetry.py` (`_race_cut`, `_GFX_RACE_CUT_*`),
-`src/brake_trainer/engine/limits.py` (`race_cut_active`, `_check_race_cut`).
-
-**Current state:** the app reads three values from fixed byte offsets in the raw graphics block:
-`race_cut_gained_time_ms` (int32), `distance_to_deadline` (int32) and `race_cut_current_delta`
-(float32). `race_cut_active()` treats either positive integer as an active cut. Field testing showed
-the pair stayed empty while the game invalidated laps; the game log is the authoritative per-cut
-signal. The offsets are not surfaced by the SDK, so they are a fragile assumption.
-
-**Risk:** if the block shifts in a game update, the three integers become noise. A positive
-`gained_ms` is enough to drop a sector every time the pair changes, so a shifted offset could make
-sectors disappear continuously.
-
-**Recommendation:** keep the fallback, but make it fail safe:
-
-- accept only `1 <= gained_ms <= 60_000`, `0 <= deadline_m <= 5_000`, finite `delta_s`;
-- treat anything outside those ranges as zeros;
-- catch `TypeError` as well as `ValueError` from `bytes.fromhex` (the SDK may hand over bytes);
-- add tests for short/garbage/out-of-range raw blocks and for a shifted plausible-looking value;
-- keep the existing valid race-cut tests and field notes.
-
-If you would rather delete the fallback: remove the three fields from `Sample`, `_race_cut`,
-`race_cut_active`, `_check_race_cut`, `_trace_track_limits` references and the related tests/docs;
-the log and the one-shot lap flag remain. That is a product decision, not a cleanup.
-
-**Acceptance:** no sector is dropped from a garbage/out-of-range pair; valid pairs still drop the
-sector at the reported position; log-based attribution tests unchanged.
-
-**Branch:** `fix/race-cut-guard` (or `refactor/remove-race-cut`).
+The fallback is kept, but it now fails safe. The reader accepts only a plausible pair
+(`1..60 000 ms` gained, `0..5 000 m` left to give back, a finite delta) and treats anything else as
+no cut, so a shifted offset cannot drop sectors continuously. The engine applies the same bounds to
+a `Sample` that did not come through the reader. Decoding also tolerates the SDK handing over the
+raw block instead of hex text. The field notes and the valid-pair behaviour are unchanged; see
+[GAME_DATA.md](GAME_DATA.md#track-limits) and the regression tests in
+`tests/test_telemetry_audio.py` and `tests/test_track_limits.py`.
 
 ## 2. Global pause hotkey
 
