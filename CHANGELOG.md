@@ -4,6 +4,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.6.0 - 2026-10-25
+
 ### Changed
 
 - Settings no longer carry `settings_version` as a field and there is no migration code. A settings
