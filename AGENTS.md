@@ -11,6 +11,7 @@ themselves. It is not the manual: the detailed pages are linked.
 - [docs/DESIGN.md](docs/DESIGN.md) — architecture and the reasons behind it.
 - [docs/GUIDE.md](docs/GUIDE.md) — the behaviour the tests protect, plus troubleshooting.
 - [docs/GAME_DATA.md](docs/GAME_DATA.md) — storage formats, compatibility, game data and the log.
+- [docs/ROADMAP.md](docs/ROADMAP.md) — pending ideas and open product decisions.
 - [tests/fixtures/README.md](tests/fixtures/README.md) — real-evidence fixture rules.
 
 ## Setup
@@ -133,6 +134,7 @@ input. Full rules: [CONTRIBUTING.md](CONTRIBUTING.md).
 - `docs/GUIDE.md` — behaviour and troubleshooting.
 - `docs/DESIGN.md` — why.
 - `docs/GAME_DATA.md` — game data, SDK, game log, file formats and compatibility.
+- `docs/ROADMAP.md` — pending work and product decisions.
 - `docs/SETTINGS.md` is generated. **Never hand-edit it**; run
   `uv run python scripts/gen_settings_doc.py`.
 

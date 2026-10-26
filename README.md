@@ -127,6 +127,7 @@ the top centre of the main screen.
 | [Settings reference](docs/SETTINGS.md) | Every setting with defaults, ranges and what it does |
 | [Design notes](docs/DESIGN.md) | Architecture and the reasoning behind the main decisions |
 | [Development](docs/DEVELOPMENT.md) | Setup, checks, architecture map, change recipes, release pipeline |
+| [Roadmap](docs/ROADMAP.md) | Remaining ideas, open decisions and the next tasks |
 | [Game data and files](docs/GAME_DATA.md) | Which game data is used, SDK quirks, log format, storage and compatibility |
 | [Release pipeline](docs/DEVELOPMENT.md#release-pipeline) | How pull requests, nightly builds and versioned releases work |
 | [Security policy](SECURITY.md) | How to report a vulnerability privately |

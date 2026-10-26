@@ -4,6 +4,11 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+### Added
+
+- A [roadmap](docs/ROADMAP.md) of the remaining product and engineering ideas, with the current
+  state, risks, acceptance criteria and suggested branches for each.
+
 ## 0.6.0 - 2026-10-25
 
 ### Changed
