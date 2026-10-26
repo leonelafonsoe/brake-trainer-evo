@@ -9,6 +9,14 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - A [roadmap](docs/ROADMAP.md) of the remaining product and engineering ideas, with the current
   state, risks, acceptance criteria and suggested branches for each.
 
+### Fixed
+
+- The live race-cut fallback now fails safe. The graphics fields are read at offsets the SDK does
+  not publish, so the app uses a pair only when it looks like the game's own record (`1..60 000 ms`
+  gained, `0..5 000 m` left to give back, a finite delta) and treats anything else as no cut, in the
+  reader and in the engine. A block that shifts in a game update can no longer drop sectors from
+  noise, and the decode tolerates the SDK handing over the raw block instead of hex text.
+
 ## 0.6.0 - 2026-10-25
 
 ### Changed

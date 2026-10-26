@@ -71,6 +71,14 @@ class SectorOutcome:
         )
 
 
+# Plausibility bounds for the game's race-cut pair. The SDK does not surface the fields, so they are
+# read at assumed offsets in the raw graphics block; a block that shifts in a game update would
+# otherwise feed arbitrary integers to the engine, and a positive gain drops a sector. Anything
+# outside these ranges is treated as "no cut" by both the reader and the engine.
+RACE_CUT_MAX_GAINED_MS = 60_000
+RACE_CUT_MAX_DEADLINE_M = 5_000
+
+
 @dataclass(frozen=True, slots=True)
 class Sample:
     """One telemetry reading, already reduced to what the engine needs."""

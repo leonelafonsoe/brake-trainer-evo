@@ -7,7 +7,14 @@ import statistics
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ..models import DropReason, Sample, SectorRun, SectorStatus
+from ..models import (
+    RACE_CUT_MAX_DEADLINE_M,
+    RACE_CUT_MAX_GAINED_MS,
+    DropReason,
+    Sample,
+    SectorRun,
+    SectorStatus,
+)
 from .constants import _CUT_WARNING, _HISTORY_S
 
 if TYPE_CHECKING:
@@ -58,8 +65,13 @@ def merge_zones(zones: Sequence[float], cluster_m: float, length_m: float) -> li
 
 
 def race_cut_active(gained_ms: int, deadline_m: int) -> bool:
-    """Is the game currently holding a cut against the driver? Both fields are 0 when it is not."""
-    return gained_ms > 0 or deadline_m > 0
+    """Is the game currently holding a plausible cut against the driver?
+
+    Both fields are 0 when it is not. The ranges are the ones the raw read enforces
+    (``RACE_CUT_MAX_*``): an implausible pair is treated as no cut, because a shifted offset
+    otherwise decodes to an arbitrary integer and a positive gain drops a sector.
+    """
+    return 1 <= gained_ms <= RACE_CUT_MAX_GAINED_MS and 0 <= deadline_m <= RACE_CUT_MAX_DEADLINE_M
 
 
 class LimitsMixin:

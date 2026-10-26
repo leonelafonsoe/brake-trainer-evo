@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import math
 import struct
 import threading
 import time
@@ -72,22 +73,65 @@ def test_sample_from_frame():
     assert (s.cut_gained_ms, s.cut_deadline_m, s.cut_delta_s) == (0, 0, 0.0)  # no raw graphics
 
 
-def test_sample_reads_the_race_cut_fields_from_the_raw_graphics_block():
+def _raw_graphics(gained: int, deadline: int, delta: float) -> str:
+    """The raw graphics region as the SDK hands it over, with the race-cut fields written."""
     raw = bytearray(4096)
-    struct.pack_into("<i", raw, 2464, 320)  # race_cut_gained_time_ms
-    struct.pack_into("<i", raw, 2468, 150)  # distance_to_deadline
-    struct.pack_into("<f", raw, 2472, -0.42)  # race_cut_current_delta
-    s = sample_from_frame(frame(graphics_raw=bytes(raw).hex()))
+    struct.pack_into("<i", raw, 2464, gained)  # race_cut_gained_time_ms
+    struct.pack_into("<i", raw, 2468, deadline)  # distance_to_deadline
+    struct.pack_into("<f", raw, 2472, delta)  # race_cut_current_delta
+    return bytes(raw).hex()
+
+
+def test_sample_reads_the_race_cut_fields_from_the_raw_graphics_block():
+    s = sample_from_frame(frame(graphics_raw=_raw_graphics(320, 150, -0.42)))
     assert s is not None
     assert (s.cut_gained_ms, s.cut_deadline_m) == (320, 150)
     assert abs(s.cut_delta_s + 0.42) < 1e-6
 
 
-def test_sample_ignores_a_short_or_corrupt_raw_graphics_block():
-    short = sample_from_frame(frame(graphics_raw="00"))  # too short
-    corrupt = sample_from_frame(frame(graphics_raw="zz" * 12))  # 24 chars, not hex
-    assert short is not None and short.cut_gained_ms == 0
-    assert corrupt is not None and corrupt.cut_gained_ms == 0
+@pytest.mark.parametrize(
+    ("raw", "why"),
+    [
+        ("00", "too short"),
+        (bytes(4096), "the raw block, cut short before the race-cut fields"),
+        ("zz" * 2500, "long enough, but not hex text"),
+        (bytes(6000), "the raw block itself, not hex text"),
+    ],
+)
+def test_sample_ignores_a_short_or_corrupt_raw_graphics_block(raw, why):
+    s = sample_from_frame(frame(graphics_raw=raw))
+    assert s is not None, why
+    assert (s.cut_gained_ms, s.cut_deadline_m, s.cut_delta_s) == (0, 0, 0.0)
+
+
+@pytest.mark.parametrize(
+    ("gained", "deadline", "delta"),
+    [
+        (0, 150, -0.42),  # a give-back distance with no time gained is not a cut
+        (-320, 150, -0.42),
+        (60_001, 150, -0.42),
+        (320, -1, -0.42),
+        (320, 5_001, -0.42),
+        (320, 150, math.inf),
+        (320, 150, math.nan),
+    ],
+)
+def test_sample_treats_an_out_of_range_race_cut_block_as_no_cut(gained, deadline, delta):
+    s = sample_from_frame(frame(graphics_raw=_raw_graphics(gained, deadline, delta)))
+    assert s is not None
+    assert (s.cut_gained_ms, s.cut_deadline_m, s.cut_delta_s) == (0, 0, 0.0)
+
+
+def test_sample_rejects_a_shifted_but_plausible_looking_race_cut_block():
+    # The block moved four bytes earlier in a game update: the read now sees the deadline as the
+    # gain (150 ms looks plausible) and the delta's float bits as the deadline, which does not.
+    raw = bytearray(4096)
+    struct.pack_into("<i", raw, 2460, 320)
+    struct.pack_into("<i", raw, 2464, 150)
+    struct.pack_into("<f", raw, 2468, -0.42)
+    s = sample_from_frame(frame(graphics_raw=bytes(raw).hex()))
+    assert s is not None
+    assert (s.cut_gained_ms, s.cut_deadline_m, s.cut_delta_s) == (0, 0, 0.0)
 
 
 @pytest.mark.parametrize(

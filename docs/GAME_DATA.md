@@ -95,7 +95,11 @@ Track limits follow the game, using its own signals:
   game invalidates the lap and stays down until the lap ends, so on its own it marks only the first
   cut of a lap. Kept as a fallback for a build whose log the app cannot read.
 - **`graphics.race_cut_*`** (the *race-cut pair*: time gained and distance left to give it back)
-  drops the sector while the off-track is under way, where the game publishes it. The log is the
+  drops the sector while the off-track is under way, where the game publishes it. The SDK does not
+  surface these fields, so they are read at fixed offsets in the raw graphics block; a block that
+  shifts in a game update would otherwise feed arbitrary numbers to the engine. A pair is therefore
+  used only when the gain is `1..60 000 ms`, the give-back distance `0..5 000 m` and the delta is
+  finite; anything else is read as no cut, by both the reader and the engine. The log is the
   authoritative per-cut signal; the pair is a live fallback for a build that fills it in.
 
 These signals overlap: the same cut can be seen live by the race-cut pair or the lap flag and again in

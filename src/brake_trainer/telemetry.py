@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import math
 import struct
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from enum import Enum
 from typing import Any, NamedTuple, Protocol
 
 from .config import Settings
-from .models import Sample
+from .models import RACE_CUT_MAX_DEADLINE_M, RACE_CUT_MAX_GAINED_MS, Sample
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +35,9 @@ _ERROR_FRAMES = "telemetry frames could not be read"
 # The graphics block carries the game's "race cut" fields, its own record of the last off-track:
 # the time it judged the driver gained, and how far they still have to drive to give it back. The
 # SDK decodes the graphics region but does not surface these three, so they are read from the raw
-# bytes (``FrameData.graphics_raw``) at the offsets its offset table already defines.
+# bytes (``FrameData.graphics_raw``) at the offsets its offset table already defines. Those offsets
+# are an assumption the SDK does not publish, so every read is checked against the plausibility
+# bounds in ``models`` before it reaches the engine.
 _GFX_RACE_CUT_OFFSET = 2464  # race_cut_gained_time_ms (int32), then distance_to_deadline (int32)
 _GFX_RACE_CUT_BYTES = 12  # ...then race_cut_current_delta (float32)
 
@@ -142,22 +145,34 @@ def _frame_time(frame: Any) -> float:
 def _race_cut(frame: Any) -> tuple[int, int, float]:
     """The game's race-cut fields from the raw graphics bytes: (gained_ms, deadline_m, delta_s).
 
-    All zero when the game has not flagged an off-track (or when the region is not there yet).
+    All zero when the game has not flagged an off-track, when the region is not there yet, or when
+    the decoded values are not plausible. The offsets are not published by the SDK, so a shifted
+    block could otherwise look like a cut and drop sectors continuously; a plausible gain, a
+    sane give-back distance and a finite delta are what the game's own record looks like.
     """
     raw = getattr(frame, "graphics_raw", None)
     if not raw:
         return 0, 0, 0.0
     start = _GFX_RACE_CUT_OFFSET * 2  # hex: two characters per byte
-    chunk = raw[start : start + _GFX_RACE_CUT_BYTES * 2]
-    if len(chunk) < _GFX_RACE_CUT_BYTES * 2:
-        return 0, 0, 0.0
     try:
+        chunk = raw[start : start + _GFX_RACE_CUT_BYTES * 2]
+        if len(chunk) < _GFX_RACE_CUT_BYTES * 2:
+            return 0, 0, 0.0
         data = bytes.fromhex(chunk)
-    except ValueError:
+    except (TypeError, ValueError):
+        # Not hex text: the SDK may hand over the raw block itself, and a corrupt read must not
+        # end the session.
         return 0, 0, 0.0
     gained = int.from_bytes(data[0:4], "little", signed=True)
     deadline = int.from_bytes(data[4:8], "little", signed=True)
-    return gained, deadline, struct.unpack_from("<f", data, 8)[0]
+    delta = struct.unpack_from("<f", data, 8)[0]
+    if not (
+        1 <= gained <= RACE_CUT_MAX_GAINED_MS
+        and 0 <= deadline <= RACE_CUT_MAX_DEADLINE_M
+        and math.isfinite(delta)
+    ):
+        return 0, 0, 0.0
+    return gained, deadline, delta
 
 
 def sample_from_frame(frame: Any) -> Sample | None:
