@@ -60,7 +60,10 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src"]
+files = ["src", "scripts"]
+# Resolve ``brake_trainer`` from the source tree: the installed package has no ``py.typed`` marker,
+# and the release scripts are checked from the repository, not as library consumers.
+mypy_path = ["src"]
 
 [[tool.mypy.overrides]]
 module = ["acevo", "acevo.*", "winsound"]

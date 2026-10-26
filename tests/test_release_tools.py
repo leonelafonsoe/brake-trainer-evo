@@ -326,6 +326,16 @@ def test_the_gates_check_windows_types():
     assert "mypy --platform win32" in gates
 
 
+def test_mypy_checks_the_release_scripts_from_source():
+    import tomllib
+
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    mypy = config["tool"]["mypy"]
+
+    assert {"src", "scripts"} <= set(mypy["files"])
+    assert "src" in mypy["mypy_path"]
+
+
 def test_every_windows_build_is_smoke_tested():
     for name in ("ci.yml", "nightly.yml", "release.yml"):
         workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")

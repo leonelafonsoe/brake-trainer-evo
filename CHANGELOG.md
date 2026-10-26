@@ -31,6 +31,10 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - The Windows build smoke test now waits a moment after the startup line and fails if the packaged
   app exits, so a crash in the first native event (such as a broken event filter) cannot pass the
   build.
+- `mypy` now checks the release and build scripts (`scripts/`) in strict mode as well as `src`,
+  resolving the package from the source tree. They were already fully annotated, so no script
+  changed; the extra check keeps helpers such as the release tools honest. Tests remain outside the
+  strict pass.
 
 ## 0.6.0 - 2026-10-25
 

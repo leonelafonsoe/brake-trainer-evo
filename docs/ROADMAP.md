@@ -25,7 +25,7 @@ make a branch and PR, and keep the gates green.
 | Global pause hotkey | Done: live, conflict-reporting global key | — | — |
 | Windows adapter tests | Done: real paths run on the Windows CI leg | — | — |
 | Settings key renames | Cosmetic / internal | Medium (settings reset) | M |
-| `mypy` for tests and scripts | Type safety | Low | M-L |
+| `mypy` for tests and scripts | Scripts done; tests deferred | Low | M-L |
 | `EngineState` protocol | Type debt | Low runtime, high churn | M-L |
 | Merge `PositionTimeline.at` with the crossing core | Code size | High | M |
 | Centralise overlay colours | Consistency | Low | S |
@@ -79,19 +79,23 @@ generated docs must be checked; all engine references and tests need the new fie
 **Recommendation:** only do this if the reset is acceptable and the names will stay. It is cosmetic
 for users and moderately broad in code. **Branch:** `refactor/settings-key-renames`.
 
-## 5. `mypy` for tests and scripts (optional)
+## 5. `mypy` for tests and scripts (scripts done, tests optional)
 
-**Current state:** `mypy` is strict for `src` only. Running it over `tests` + `scripts` currently
-reports **613 errors in 35 files**, mostly missing annotations in tests. Test code is not
-production code, but helper drift (fixtures, replay harness, release scripts) is real.
+**Current state:** `mypy` is strict for `src` and `scripts`. The release/build scripts were already
+fully annotated; the only errors came from mypy resolving the *installed* package, which has no
+`py.typed` marker. `mypy_path = ["src"]` makes it use the source tree instead, so the scripts are
+checked without changing them.
 
-**Proposal (choose one):**
+Running it over `tests` still reports hundreds of errors, mostly missing annotations. Test code is
+not production code, but helper drift (fixtures, replay harness) is real.
 
-- **Relaxed test typing:** add `tests` and `scripts` to `files`, then a per-module override for
-  `tests` and the top-level script modules that disables `disallow_untyped_defs` /
-  `disallow_untyped_calls` while keeping `check_untyped_defs` on. Fix the remaining real errors.
-- **Scripts first:** include only `scripts` in strict mypy; leave tests out.
-- **Do nothing:** keep the strict source pass. This is a deliberate choice, not an oversight.
+**Proposal for the tests slice (choose one):**
+
+- **Relaxed test typing:** add `tests` to `files`, then a per-module override for `tests` that
+  disables `disallow_untyped_defs` / `disallow_untyped_calls` while keeping `check_untyped_defs` on.
+  Fix the remaining real errors.
+- **Do nothing:** keep the strict source-and-scripts pass. This is a deliberate choice, not an
+  oversight.
 
 **Acceptance:** both `mypy` and `mypy --platform win32` pass with the chosen scope; no runtime change.
 

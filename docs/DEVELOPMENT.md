@@ -56,8 +56,8 @@ uv sync --locked --extra dev
 uv run pre-commit run --all-files  # ruff, formatting, YAML/TOML, whitespace, mypy
 uv run ruff format --check .
 uv run ruff check .
-uv run mypy
-uv run mypy --platform win32   # the Windows-only branches (ctypes, winsound, tasklist)
+uv run mypy                       # src and scripts, strict
+uv run mypy --platform win32      # the Windows-only branches (ctypes, winsound, tasklist)
 uv run pytest -q -W error
 uv run pytest -q -W error --cov    # coverage with the floor from pyproject.toml
 uv run python scripts/gen_settings_doc.py --check
