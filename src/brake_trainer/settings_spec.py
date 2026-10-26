@@ -12,6 +12,8 @@ import math
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from .hotkey import DEFAULT_PAUSE_HOTKEY
+
 Kind = Literal["bool", "int", "optint", "float", "text"]
 
 # Bumped when the stored settings layout changes. A file with any other version is archived and the
@@ -318,6 +320,17 @@ SPECS: tuple[SettingSpec, ...] = (
         tab="App",
         label="Game process name contains",
         tip="Part of the game's process name, used to detect that it is running or has closed.",
+    ),
+    SettingSpec(
+        name="pause_hotkey",
+        kind="text",
+        default=DEFAULT_PAUSE_HOTKEY,
+        tab="App",
+        label="Global pause hotkey",
+        tip=(
+            "Pause or resume learning from anywhere, including while driving. Ctrl, Alt, Shift or"
+            " Win plus a letter, digit or F1-F12; F-keys may be used alone. Empty = off."
+        ),
     ),
     SettingSpec(
         name="use_game_log",

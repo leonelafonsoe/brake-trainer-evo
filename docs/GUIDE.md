@@ -204,9 +204,16 @@ the first laps.
 
 ## Pausing learning
 
-Pause learning (overlay button, tray menu, or Settings) in a race so your saved marks stay as they
-are. Cues keep playing and the sector colours still show how you compare. A sector that was partly
-driven while paused is not saved when you resume, and held passes are not written after you pause.
+Pause learning (overlay button, tray menu, Settings, or the global hotkey) in a race so your saved
+marks stay as they are. Cues keep playing and the sector colours still show how you compare. A
+sector that was partly driven while paused is not saved when you resume, and held passes are not
+written after you pause.
+
+The global hotkey is **Ctrl+Alt+P** by default. Change it in Settings -> App, or clear the field to
+turn it off. A letter or number needs at least one modifier (Ctrl, Alt, Shift or Win), so the app
+does not take that key from every other window; F1-F12 may be used alone. If another application
+already owns the combination, the tray says so when the app starts and the log records it: choose
+another one.
 
 ## Removing a bad time
 
@@ -313,10 +320,16 @@ The line under the sector bar usually tells you why nothing is being learned:
 | --- | --- | --- |
 | Warm-up lap · not learning | The first lap after the pits (and after starting the app) is skipped | Keep driving, or set "Ignore laps after leaving the pits" to Off |
 | Waiting for the game's sector lines | A new track that no car has learned the lines on: the app is waiting for the game's log to report its sector splits, and counts nothing meanwhile | Drive a lap; if it lasts more than three laps see the entry below |
-| Learning paused | Learning is off | Press the resume button on the overlay |
+| Learning paused | Learning is off | Press the pause hotkey (Ctrl+Alt+P by default) or the resume button on the overlay |
 | S3 won't count · lap invalidated | The game invalidated the lap for a cut in that sector | Nothing; the next clean sector counts |
 | S3 won't count · off track | The game reported a cut in that sector | Nothing; the next clean sector counts. If it looks wrong, turn on verbose logging and share the log |
 | No braking points yet | Nothing learned for this track and car | Drive 2-3 clean laps after the warm-up lap |
+
+**The pause hotkey does nothing**
+Check Settings -> App -> *Global pause hotkey*. It may be empty (off), or Windows may have refused
+it because another application owns that combination; the tray says so at startup and the log
+records the error. Pick another combination and press Apply. A letter or digit needs a modifier;
+F1-F12 can be used alone.
 
 **A second off-track moment in the same lap is not dropped**
 Once the game has invalidated a lap its "lap valid" flag stays down, so it cannot show a later

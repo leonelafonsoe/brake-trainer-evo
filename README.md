@@ -149,6 +149,7 @@ src/brake_trainer/
   telemetry.py     acevo-sdk adapter, restart watchdog, game-exit detection
   gamelog.py       follows the game's log for sector splits and cuts
   audio.py         generated beeps (no audio files)
+  hotkey.py        global pause hotkey: parse it and keep the registration in sync
   metadata.py      app/build/save provenance for stored files
   paths.py         per-user app, data and log folders
   buildinfo.py     which build this is (commit or packaged identifier)
@@ -156,7 +157,7 @@ src/brake_trainer/
   controller.py    settings application and shutdown policy (no Qt)
   app.py           wiring, tray icon
   ui/              overlay, settings/ (window, form, diagnostics/data/about pages), status line,
-                   icon, worker thread, theme
+                   icon, worker thread, theme, Win32 hotkey filter
 tests/             pytest: engine scenarios, storage, config, telemetry, status line, docs
 scripts/           build_exe.py, make_icon.py, gen_settings_doc.py, release_notes.py, bump_version.py
 packaging/         PyInstaller entry point, installer script, icon

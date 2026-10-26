@@ -99,14 +99,16 @@ regenerate the settings reference after changing a setting.
 | Composition root, single instance | `tests/test_app.py` |
 | Pure layers do not import Qt/adapters | `tests/test_architecture.py` |
 | Settings application, save warnings, shutdown | `tests/test_controller.py` |
+| Global pause hotkey parsing and registration | `tests/test_hotkey.py` |
 | Status line and widget geometry | `tests/test_status.py`, `tests/test_widgets.py` |
 | Docs, links, release tools, generated files | `tests/test_docs.py`, `tests/test_docs_links.py`, `tests/test_release_tools.py` |
 
-Three adapters have a real implementation only on Windows: the process handle
-(`open_process_watcher`), `winsound` and the single-instance mutex. Their tests are marked
+Four adapters have a real implementation only on Windows: the process handle
+(`open_process_watcher`), `winsound`, the single-instance mutex and the global pause hotkey
+(`RegisterHotKey` with the `WM_HOTKEY` filter). Their tests are marked
 `skipif(sys.platform != "win32")`, so the Windows CI leg exercises the real code and Linux/macOS
-skip them cleanly. The logic around them (an injected watcher, a fake `ctypes`) is still tested on
-every platform.
+skip them cleanly. The logic around them (an injected watcher, a fake `ctypes`, the hotkey parser
+and register/unregister lifecycle) is still tested on every platform.
 
 `tests/conftest.py` has the fixtures that make a scenario short:
 

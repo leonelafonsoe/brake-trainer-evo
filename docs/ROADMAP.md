@@ -22,7 +22,7 @@ make a branch and PR, and keep the gates green.
 | Item | Value | Risk | Effort |
 |---|---|---|---|
 | Race-cut pair | Done: guarded at read and in the engine | — | — |
-| Global pause hotkey | Driver UX | Medium-high | M |
+| Global pause hotkey | Done: live, conflict-reporting global key | — | — |
 | Windows adapter tests | Done: real paths run on the Windows CI leg | — | — |
 | Settings key renames | Cosmetic / internal | Medium (settings reset) | M |
 | `mypy` for tests and scripts | Type safety | Low | M-L |
@@ -44,30 +44,17 @@ raw block instead of hex text. The field notes and the valid-pair behaviour are 
 [GAME_DATA.md](GAME_DATA.md#track-limits) and the regression tests in
 `tests/test_telemetry_audio.py` and `tests/test_track_limits.py`.
 
-## 2. Global pause hotkey
+## 2. Global pause hotkey (done)
 
-**Where:** new `src/brake_trainer/ui/hotkey.py` (or a Win32 adapter), `app.py`, settings metadata.
-
-**Current state:** pause/resume is available from the overlay button, tray menu and Settings. The
-overlay is a non-focusable tool window, so there is no keyboard path while driving.
-
-**Proposal:**
-
-- Add a setting `pause_hotkey` (text, default `Ctrl+Alt+P`, empty = off) and validate it at apply
-  time. Parse modifiers (Ctrl/Alt/Shift/Win) plus a key (A-Z, 0-9, F1-F12); reject duplicate
-  modifiers and unsupported keys with a clear message.
-- Implement registration through Win32 `RegisterHotKey` on a message-only window or a Qt
-  `QAbstractNativeEventFilter` receiving `WM_HOTKEY`.
-- Register on startup and on setting change; unregister on quit and on failure. A conflict
-  (`ERROR_HOTKEY_ALREADY_REGISTERED`) must be visible (tray message + log), not silent.
-- Keep the setting live only where possible; otherwise say "applies on restart" next to it, as the
-  telemetry rate does.
-- No new dependency. Inject the Win32 backend so the parser and lifecycle are testable on Linux.
-
-**Tests:** parser accepts/rejects; fake backend gets one register/unregister per change; a conflict
-does not crash the app; non-Windows returns "unsupported" without raising.
-
-**Docs:** GUIDE controls and SETTINGS (generated). **Branch:** `feat/global-pause-hotkey`.
+Settings -> App -> **Global pause hotkey** (default `Ctrl+Alt+P`, empty = off) pauses and resumes
+learning from anywhere, including while driving. The parser accepts Ctrl/Alt/Shift/Win plus A-Z,
+0-9 or F1-F12, rejects duplicate modifiers and unsupported keys with a sentence the form shows, and
+requires a modifier for letters and digits so the app does not take that key from other windows.
+`RegisterHotKey` is called directly through ctypes (no new dependency) and a Qt native event filter
+handles `WM_HOTKEY`; the binding applies live, is re-registered when it changes, and is
+unregistered on exit. A Windows conflict is reported in the tray and the log. The parser and
+lifecycle are tested with a fake backend everywhere; the real API is exercised on the Windows CI
+leg. See [GUIDE.md](GUIDE.md#pausing-learning) and [SETTINGS.md](SETTINGS.md).
 
 ## 3. Windows adapter tests (done)
 

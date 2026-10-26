@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
     QFormLayout,
     QLineEdit,
+    QMessageBox,
     QSpinBox,
     QWidget,
 )
@@ -101,5 +102,9 @@ class FormMixin:
 
     def _apply(self) -> None:
         settings = self.collect()
+        problem = settings.validation_error()
+        if problem:
+            QMessageBox.warning(cast(QWidget, self), "Check the settings", problem)
+            return
         self.load(settings)  # show clamped values
         self.applied.emit(settings)

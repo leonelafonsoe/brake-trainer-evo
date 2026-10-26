@@ -20,6 +20,7 @@ from brake_trainer.settings_spec import TABS, SettingSpec
 from brake_trainer.storage import DeleteEntry, DeleteRun, DeleteSector
 from brake_trainer.ui.settings import SettingsWindow
 from brake_trainer.ui.settings import data_page as data_page_module
+from brake_trainer.ui.settings import form as form_module
 from brake_trainer.ui.settings import window as settings_window_module
 from brake_trainer.ui.settings.form import _get, _set
 
@@ -152,6 +153,29 @@ def test_apply_shows_the_clamped_value_and_emits_it(qapp, store):
 
     assert applied and applied[-1].volume == 1.0
     assert _get(widget, spec) == 1.0  # the form shows what will actually be used
+
+
+def test_an_invalid_hotkey_blocks_apply_and_says_why(qapp, store, monkeypatch):
+    window = _window(qapp, store)
+    applied: list[Settings] = []
+    warnings: list[str] = []
+    window.applied.connect(applied.append)
+    monkeypatch.setattr(
+        form_module.QMessageBox,
+        "warning",
+        lambda parent, title, text: warnings.append(text),
+    )
+    spec, widget = window._widgets["pause_hotkey"]
+    _set(widget, spec, "P")
+
+    window._apply()
+
+    assert applied == []  # a hotkey that cannot work is not saved
+    assert warnings and "modifier" in warnings[0]
+
+    _set(widget, spec, "Shift+F9")
+    window._apply()
+    assert applied and applied[-1].pause_hotkey == "Shift+F9"
 
 
 def test_every_visible_setting_has_a_widget_of_the_right_kind(qapp, store):

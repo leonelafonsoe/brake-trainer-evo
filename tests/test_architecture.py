@@ -18,6 +18,7 @@ PURE_FILES = [
     SRC / "models.py",
     SRC / "outcomes.py",
     SRC / "config.py",
+    SRC / "hotkey.py",
     SRC / "settings_spec.py",
     SRC / "timeline.py",
     SRC / "storage.py",
@@ -26,6 +27,7 @@ PURE_FILES = [
 CORE_FILES = [
     SRC / "models.py",
     SRC / "outcomes.py",
+    SRC / "hotkey.py",
     SRC / "settings_spec.py",
     SRC / "timeline.py",
     *sorted((SRC / "engine").glob("*.py")),
