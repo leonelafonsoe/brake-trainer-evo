@@ -353,6 +353,7 @@ whole thing in a scratch fork. Delete a bad release and its tag from the Release
 - [GUIDE.md](GUIDE.md) — behaviour and troubleshooting.
 - [DESIGN.md](DESIGN.md) — why.
 - [GAME_DATA.md](GAME_DATA.md) — SDK, game log, file formats and compatibility.
+- [ROADMAP.md](ROADMAP.md) — pending work and open decisions.
 - [SETTINGS.md](SETTINGS.md) — generated settings reference; never hand-edit.
 
 Keep each page owning one job and link instead of repeating a long explanation.
