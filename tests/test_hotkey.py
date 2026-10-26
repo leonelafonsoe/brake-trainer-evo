@@ -12,6 +12,8 @@ import sys
 from ctypes import wintypes
 
 import pytest
+import shiboken6
+from PySide6.QtCore import QByteArray
 
 from brake_trainer.hotkey import (
     HOTKEY_ID,
@@ -182,19 +184,32 @@ def test_a_wm_hotkey_message_for_our_id_calls_the_pause_callback():
     message = wintypes.MSG()
     message.message = WM_HOTKEY
     message.wParam = HOTKEY_ID
+    # PySide6 hands over the MSG pointer as a shiboken VoidPtr, not an int: use the real type.
+    address = shiboken6.VoidPtr(ctypes.addressof(message))
 
-    assert hotkey.nativeEventFilter(b"windows_dispatcher_MSG", ctypes.addressof(message)) is True
+    assert hotkey.nativeEventFilter(QByteArray(b"windows_dispatcher_MSG"), address) is True
     assert pressed == [1]
 
     message.wParam = HOTKEY_ID + 1  # another program's hotkey message
-    assert hotkey.nativeEventFilter(b"windows_dispatcher_MSG", ctypes.addressof(message)) is False
+    assert hotkey.nativeEventFilter(b"windows_dispatcher_MSG", address) is False
     assert pressed == [1]
 
     message.wParam = HOTKEY_ID
     message.message = 0x0400  # not WM_HOTKEY
-    assert hotkey.nativeEventFilter(b"windows_dispatcher_MSG", ctypes.addressof(message)) is False
+    assert hotkey.nativeEventFilter(b"windows_dispatcher_MSG", address) is False
     assert pressed == [1]
 
+    hotkey.close()
+
+
+def test_a_native_message_that_cannot_be_read_is_ignored_and_logged_once(caplog):
+    hotkey = WindowsHotkey(lambda: None, install_filter=False)
+
+    with caplog.at_level(logging.ERROR, logger="brake_trainer.ui.hotkey"):
+        assert hotkey.nativeEventFilter(b"windows_dispatcher_MSG", object()) is False
+        assert hotkey.nativeEventFilter(b"windows_dispatcher_MSG", object()) is False
+
+    assert sum("Could not read" in record.getMessage() for record in caplog.records) == 1
     hotkey.close()
 
 

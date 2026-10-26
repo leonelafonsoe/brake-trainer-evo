@@ -27,6 +27,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 - The real Windows adapters are tested on the Windows CI leg: the process handle, the `winsound`
   backend and the single-instance mutex. The tests skip cleanly on Linux and macOS, and the fake
   `ctypes`/injected-watcher tests still cover the surrounding logic everywhere.
+- The Windows build smoke test now waits a moment after the startup line and fails if the packaged
+  app exits, so a crash in the first native event (such as a broken event filter) cannot pass the
+  build.
 
 ## 0.6.0 - 2026-10-25
 

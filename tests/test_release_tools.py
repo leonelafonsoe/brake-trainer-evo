@@ -219,7 +219,22 @@ def test_the_smoke_test_waits_for_the_startup_line(tmp_path):
         ".write_text('startup app=0.0.0 build=test\\n'); time.sleep(5)",
     ]
 
-    assert smoke.wait_for_startup(command, timeout=10) == 0
+    assert smoke.wait_for_startup(command, timeout=10, grace=0.1) == 0
+
+
+def test_the_smoke_test_fails_when_the_app_crashes_after_its_startup_line():
+    import sys
+
+    command = [
+        sys.executable,
+        "-c",
+        "import os, pathlib, time; "
+        "pathlib.Path(os.environ['BRAKE_TRAINER_HOME'], 'brake_trainer.log')"
+        ".write_text('startup app=0.0.0 build=test\\n'); time.sleep(0.2); raise SystemExit(7)",
+    ]
+
+    with pytest.raises(SystemExit, match="just after its startup line"):
+        smoke.wait_for_startup(command, timeout=10, grace=1.0)
 
 
 def test_the_smoke_test_fails_when_the_app_exits_early(tmp_path):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import sys
 from collections.abc import Callable
 from ctypes import wintypes
@@ -11,6 +12,8 @@ from typing import Any, cast
 from PySide6.QtCore import QAbstractNativeEventFilter, QByteArray, QCoreApplication
 
 from ..hotkey import HOTKEY_ID, WM_HOTKEY, Hotkey, HotkeyControl
+
+log = logging.getLogger(__name__)
 
 # ctypes only defines these on Windows, and both mypy passes (Linux and Windows) check this file.
 _WIN32 = cast(Any, ctypes)
@@ -42,6 +45,7 @@ class WindowsHotkey(QAbstractNativeEventFilter):
         self._id = hotkey_id
         self._registered = False
         self._installed = False
+        self._message_error_logged = False
         if install_filter:
             application = QCoreApplication.instance()
             if application is None:
@@ -77,15 +81,27 @@ class WindowsHotkey(QAbstractNativeEventFilter):
     def nativeEventFilter(
         self,
         event_type: QByteArray | bytes | bytearray | memoryview,
-        message: int,
+        # The stub says int, but PySide hands over the MSG pointer as a shiboken VoidPtr.
+        message: Any,
     ) -> bool:
-        name = event_type.data() if isinstance(event_type, QByteArray) else event_type
-        if bytes(name) not in _WINDOWS_EVENTS:
+        try:
+            name = event_type.data() if isinstance(event_type, QByteArray) else event_type
+            if bytes(name) not in _WINDOWS_EVENTS:
+                return False
+            msg = wintypes.MSG.from_address(int(message))
+            if msg.message != WM_HOTKEY or msg.wParam != self._id:
+                return False
+        except Exception:
+            # This runs for every Windows message: an escape here takes the event loop (and the
+            # app) down, so a message we cannot read is ignored, loudly but only once.
+            if not self._message_error_logged:
+                self._message_error_logged = True
+                log.exception("Could not read a native Windows message")
             return False
-        msg = wintypes.MSG.from_address(message)
-        if msg.message != WM_HOTKEY or msg.wParam != self._id:
-            return False
-        self._on_pressed()
+        try:
+            self._on_pressed()
+        except Exception:
+            log.exception("The pause hotkey action failed")
         return True
 
 
