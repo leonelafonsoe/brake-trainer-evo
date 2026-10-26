@@ -53,7 +53,7 @@ def test_kind_default_and_annotation_agree(spec):
     elif spec.kind == "float":
         assert hint is float
         assert type(spec.default) is float
-    elif spec.kind == "text":
+    elif spec.kind in {"text", "hotkey"}:
         assert hint is str
         assert type(spec.default) is str
     else:
@@ -118,7 +118,7 @@ def test_visible_settings_have_a_label_and_help():
 def test_the_global_pause_hotkey_defaults_to_ctrl_alt_p():
     spec = SPEC_BY_NAME["pause_hotkey"]
 
-    assert spec.kind == "text"
+    assert spec.kind == "hotkey"
     assert spec.tab == "App"
     assert spec.default == "Ctrl+Alt+P"
     assert Settings().pause_hotkey == spec.default

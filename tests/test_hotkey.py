@@ -39,6 +39,7 @@ pytestmark = pytest.mark.usefixtures("qapp")
         ("Alt+Ctrl+P", MOD_CONTROL | MOD_ALT, ord("P"), "Ctrl+Alt+P"),
         ("Alt+Control+Shift+F12", MOD_CONTROL | MOD_ALT | MOD_SHIFT, 0x7B, "Ctrl+Alt+Shift+F12"),
         ("win+9", MOD_WIN, ord("9"), "Win+9"),
+        ("Meta+Shift+F9", MOD_WIN | MOD_SHIFT, 0x78, "Shift+Win+F9"),  # Qt's name for Win
         ("Control+0", MOD_CONTROL, ord("0"), "Ctrl+0"),
         ("Shift+F1", MOD_SHIFT, 0x70, "Shift+F1"),
         ("F9", 0, 0x78, "F9"),  # a function key may be used alone
@@ -65,6 +66,7 @@ def test_an_empty_setting_turns_the_hotkey_off(text):
         ("Ctrl+Alt", "Add a key"),
         ("Ctrl+Ctrl+P", "used twice"),
         ("Ctrl+Control+P", "used twice"),  # the two spellings are the same modifier
+        ("Meta+Win+P", "used twice"),  # Qt spells the Windows key Meta
         ("Ctrl+Alt+F13", "not a supported key"),
         ("Ctrl+Alt+Space", "not a supported key"),
         ("Ctrl++P", "is not a valid hotkey"),

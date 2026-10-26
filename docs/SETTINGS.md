@@ -56,7 +56,7 @@ capture starts.
 | --- | --- | --- | --- | --- |
 | Close when the game exits | `close_with_game` | on | on / off | Quit automatically (after saving) when the game exits. |
 | Game process name contains | `game_process` | assettocorsaevo | text | Part of the game's process name, used to detect that it is running or has closed. |
-| Global pause hotkey | `pause_hotkey` | Ctrl+Alt+P | text | Pause or resume learning from anywhere, including while driving. Ctrl, Alt, Shift or Win plus a letter, digit or F1-F12; F-keys may be used alone. Empty = off. |
+| Global pause hotkey | `pause_hotkey` | Ctrl+Alt+P | key combination | Click the field and press the combination. Ctrl, Alt, Shift or Win plus a letter, digit or F1-F12; F-keys may be used alone. Use the clear button to turn it off. |
 | Follow the game's log | `use_game_log` | on | on / off | Read the game's log for the cuts it reports and the sector splits that mark its own lines. Shared memory only shows the first cut of a lap (its "lap valid" flag drops once); the log records one event per cut and every sector split. |
 | Game log folder | `game_log_dir` | empty | text | Where the game writes its logs. Empty = the usual place under Saved Games (<profile>/Saved Games/ACE/Logs). |
 

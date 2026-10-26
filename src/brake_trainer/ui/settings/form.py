@@ -6,10 +6,12 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
     QFormLayout,
+    QKeySequenceEdit,
     QLineEdit,
     QMessageBox,
     QSpinBox,
@@ -17,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...config import Settings
+from ...hotkey import HotkeyError, parse_hotkey
 from ...settings_spec import SettingSpec
 
 if TYPE_CHECKING:
@@ -27,6 +30,11 @@ def _make_widget(spec: SettingSpec) -> QWidget:
     w: QWidget
     if spec.kind == "bool":
         w = QCheckBox()
+    elif spec.kind == "hotkey":
+        edit = QKeySequenceEdit()
+        edit.setMaximumSequenceLength(1)  # one chord: the app registers a single hotkey
+        edit.setClearButtonEnabled(True)  # the clear button is how "off" is set
+        w = edit
     elif spec.kind == "text":
         w = QLineEdit()
     elif spec.kind == "float":
@@ -51,9 +59,19 @@ def _make_widget(spec: SettingSpec) -> QWidget:
     return w
 
 
+def _qt_sequence(text: str) -> QKeySequence:
+    """Qt calls the Windows key ``Meta``; the settings text and the docs call it ``Win``."""
+    return QKeySequence("+".join("Meta" if part == "Win" else part for part in text.split("+")))
+
+
 def _set(widget: QWidget, spec: SettingSpec, value: Any) -> None:
     if isinstance(widget, QCheckBox):
         widget.setChecked(bool(value))
+    elif isinstance(widget, QKeySequenceEdit):
+        if value:
+            widget.setKeySequence(_qt_sequence(str(value)))
+        else:
+            widget.clear()
     elif isinstance(widget, QLineEdit):
         widget.setText(str(value))
     elif isinstance(widget, QDoubleSpinBox):
@@ -65,6 +83,16 @@ def _set(widget: QWidget, spec: SettingSpec, value: Any) -> None:
 def _get(widget: QWidget, spec: SettingSpec) -> Any:
     if isinstance(widget, QCheckBox):
         return widget.isChecked()
+    if isinstance(widget, QKeySequenceEdit):
+        sequence = widget.keySequence()
+        if sequence.isEmpty():
+            return ""
+        text = sequence.toString(QKeySequence.SequenceFormat.PortableText)
+        try:
+            hotkey = parse_hotkey(text)
+        except HotkeyError:
+            return text  # Apply shows the parse error instead of silently turning the key off
+        return hotkey.text if hotkey is not None else ""
     if isinstance(widget, QLineEdit):
         return widget.text().strip()
     if isinstance(widget, QDoubleSpinBox):

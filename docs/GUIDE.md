@@ -209,11 +209,11 @@ marks stay as they are. Cues keep playing and the sector colours still show how 
 sector that was partly driven while paused is not saved when you resume, and held passes are not
 written after you pause.
 
-The global hotkey is **Ctrl+Alt+P** by default. Change it in Settings -> App, or clear the field to
-turn it off. A letter or number needs at least one modifier (Ctrl, Alt, Shift or Win), so the app
-does not take that key from every other window; F1-F12 may be used alone. If another application
-already owns the combination, the tray says so when the app starts and the log records it: choose
-another one.
+The global hotkey is **Ctrl+Alt+P** by default. Change it in Settings -> App: click the field and
+press the new combination, or use its clear button to turn it off. A letter or number needs at least
+one modifier (Ctrl, Alt, Shift or Win), so the app does not take that key from every other window;
+F1-F12 may be used alone. If another application already owns the combination, the tray says so when
+the app starts and the log records it: choose another one.
 
 ## Removing a bad time
 
@@ -328,8 +328,8 @@ The line under the sector bar usually tells you why nothing is being learned:
 **The pause hotkey does nothing**
 Check Settings -> App -> *Global pause hotkey*. It may be empty (off), or Windows may have refused
 it because another application owns that combination; the tray says so at startup and the log
-records the error. Pick another combination and press Apply. A letter or digit needs a modifier;
-F1-F12 can be used alone.
+records the error. Click the field, press another combination and press Apply. A letter or digit
+needs a modifier; F1-F12 can be used alone.
 
 **A second off-track moment in the same lap is not dropped**
 Once the game has invalidated a lap its "lap valid" flag stays down, so it cannot show a later

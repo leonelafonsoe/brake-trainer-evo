@@ -33,6 +33,7 @@ _MODIFIERS = {
     "SHIFT": MOD_SHIFT,
     "WIN": MOD_WIN,
     "WINDOWS": MOD_WIN,
+    "META": MOD_WIN,  # what Qt's portable key-sequence text calls the Windows key
 }
 _MODIFIER_ORDER = (
     (MOD_CONTROL, "Ctrl"),

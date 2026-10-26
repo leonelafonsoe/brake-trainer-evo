@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from .hotkey import DEFAULT_PAUSE_HOTKEY
 
-Kind = Literal["bool", "int", "optint", "float", "text"]
+Kind = Literal["bool", "int", "optint", "float", "text", "hotkey"]
 
 # Bumped when the stored settings layout changes. A file with any other version is archived and the
 # app starts from defaults (see config.load_settings): there is no migration code to keep.
@@ -83,7 +83,7 @@ class SettingSpec:
                 number = float(value)
                 if math.isfinite(number):
                     return number
-        elif self.kind == "text" and isinstance(value, str):
+        elif self.kind in {"text", "hotkey"} and isinstance(value, str):
             return value
         raise TypeError(f"{self.name} is not a valid {self.kind}: {value!r}")
 
@@ -323,13 +323,13 @@ SPECS: tuple[SettingSpec, ...] = (
     ),
     SettingSpec(
         name="pause_hotkey",
-        kind="text",
+        kind="hotkey",
         default=DEFAULT_PAUSE_HOTKEY,
         tab="App",
         label="Global pause hotkey",
         tip=(
-            "Pause or resume learning from anywhere, including while driving. Ctrl, Alt, Shift or"
-            " Win plus a letter, digit or F1-F12; F-keys may be used alone. Empty = off."
+            "Click the field and press the combination. Ctrl, Alt, Shift or Win plus a letter,"
+            " digit or F1-F12; F-keys may be used alone. Use the clear button to turn it off."
         ),
     ),
     SettingSpec(
