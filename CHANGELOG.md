@@ -17,6 +17,12 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   reader and in the engine. A block that shifts in a game update can no longer drop sectors from
   noise, and the decode tolerates the SDK handing over the raw block instead of hex text.
 
+### Changed
+
+- The real Windows adapters are tested on the Windows CI leg: the process handle, the `winsound`
+  backend and the single-instance mutex. The tests skip cleanly on Linux and macOS, and the fake
+  `ctypes`/injected-watcher tests still cover the surrounding logic everywhere.
+
 ## 0.6.0 - 2026-10-25
 
 ### Changed

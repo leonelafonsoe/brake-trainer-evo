@@ -102,6 +102,12 @@ regenerate the settings reference after changing a setting.
 | Status line and widget geometry | `tests/test_status.py`, `tests/test_widgets.py` |
 | Docs, links, release tools, generated files | `tests/test_docs.py`, `tests/test_docs_links.py`, `tests/test_release_tools.py` |
 
+Three adapters have a real implementation only on Windows: the process handle
+(`open_process_watcher`), `winsound` and the single-instance mutex. Their tests are marked
+`skipif(sys.platform != "win32")`, so the Windows CI leg exercises the real code and Linux/macOS
+skip them cleanly. The logic around them (an injected watcher, a fake `ctypes`) is still tested on
+every platform.
+
 `tests/conftest.py` has the fixtures that make a scenario short:
 
 - `Driver` drives a synthetic track through the real engine at 30 Hz.

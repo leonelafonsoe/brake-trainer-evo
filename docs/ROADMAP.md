@@ -23,7 +23,7 @@ make a branch and PR, and keep the gates green.
 |---|---|---|---|
 | Race-cut pair | Done: guarded at read and in the engine | — | — |
 | Global pause hotkey | Driver UX | Medium-high | M |
-| Windows adapter tests | Reliability | Low | S |
+| Windows adapter tests | Done: real paths run on the Windows CI leg | — | — |
 | Settings key renames | Cosmetic / internal | Medium (settings reset) | M |
 | `mypy` for tests and scripts | Type safety | Low | M-L |
 | `EngineState` protocol | Type debt | Low runtime, high churn | M-L |
@@ -69,21 +69,13 @@ does not crash the app; non-Windows returns "unsupported" without raising.
 
 **Docs:** GUIDE controls and SETTINGS (generated). **Branch:** `feat/global-pause-hotkey`.
 
-## 3. Windows adapter tests
+## 3. Windows adapter tests (done)
 
-**Where:** `tests/test_telemetry_audio.py`, `tests/test_app.py`.
-
-**Current state:** the real `ctypes` process watcher (`open_process_watcher`) and the `winsound`
-backend are only exercised as no-ops off Windows; `_create_app_mutex` is tested with a fake ctypes.
-The Windows CI leg is the right place for the real paths.
-
-**Proposal:** add tests marked `skipif(sys.platform != "win32")`:
-
-- `open_process_watcher(os.getpid())` returns a watcher, `exited()` is false, `close()` works;
-- the `winsound` backend calls `PlaySound` with the generated WAV (monkeypatch `winsound`);
-- the single-instance mutex allows the first process and refuses a second one.
-
-**Acceptance:** Windows CI runs them; Linux skips them cleanly. **Branch:** `test/windows-adapters`.
+The real process handle (`open_process_watcher`), the `winsound` backend and the single-instance
+mutex now have tests marked `skipif(sys.platform != "win32")`. The Windows CI leg runs them, so a
+broken ctypes call or a changed `winsound` API fails the build; Linux and macOS skip them cleanly,
+and the existing fake-ctypes and injected-watcher tests still cover the surrounding logic
+everywhere. See [DEVELOPMENT.md](DEVELOPMENT.md#where-the-tests-live).
 
 ## 4. Settings key renames (optional, product decision)
 
