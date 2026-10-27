@@ -170,8 +170,8 @@ gap would hide the car for a stretch around every line. On tracks with very uneq
 Bull Ring's first is 26% of the lap, Spa's second ends at 72%) equal blocks would put the boundary
 hundreds of metres out.
 
-The colour is a *rank*, not a stopwatch threshold: green means the run entered your fastest
-`top_runs` runs for that sector (3 by default - Settings -> Sectors). So how far off your best a
+The colour is a *rank*, not a stopwatch threshold: green means the run entered your `kept_runs`
+fastest runs for that sector (3 by default - Settings -> Sectors). So how far off your best a
 green run can be depends on how close your third-best run is; yellow means it missed the cut,
 however small the gap. The result line says which, and gives the gap to the best: `S2 18.44 s ·
 slower (+0.43 s)`. A new best measures itself against the run it replaced (`best (-0.13 s)`), and

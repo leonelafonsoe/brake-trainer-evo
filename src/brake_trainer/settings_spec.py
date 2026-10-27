@@ -18,7 +18,8 @@ Kind = Literal["bool", "int", "optint", "float", "text", "hotkey"]
 
 # Bumped when the stored settings layout changes. A file with any other version is archived and the
 # app starts from defaults (see config.load_settings): there is no migration code to keep.
-SETTINGS_VERSION = 4
+# 5: renamed the internal JSON keys (old files are archived; user tuning is not migrated).
+SETTINGS_VERSION = 5
 
 TAB_ORDER: tuple[str, ...] = (
     "Cues",
@@ -101,7 +102,7 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Loudness of the beeps, from 0 (silent) to 1.",
     ),
     SettingSpec(
-        name="lead_s",
+        name="warn_lead_s",
         kind="float",
         default=1.6,
         tab="Cues",
@@ -114,7 +115,7 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="The low beep sounds this many seconds before the braking point.",
     ),
     SettingSpec(
-        name="here_m",
+        name="brake_now_m",
         kind="float",
         default=8.0,
         tab="Cues",
@@ -149,7 +150,7 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Pitch of the low warning beep (braking point coming up).",
     ),
     SettingSpec(
-        name="here_hz",
+        name="brake_now_hz",
         kind="int",
         default=1800,
         tab="Cues",
@@ -161,7 +162,7 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Pitch of the high beep (you are at the braking point).",
     ),
     SettingSpec(
-        name="brake_on",
+        name="brake_threshold",
         kind="float",
         default=0.25,
         tab="Detection",
@@ -183,7 +184,7 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="Light brake touches below this peak are ignored.",
     ),
     SettingSpec(
-        name="min_speed_drop",
+        name="min_speed_shed",
         kind="float",
         default=15.0,
         tab="Detection",
@@ -195,7 +196,7 @@ SPECS: tuple[SettingSpec, ...] = (
         tip="A braking event must slow the car by at least this much.",
     ),
     SettingSpec(
-        name="cluster_m",
+        name="same_corner_m",
         kind="float",
         default=40.0,
         tab="Advanced",
@@ -234,7 +235,7 @@ SPECS: tuple[SettingSpec, ...] = (
         special="Off",
     ),
     SettingSpec(
-        name="top_runs",
+        name="kept_runs",
         kind="int",
         default=3,
         tab="Sectors",

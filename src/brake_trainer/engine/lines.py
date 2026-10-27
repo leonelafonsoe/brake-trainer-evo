@@ -371,7 +371,7 @@ class LinesMixin:
         runs = data.sectors[idx]
         previous_best = min((r.t for r in runs), default=None)
         stored = SectorRun(duration, onsets)
-        kept, accepted, status = keep_fastest(runs, stored, self._settings.top_runs)
+        kept, accepted, status = keep_fastest(runs, stored, self._settings.kept_runs)
         if accepted:
             data.sectors[idx] = kept
             self._lap_runs[(entry.lap, idx)] = _LapRun(stored, runs, entry.end)

@@ -246,7 +246,7 @@ class PassesMixin:
         previous = list(data.sectors[idx])  # so a late cut report can put it back
         previous_best = min((r.t for r in previous), default=None)
         stored = SectorRun(round(t - run.t0, 3), list(run.onsets))
-        kept, accepted, self._status[idx] = keep_fastest(previous, stored, self._settings.top_runs)
+        kept, accepted, self._status[idx] = keep_fastest(previous, stored, self._settings.kept_runs)
 
         if learning:
             data.sectors[idx] = kept

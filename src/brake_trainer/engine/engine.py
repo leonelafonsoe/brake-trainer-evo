@@ -159,8 +159,8 @@ class BrakeEngine(PassesMixin, LinesMixin, LimitsMixin, CuesMixin):
                 self._data.track, self._data.car, self._n, new.reference_car
             )
             self._announce_reference()
-        if new.top_runs < old.top_runs:
-            self._trim_runs(new.top_runs)
+        if new.kept_runs < old.kept_runs:
+            self._trim_runs(new.kept_runs)
         if old.use_game_log != new.use_game_log:
             if new.use_game_log:
                 self._start_line_learning()

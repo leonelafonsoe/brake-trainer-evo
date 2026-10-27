@@ -19,17 +19,17 @@ capture starts.
 | Setting | Key | Default | Range | What it does |
 | --- | --- | --- | --- | --- |
 | Volume | `volume` | 0.6 | 0 - 1 | Loudness of the beeps, from 0 (silent) to 1. |
-| Warning lead time | `lead_s` | 1.6 s | 0.3 - 5 s | The low beep sounds this many seconds before the braking point. |
-| 'Brake now' window | `here_m` | 8 m | 2 - 50 m | The high beep sounds when you are this close to the point. |
+| Warning lead time | `warn_lead_s` | 1.6 s | 0.3 - 5 s | The low beep sounds this many seconds before the braking point. |
+| 'Brake now' window | `brake_now_m` | 8 m | 2 - 50 m | The high beep sounds when you are this close to the point. |
 | Warning tone | `warn_hz` | 900 Hz | 200 - 4000 Hz | Pitch of the low warning beep (braking point coming up). |
-| Brake-now tone | `here_hz` | 1800 Hz | 200 - 4000 Hz | Pitch of the high beep (you are at the braking point). |
+| Brake-now tone | `brake_now_hz` | 1800 Hz | 200 - 4000 Hz | Pitch of the high beep (you are at the braking point). |
 
 ## Detection
 
 | Setting | Key | Default | Range | What it does |
 | --- | --- | --- | --- | --- |
-| Braking starts above | `brake_on` | 0.25 | 0.05 - 0.95 | Pedal position that counts as the start of a braking event. |
-| Minimum speed shed | `min_speed_drop` | 15 km/h | 1 - 100 km/h | A braking event must slow the car by at least this much. |
+| Braking starts above | `brake_threshold` | 0.25 | 0.05 - 0.95 | Pedal position that counts as the start of a braking event. |
+| Minimum speed shed | `min_speed_shed` | 15 km/h | 1 - 100 km/h | A braking event must slow the car by at least this much. |
 
 ## Sectors
 
@@ -37,7 +37,7 @@ capture starts.
 | --- | --- | --- | --- | --- |
 | Learn braking points | `learning_enabled` | on | on / off | Off = cues still play, but no braking points or sector times are saved or changed (e.g. during a race). |
 | Ignore laps after leaving the pits | `warmup_laps` | 1 | off (0), or 1 - 5 | Cold tyres and brakes make you brake earlier, so these laps are not learned. The first laps of a new track are ignored too, while the game's sector lines are being learned from its log. |
-| Fastest runs kept per sector | `top_runs` | 3 | 1 - 10 | Cue points are the median of these runs. 1 = copy your single best run. |
+| Fastest runs kept per sector | `kept_runs` | 3 | 1 - 10 | Cue points are the median of these runs. 1 = copy your single best run. |
 | Preferred reference car | `reference_car` | empty | text | Part of a car name. Empty = the car with the most data on that track. |
 
 ## Overlay
@@ -73,7 +73,7 @@ capture starts.
 | --- | --- | --- | --- | --- |
 | Skip cue if brake above | `skip_zone_if_braking` | 0.1 | 0 - 1 | No beep if you are already braking harder than this. |
 | Minimum peak pressure | `min_peak` | 0.4 | 0.1 - 1 | Light brake touches below this peak are ignored. |
-| Same-corner distance | `cluster_m` | 40 m | 5 - 200 m | Braking starts closer than this are treated as the same corner. |
+| Same-corner distance | `same_corner_m` | 40 m | 5 - 200 m | Braking starts closer than this are treated as the same corner. |
 
 ## Stored but not shown in the window
 
