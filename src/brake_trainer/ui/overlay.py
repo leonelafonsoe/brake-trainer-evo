@@ -47,7 +47,7 @@ def _shadow(widget: QWidget, scale: float) -> None:
     fx = QGraphicsDropShadowEffect(widget)
     fx.setBlurRadius(_px(8, scale))
     fx.setOffset(0, _px(1, scale))
-    fx.setColor(QColor(0, 0, 0, 230))
+    fx.setColor(QColor(*theme.SHADOW))
     widget.setGraphicsEffect(fx)
 
 
@@ -124,7 +124,7 @@ class ToolButton(QPushButton):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         # QColor does not parse the CSS rgba() string used by the stylesheet; use channels for the
         # dim state and the hex theme colour when hovered.
-        color = QColor(theme.TEXT) if self.underMouse() else QColor(255, 255, 255, 175)
+        color = QColor(theme.TEXT) if self.underMouse() else QColor(*theme.TEXT_DIM_RGBA)
         size = float(min(self.width(), self.height()))
         pen = QPen(color)
         pen.setWidthF(max(1.0, size * 0.085))
@@ -441,7 +441,7 @@ class OverlayWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(12, 14, 18, max(1, round(255 * bg))))
+        painter.setBrush(QColor(*theme.OVERLAY_BG, max(1, round(255 * bg))))
         painter.drawRoundedRect(self.rect(), 12, 12)
 
     def enterEvent(self, event: object) -> None:  # noqa: N802

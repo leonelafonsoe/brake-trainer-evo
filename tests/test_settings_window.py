@@ -197,6 +197,16 @@ def test_a_win_hotkey_round_trips_through_the_capture_field(qapp, store):
     assert window.collect().pause_hotkey == "Win+F10"
 
 
+def test_the_about_page_uses_the_theme_accent():
+    from brake_trainer import __version__
+    from brake_trainer.ui import theme
+    from brake_trainer.ui.settings.about_page import _ABOUT_HTML
+
+    html = _ABOUT_HTML.format(version=__version__, accent=theme.ACCENT)
+
+    assert f"color: {theme.ACCENT}" in html
+
+
 def test_an_invalid_hotkey_blocks_apply_and_says_why(qapp, store, monkeypatch):
     window = _window(qapp, store)
     applied: list[Settings] = []

@@ -105,7 +105,7 @@ class BarWidget(QWidget):
         rect = QRectF(self.rect())
         radius = rect.height() / 2
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(0, 0, 0, 120)))
+        painter.setBrush(QBrush(QColor(*theme.BAR_TRACK)))
         painter.drawRoundedRect(rect, radius, radius)
         if self._value > 0:
             width = max(rect.width() * self._value, rect.height())
@@ -170,12 +170,12 @@ class SectorBar(QWidget):
             painter.save()
             painter.setClipPath(paths[self._current])
             if self._progress > 0:
-                painter.setBrush(QColor(255, 255, 255, 110))
+                painter.setBrush(QColor(*theme.BAR_PROGRESS))
                 fill = QRectF(left, 0.0, max(width * self._progress, 0.0), h)
                 painter.drawRoundedRect(fill, radius, radius)
             painter.restore()
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(QColor(255, 255, 255, 230), 1.0))
+            painter.setPen(QPen(QColor(*theme.BAR_OUTLINE), 1.0))
             inset = _sector_path(
                 left + 0.5,
                 max(width - 1.0, 0.0),
@@ -187,6 +187,6 @@ class SectorBar(QWidget):
             painter.drawPath(inset)
 
         # A line, not a gap: the sector colours meet at the game's line, and this marks it.
-        painter.setPen(QPen(QColor(0, 0, 0, 170), 1.0))
+        painter.setPen(QPen(QColor(*theme.BAR_SEPARATOR), 1.0))
         for left, _ in rects[1:]:
             painter.drawLine(QPointF(left, 0.5), QPointF(left, h - 0.5))

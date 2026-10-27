@@ -30,6 +30,19 @@ def test_the_palette_matches_the_dark_theme():
     assert palette.color(QPalette.ColorRole.HighlightedText).name() == theme.BUTTON_TEXT
 
 
+def test_the_overlay_palette_is_pinned_to_the_existing_look():
+    # These constants only centralise literals; the values are what the HUD shipped with, so the
+    # refactor cannot change the look. Rendering itself is checked by eye at 1.00 and 1.50.
+    assert theme.SHADOW == (0, 0, 0, 230)
+    assert theme.OVERLAY_BG == (12, 14, 18)
+    assert theme.TEXT_DIM_RGBA == (255, 255, 255, 175)
+    assert theme.TEXT_DIM == "rgba(255, 255, 255, 175)"
+    assert theme.BAR_TRACK == (0, 0, 0, 120)
+    assert theme.BAR_PROGRESS == (255, 255, 255, 110)
+    assert theme.BAR_OUTLINE == (255, 255, 255, 230)
+    assert theme.BAR_SEPARATOR == (0, 0, 0, 170)
+
+
 def test_sector_boundaries_follow_the_games_unequal_lines():
     # Red Bull Ring: S1 ends at 26.09% and S2 at 65.77% of the lap, not at equal thirds.
     rects = sector_rects(3, _boundaries(0.2609, 0.6577), WIDTH)

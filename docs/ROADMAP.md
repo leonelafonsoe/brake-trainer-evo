@@ -28,7 +28,7 @@ make a branch and PR, and keep the gates green.
 | `mypy` for tests and scripts | Scripts done; tests deferred | Low | M-L |
 | `EngineState` protocol | Type debt | Low runtime, high churn | M-L |
 | Merge `PositionTimeline.at` with the crossing core | Code size | High | M |
-| Centralise overlay colours | Consistency | Low | S |
+| Centralise overlay colours | Done: one palette for the HUD | — | — |
 | `acevo-sdk` 0.2 upgrade | Future game support | High (field) | M-L |
 | Code signing | Trust / SmartScreen | External | — |
 
@@ -126,16 +126,13 @@ unless a concrete bug forces the change.
 rules explicit, and add cases for a reset inside a frame, a start/finish wrap, a future timestamp
 and a missing earlier sample. **Branch:** `refactor/timeline-interpolation-core`.
 
-## 8. Centralise overlay colours and metrics (low priority)
+## 8. Centralise overlay colours (done)
 
-**Current state:** most metrics are now scaled through `_px`, but some colours are still literal:
-the shadow (`QColor(0, 0, 0, 230)`), the default overlay background (`QColor(12, 14, 18)`) and the
-bar colours in `ui/widgets.py`. The About link duplicates `theme.ACCENT`.
-
-**Proposal:** add `theme.OVERLAY_BG`, `SHADOW`, bar track/fill/separator constants and use them in
-`overlay.py`/`widgets.py`/`about_page.py`. Keep the existing values byte-for-byte so the look does
-not change. **Acceptance:** visual check at 1.00 and 1.50; no test can pin colours cheaply.
-**Branch:** `refactor/overlay-theme-constants`.
+The overlay shadow, background, dim glyph, and the bar track, progress, outline and separator are
+now RGBA constants in `theme` (values unchanged). The About tab formats its link colour from
+`theme.ACCENT` instead of duplicating the hex string. A test pins the channel values so the
+refactor cannot drift; a visual check at 1.00 and 1.50 is part of the PR review. `ui/icon.py` keeps
+its own artwork palette on purpose: it is a generated image, not HUD chrome.
 
 ## 9. `acevo-sdk` 0.2 upgrade (future, field-tested)
 
