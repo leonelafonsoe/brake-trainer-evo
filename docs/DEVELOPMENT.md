@@ -56,7 +56,7 @@ uv sync --locked --extra dev
 uv run pre-commit run --all-files  # ruff, formatting, YAML/TOML, whitespace, mypy
 uv run ruff format --check .
 uv run ruff check .
-uv run mypy                       # src and scripts, strict
+uv run mypy                       # src, scripts and the shared test harness, strict
 uv run mypy --platform win32      # the Windows-only branches (ctypes, winsound, tasklist)
 uv run pytest -q -W error
 uv run pytest -q -W error --cov    # coverage with the floor from pyproject.toml
@@ -118,6 +118,10 @@ and register/unregister lifecycle) is still tested on every platform.
   teardown. A widget test module marks itself with
   `pytestmark = pytest.mark.usefixtures("close_qt_windows")`.
 - `make_engine` builds an engine with warm-up and game-log following off for deterministic tests.
+
+The shared harness (`tests/conftest.py`, `engine_helpers.py`, `gamelog_helpers.py`, `replay.py`) is
+type-checked strictly, because a mistake there can weaken every scenario built on it. Individual
+test modules are not: typing one-off assertions costs more than the drift it would catch.
 
 Do not use fixed sleeps for asynchronous behaviour. `GameLogTail.poll_once()` is the seam for a
 single read, and `threading.Event`/`asyncio.Event`/condition polling replace guessed delays.

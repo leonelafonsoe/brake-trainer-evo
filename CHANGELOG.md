@@ -35,6 +35,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   resolving the package from the source tree. They were already fully annotated, so no script
   changed; the extra check keeps helpers such as the release tools honest. Tests remain outside the
   strict pass.
+- The shared test harness (`tests/conftest.py`, the synthetic driver, the game-log and replay
+  helpers) is now type-checked strictly too. That is the code every scenario runs through; the
+  individual test modules stay outside the strict pass.
 - The overlay shadow, background and bar colours now come from `theme` constants, and the About
   link uses the same accent instead of a duplicate hex string. The values are unchanged (a test
   pins them); the HUD looks exactly as before.

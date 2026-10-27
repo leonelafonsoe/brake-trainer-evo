@@ -336,6 +336,20 @@ def test_mypy_checks_the_release_scripts_from_source():
     assert "src" in mypy["mypy_path"]
 
 
+def test_mypy_checks_the_shared_test_helpers():
+    import tomllib
+
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    checked = set(config["tool"]["mypy"]["files"])
+
+    assert {
+        "tests/conftest.py",
+        "tests/engine_helpers.py",
+        "tests/gamelog_helpers.py",
+        "tests/replay.py",
+    } <= checked
+
+
 def test_every_windows_build_is_smoke_tested():
     for name in ("ci.yml", "nightly.yml", "release.yml"):
         workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")

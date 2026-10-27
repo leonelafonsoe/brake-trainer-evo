@@ -25,7 +25,7 @@ make a branch and PR, and keep the gates green.
 | Global pause hotkey | Done: live, conflict-reporting global key | — | — |
 | Windows adapter tests | Done: real paths run on the Windows CI leg | — | — |
 | Settings key renames | Cosmetic / internal | Medium (settings reset) | M |
-| `mypy` for tests and scripts | Scripts done; tests deferred | Low | M-L |
+| `mypy` for tests and scripts | Scripts + helpers done; test bodies deferred | Low | M-L |
 | `EngineState` protocol | Type debt | Low runtime, high churn | M-L |
 | Merge `PositionTimeline.at` with the crossing core | Code size | High | M |
 | Centralise overlay colours | Done: one palette for the HUD | — | — |
@@ -79,23 +79,30 @@ generated docs must be checked; all engine references and tests need the new fie
 **Recommendation:** only do this if the reset is acceptable and the names will stay. It is cosmetic
 for users and moderately broad in code. **Branch:** `refactor/settings-key-renames`.
 
-## 5. `mypy` for tests and scripts (scripts done, tests optional)
+## 5. `mypy` for tests and scripts (scripts and helpers done, test bodies optional)
 
-**Current state:** `mypy` is strict for `src` and `scripts`. The release/build scripts were already
-fully annotated; the only errors came from mypy resolving the *installed* package, which has no
-`py.typed` marker. `mypy_path = ["src"]` makes it use the source tree instead, so the scripts are
-checked without changing them.
+**Current state:** `mypy` is strict for `src`, `scripts` and the shared test harness
+(`tests/conftest.py`, `engine_helpers.py`, `gamelog_helpers.py`, `replay.py`).
 
-Running it over `tests` still reports hundreds of errors, mostly missing annotations. Test code is
-not production code, but helper drift (fixtures, replay harness) is real.
+- The release/build scripts were already fully annotated; the only errors came from mypy resolving
+  the *installed* package, which has no `py.typed` marker. `mypy_path = ["src"]` makes it use the
+  source tree instead, so no script changed.
+- The harness needed six annotations in `conftest.py` (the concrete `QApplication` type and the
+  fixture return types). That is the shared code every scenario runs through, so it is worth
+  checking; individual test modules are not.
 
-**Proposal for the tests slice (choose one):**
+**Test bodies remain outside.** With the relaxed override (untyped/incomplete defs and untyped calls
+allowed, `check_untyped_defs` on) they still report about **128 errors in 20 files**, mostly
+annotations and narrowing `Optional` results in one-off assertions. Typing them would churn most of
+the suite for little drift protection.
+
+**Proposal for the test bodies (choose one):**
 
 - **Relaxed test typing:** add `tests` to `files`, then a per-module override for `tests` that
-  disables `disallow_untyped_defs` / `disallow_untyped_calls` while keeping `check_untyped_defs` on.
-  Fix the remaining real errors.
-- **Do nothing:** keep the strict source-and-scripts pass. This is a deliberate choice, not an
-  oversight.
+  disables `disallow_untyped_defs` / `disallow_incomplete_defs` / `disallow_untyped_calls` while
+  keeping `check_untyped_defs` on, and fix the remaining real errors.
+- **Do nothing:** keep the strict source, scripts and shared-harness pass. This is a deliberate
+  choice, not an oversight.
 
 **Acceptance:** both `mypy` and `mypy --platform win32` pass with the chosen scope; no runtime change.
 
