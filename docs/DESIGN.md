@@ -179,6 +179,14 @@ In a race you want the marks to stay as they are. Paused mode keeps cues and sec
 (useful feedback) but changes nothing on disk. A partly paused sector is dropped so a sector never
 holds half its braking points.
 
+### A global pause hotkey
+Pausing has to be reachable without taking focus from the game, and the overlay is a non-focusable
+tool window, so it is a Windows global hotkey (`RegisterHotKey`) rather than a Qt shortcut. A native
+event filter turns `WM_HOTKEY` into the same toggle as the overlay and tray; the binding is parsed
+and validated in the settings form, applied live and unregistered on exit. A conflict is shown in
+the tray and the log instead of failing silently. No extra dependency: `ctypes` and Qt already do
+the two halves.
+
 ### Transparent HUD
 The overlay matches the minimal in-game HUD: no panel, text with a soft shadow, bars with a dark
 translucent track. A near-invisible fill keeps the window grabbable (fully transparent pixels let

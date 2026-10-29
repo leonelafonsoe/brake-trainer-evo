@@ -412,6 +412,12 @@ Task Manager while the game runs, find its process name, and put a distinctive p
 
 ### Logs and resetting
 
+**Settings were reset after updating**
+A settings file from another layout is never migrated. 0.7.0 renamed the JSON keys and moved to
+`settings_version` 5, so on first start the old file is moved to
+`settings.version-4-<stamp>.json` beside `settings.json` and the app starts from defaults. Set your
+tuning again once; the old file is kept as evidence and can be deleted when you no longer need it.
+
 The app always writes a rotating log (about 1 MB per file, 3 older ones kept):
 
 `%APPDATA%\BrakeTrainerEvo\brake_trainer.log`

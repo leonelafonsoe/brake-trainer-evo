@@ -215,6 +215,8 @@ files by hand: the app finds an entry by the names inside it.
 the one this build writes (including a file with no version, such as 0.3.x) is moved to
 `settings.version-<n>-<stamp>.json` beside it and the app starts from defaults. A file from a newer
 build is treated the same way, so this build never rewrites a layout it does not understand.
+0.7.0 renamed the internal keys and writes version 5; a 0.6.x file is therefore archived once on
+first start.
 
 Writes are atomic: the new file is written to a temporary file, flushed to disk and only then
 replaces the old one; a failed write keeps the previous file and removes the temporary one. If the
