@@ -8,7 +8,7 @@ from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine
 from brake_trainer.engine.constants import _HISTORY_S
 from brake_trainer.engine.passes import _LapRun
-from brake_trainer.models import SectorRun, SectorStatus, TrackData
+from brake_trainer.models import SectorResult, SectorRun, SectorStatus, TrackData
 from brake_trainer.timeline import crossing_between
 
 from .conftest import DT, LENGTH, Driver
@@ -25,7 +25,7 @@ def _engine(store, boundaries=None, length=LENGTH, **settings):
         data = TrackData.empty("Monza", "Car A", N_SECTORS)
         data.boundaries = list(boundaries)
         store.save(data)
-    results: list = []
+    results: list[SectorResult] = []
     messages: list[str] = []
     engine = BrakeEngine(
         Settings(**{"use_game_log": False, "warmup_laps": 0, **settings}),
@@ -370,7 +370,7 @@ def test_a_cut_in_a_warm_up_sector_is_not_announced(store):
     # The sector was already going to be skipped, so announcing the cut would only repeat what the
     # result is about to say. It still goes into the pass so the result names a reason.
     messages: list[str] = []
-    results: list = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=1),
         store,

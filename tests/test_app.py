@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -22,18 +23,18 @@ def _fake_ctypes(last_error: int) -> SimpleNamespace:
 
 
 def test_the_single_instance_guard_never_blocks_off_windows(monkeypatch):
-    monkeypatch.setattr(app.sys, "platform", "linux")
+    monkeypatch.setattr(sys, "platform", "linux")
     assert app._create_app_mutex() is True
 
 
 def test_the_single_instance_guard_allows_the_first_instance(monkeypatch):
-    monkeypatch.setattr(app.sys, "platform", "win32")
+    monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setitem(sys.modules, "ctypes", _fake_ctypes(0))
     assert app._create_app_mutex() is True
 
 
 def test_the_single_instance_guard_refuses_a_second_instance(monkeypatch):
-    monkeypatch.setattr(app.sys, "platform", "win32")
+    monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setitem(sys.modules, "ctypes", _fake_ctypes(183))  # ERROR_ALREADY_EXISTS
     assert app._create_app_mutex() is False
 
@@ -43,7 +44,8 @@ def test_the_single_instance_mutex_allows_one_process_on_windows():
     import ctypes
     from ctypes import wintypes
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    # WinDLL exists only on Windows; this test is skipped elsewhere.
+    kernel32 = cast(Any, ctypes).WinDLL("kernel32", use_last_error=True)
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
 

@@ -18,7 +18,9 @@ def test_at_interpolates_between_the_samples_around_the_time():
     timeline = _timeline((1.0, 0.20, 4), (2.0, 0.21, 4))
     found = timeline.at(1.5)
     assert found is not None
-    assert (found.t, found.pos, found.lap) == (1.5, pytest.approx(0.205), 4)
+    assert found.t == 1.5
+    assert found.pos == pytest.approx(0.205)
+    assert found.lap == 4
 
 
 def test_at_does_not_interpolate_backwards_across_the_start_finish_line():
@@ -52,7 +54,8 @@ def test_at_labels_the_seam_after_the_line_with_the_new_lap():
     timeline = _timeline((1.0, 0.98, 4), (2.0, 0.02, 4), (3.0, 0.04, 5))
     found = timeline.at(2.5)
     assert found is not None
-    assert (found.pos, found.lap) == (pytest.approx(0.03), 5)
+    assert found.pos == pytest.approx(0.03)
+    assert found.lap == 5
 
 
 def test_lap_start_finds_the_wrap_sample_that_still_carries_the_old_lap():

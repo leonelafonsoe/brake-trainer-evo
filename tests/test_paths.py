@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import tempfile
+
 from brake_trainer import paths
 
 
@@ -21,7 +23,7 @@ def test_an_unusable_app_folder_falls_back_to_the_temp_folder(tmp_path, monkeypa
     fallback = tmp_path / "temp"
     fallback.mkdir()
     monkeypatch.setenv(paths.HOME_ENV, str(blocked))
-    monkeypatch.setattr(paths.tempfile, "gettempdir", lambda: str(fallback))
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fallback))
 
     assert paths.app_dir() == fallback / paths.APP_NAME
     assert paths.app_dir().is_dir()

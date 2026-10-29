@@ -60,19 +60,21 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-# Source and release scripts, plus the shared test harness (the synthetic driver and replay tools).
-# Individual test modules are deliberately out of scope; see docs/ROADMAP.md §5.
-files = [
-    "src",
-    "scripts",
-    "tests/conftest.py",
-    "tests/engine_helpers.py",
-    "tests/gamelog_helpers.py",
-    "tests/replay.py",
-]
+# Source and release scripts are strict. The test tree is checked too; the override below allows
+# untyped test functions (one-off assertions) while still checking their bodies.
+files = ["src", "scripts", "tests"]
 # Resolve ``brake_trainer`` from the source tree: the installed package has no ``py.typed`` marker,
-# and the scripts/helpers are checked from the repository, not as library consumers.
+# and the scripts/tests are checked from the repository, not as library consumers.
 mypy_path = ["src"]
+
+[[tool.mypy.overrides]]
+# Test bodies are one-off assertions; they may be untyped, but their bodies are still checked.
+# The shared harness is kept fully annotated by convention.
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = ["acevo", "acevo.*", "winsound"]

@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine, build_zones
-from brake_trainer.models import CueKind, SectorRun
+from brake_trainer.models import CueKind, SectorResult, SectorRun
 from brake_trainer.models import SectorStatus as S
 
 from .conftest import LENGTH, Driver
 from .engine_helpers import CORNERS
+
+
+def _fixed_speed(value: float) -> Callable[[float], float]:
+    def speed(_pos: float) -> float:
+        return value
+
+    return speed
 
 
 def test_build_zones_median_and_wraparound():
@@ -53,7 +61,7 @@ def test_faster_sector_is_saved_before_a_crash(make_engine, store):
 
 
 def test_pit_lap_is_not_counted(store):
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
     )
@@ -123,7 +131,7 @@ def test_reducing_top_runs_keeps_only_the_fastest_stored_runs(store):
     engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0, kept_runs=5), store)
     driver = Driver(engine)
     for speed in (205, 200, 195, 190, 185, 180, 175):
-        driver.lap(CORNERS, speed_fn=lambda p, v=speed: v)
+        driver.lap(CORNERS, speed_fn=_fixed_speed(speed))
     engine.flush()
     before = store.load("Monza", "Car A", N_SECTORS)
     assert all(len(runs) == 5 for runs in before.sectors)
@@ -170,7 +178,7 @@ def test_sector_colours_follow_the_results(make_engine):
 
 
 def test_a_sector_result_is_measured_against_the_best_it_compares_with(store):
-    results: list = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
     )
@@ -184,6 +192,7 @@ def test_a_sector_result_is_measured_against_the_best_it_compares_with(store):
     assert all(r.status is S.SLOWER for r in slow.values())
     for r in slow.values():
         assert r.best is not None and r.delta is not None
+        assert r.duration is not None
         assert r.delta > 0 and abs(r.delta - (r.duration - r.best)) < 1e-9
 
     results.clear()
@@ -192,6 +201,7 @@ def test_a_sector_result_is_measured_against_the_best_it_compares_with(store):
     assert all(r.status is S.BEST for r in fast.values())
     for r in fast.values():
         assert r.previous_best is not None and r.delta is not None
+        assert r.duration is not None
         assert r.delta < 0 and abs(r.delta - (r.duration - r.previous_best)) < 1e-9
 
 
@@ -221,7 +231,7 @@ def test_learning_off_keeps_marks_but_still_cues_and_colours(make_engine, store,
 
 
 def test_sector_straddling_a_pause_is_not_stored(store):
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
     )
@@ -241,7 +251,7 @@ def test_sector_straddling_a_pause_is_not_stored(store):
 
 
 def test_first_lap_after_leaving_the_pits_is_not_learned(store):
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=1), store, on_sector=results.append
     )

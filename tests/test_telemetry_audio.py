@@ -11,13 +11,13 @@ import threading
 import time
 import wave
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
-from brake_trainer import audio as audio_module
 from brake_trainer.audio import AudioPlayer, _winsound_backend, make_tone
 from brake_trainer.config import Settings
-from brake_trainer.models import CueKind
+from brake_trainer.models import CueKind, Sample
 from brake_trainer.telemetry import (
     TRACK_LIMITS_NOTE,
     ExitReason,
@@ -220,7 +220,10 @@ def _fast(monkeypatch):
 
 async def test_reader_restarts_and_exits_instantly_with_a_process_handle(monkeypatch):
     _fast(monkeypatch)
-    probe_calls, samples, restarts, states = [], [], [], []
+    probe_calls: list[int] = []
+    samples: list[Sample] = []
+    restarts: list[int] = []
+    states: list[bool] = []
     watcher = FakeWatcher(exits_after=8)
 
     def probe(_):
@@ -302,8 +305,13 @@ async def test_game_watch_needs_two_misses_before_closing():
 async def test_game_watch_waits_before_probing_again():
     calls: list[str] = []
     probes = [GameProbe(GameStatus.UNKNOWN)] * 3
+
+    def probe(name: str) -> GameProbe:
+        calls.append(name)
+        return probes.pop(0)
+
     watch = _GameWatch(
-        lambda name: calls.append(name) or probes.pop(0),
+        probe,
         lambda _pid: None,
         clock=iter([10.0, 11.0, 20.0]).__next__,
     )
@@ -321,7 +329,7 @@ async def test_reader_falls_back_to_polling_without_a_handle(monkeypatch):
         [GameProbe(GameStatus.RUNNING, "AssettoCorsaEVO.exe", 7)] * 3
         + [GameProbe(GameStatus.ABSENT)] * 5
     )
-    states = []
+    states: list[bool] = []
     reader = TelemetryReader(
         lambda: Settings(),
         lambda s: None,
@@ -402,7 +410,7 @@ def test_the_winsound_backend_plays_the_generated_wav_from_memory(monkeypatch):
     wav = make_tone(880, 90, 0.4)
     _winsound_backend(wav)
 
-    assert played == [(wav, winsound.SND_MEMORY)]
+    assert played == [(wav, cast(Any, winsound).SND_MEMORY)]
 
 
 def test_make_tone_is_valid_wav_and_volume_scales():
@@ -412,7 +420,7 @@ def test_make_tone_is_valid_wav_and_volume_scales():
 
     def peak(wav: bytes) -> int:
         samples = struct.unpack(f"<{(len(wav) - 44) // 2}h", wav[44:])
-        return max(abs(x) for x in samples)
+        return int(max(abs(x) for x in samples))
 
     assert peak(quiet) < peak(loud) / 5
 
@@ -448,7 +456,7 @@ def test_a_failing_audio_backend_never_reaches_the_driver(monkeypatch, caplog):
         def start(self) -> None:
             self._target(*self._args)
 
-    monkeypatch.setattr(audio_module.threading, "Thread", InlineThread)
+    monkeypatch.setattr(threading, "Thread", InlineThread)
     with caplog.at_level(logging.ERROR, logger="brake_trainer.audio"):
         player.play(CueKind.WARN, force=True)  # the failure is logged, not raised
     assert "Could not play cue" in caplog.text
@@ -456,7 +464,8 @@ def test_a_failing_audio_backend_never_reaches_the_driver(monkeypatch, caplog):
 
 async def test_reader_reports_a_capture_start_failure_and_recovers(monkeypatch):
     _fast(monkeypatch)
-    attempts, errors = [], []
+    attempts: list[int] = []
+    errors: list[str] = []
 
     class FlakyCapture(FakeCapture):
         async def start_capture(self):
@@ -487,7 +496,7 @@ async def test_reader_reports_a_capture_start_failure_and_recovers(monkeypatch):
 
 async def test_reader_reports_a_read_failure_and_recovers(monkeypatch):
     _fast(monkeypatch)
-    errors = []
+    errors: list[str] = []
 
     class FlakyFrames(FakeCapture):
         def __init__(self, hz):
@@ -533,7 +542,8 @@ async def test_reader_reports_bad_frames_and_recovers(monkeypatch):
         return real(frame)
 
     monkeypatch.setattr(tel, "sample_from_frame", flaky)
-    errors, samples = [], []
+    errors: list[str] = []
+    samples: list[Sample] = []
     stop = asyncio.Event()
     reader = TelemetryReader(
         lambda: Settings(),

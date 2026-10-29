@@ -6,13 +6,14 @@ import pytest
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import BrakeEngine, race_cut_active
+from brake_trainer.models import SectorResult
 
 from .conftest import Driver
 from .engine_helpers import CORNERS
 
 
 def _fast_lap_results(store, **lap_kwargs):
-    results = []
+    results: list[SectorResult] = []
     settings = Settings(use_game_log=False, warmup_laps=0)
     engine = BrakeEngine(settings, store, on_sector=results.append)
     driver = Driver(engine)
@@ -47,7 +48,7 @@ def test_a_lap_flag_on_the_frame_that_crosses_the_line_drops_the_lap_being_ended
     # The flag goes down between the last sample of a lap and the first one after the line. The
     # position has already moved into S1 of the new lap, but the car has not driven that sector
     # yet: the flag belongs to the S3 that just ended.
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
     )
@@ -95,7 +96,7 @@ def test_a_lap_that_cannot_count_anyway_does_not_name_its_flag(store):
 def test_a_second_off_is_caught_by_the_games_race_cut_signal(store):
     # The one-shot lap flag drops in S1. The race-cut pair the game fills in for a second
     # off-track in S2 lets that sector be dropped too.
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=0), store, on_sector=results.append
     )
@@ -245,7 +246,7 @@ def test_a_lap_flag_on_a_warm_up_lap_is_not_announced(store):
     # driver that a sector it was going to skip anyway will not count.
     messages: list[str] = []
     warnings: list[str] = []
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=1),
         store,

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def _load(name: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -336,18 +337,18 @@ def test_mypy_checks_the_release_scripts_from_source():
     assert "src" in mypy["mypy_path"]
 
 
-def test_mypy_checks_the_shared_test_helpers():
+def test_mypy_checks_the_test_tree_with_relaxed_definitions():
     import tomllib
 
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    checked = set(config["tool"]["mypy"]["files"])
+    mypy = config["tool"]["mypy"]
+    tests = next(rule for rule in mypy["overrides"] if rule.get("module") == ["tests.*"])
 
-    assert {
-        "tests/conftest.py",
-        "tests/engine_helpers.py",
-        "tests/gamelog_helpers.py",
-        "tests/replay.py",
-    } <= checked
+    assert "tests" in mypy["files"]
+    assert tests["disallow_untyped_defs"] is False
+    assert tests["disallow_incomplete_defs"] is False
+    assert tests["disallow_untyped_calls"] is False
+    assert tests["check_untyped_defs"] is True
 
 
 def test_every_windows_build_is_smoke_tested():

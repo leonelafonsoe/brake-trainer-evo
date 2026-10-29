@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
-from PySide6.QtWidgets import QSystemTrayIcon
+from PySide6.QtWidgets import QMessageBox, QSystemTrayIcon
 
 from brake_trainer.ui import notifications
 
@@ -25,12 +27,12 @@ class FakeTray:
 
 
 def test_a_visible_tray_gets_a_non_modal_message(qapp, monkeypatch):
-    monkeypatch.setattr(notifications.QSystemTrayIcon, "supportsMessages", lambda: True)
+    monkeypatch.setattr(QSystemTrayIcon, "supportsMessages", lambda: True)
     tray = FakeTray()
-    dialogs: list[tuple] = []
-    monkeypatch.setattr(notifications.QMessageBox, "warning", lambda *args: dialogs.append(args))
+    dialogs: list[tuple[object, ...]] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: dialogs.append(args))
 
-    notifications.warn(tray, None, "Settings not saved", "the disk is full")
+    notifications.warn(cast(QSystemTrayIcon, tray), None, "Settings not saved", "the disk is full")
 
     assert tray.messages == [
         (
@@ -44,16 +46,20 @@ def test_a_visible_tray_gets_a_non_modal_message(qapp, monkeypatch):
 
 
 def test_a_hidden_or_unsupported_tray_falls_back_to_a_dialog(qapp, monkeypatch):
-    dialogs: list[tuple] = []
+    dialogs: list[tuple[object, ...]] = []
     monkeypatch.setattr(
-        notifications.QMessageBox,
+        QMessageBox,
         "warning",
         lambda parent, title, message: dialogs.append((parent, title, message)),
     )
 
-    notifications.warn(FakeTray(visible=False), None, "Settings not saved", "hidden tray")
-    monkeypatch.setattr(notifications.QSystemTrayIcon, "supportsMessages", lambda: False)
-    notifications.warn(FakeTray(), None, "Settings not saved", "no balloon support")
+    notifications.warn(
+        cast(QSystemTrayIcon, FakeTray(visible=False)), None, "Settings not saved", "hidden tray"
+    )
+    monkeypatch.setattr(QSystemTrayIcon, "supportsMessages", lambda: False)
+    notifications.warn(
+        cast(QSystemTrayIcon, FakeTray()), None, "Settings not saved", "no balloon support"
+    )
 
     assert dialogs == [
         (None, "Settings not saved", "hidden tray"),

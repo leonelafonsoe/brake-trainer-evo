@@ -139,7 +139,8 @@ def test_status_uses_the_typed_outcome_before_the_note_text():
         "dropped for a reason the old status line did not know",
         outcome=SectorOutcome(OutcomeKind.DROPPED, DropReason.WARM_UP),
     )
-    assert status_line(_snapshot(quiet), Settings(), True)[0] == "1 braking points"
+    status = status_line(_snapshot(quiet), Settings(), True)
+    assert status is not None and status[0] == "1 braking points"
     # ... and a result whose outcome is not quiet is shown, even if its note happens to match.
     loud = SectorResult(
         1,

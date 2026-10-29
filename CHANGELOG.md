@@ -38,11 +38,11 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   build.
 - `mypy` now checks the release and build scripts (`scripts/`) in strict mode as well as `src`,
   resolving the package from the source tree. They were already fully annotated, so no script
-  changed; the extra check keeps helpers such as the release tools honest. Tests remain outside the
-  strict pass.
-- The shared test harness (`tests/conftest.py`, the synthetic driver, the game-log and replay
-  helpers) is now type-checked strictly too. That is the code every scenario runs through; the
-  individual test modules stay outside the strict pass.
+  changed; the extra check keeps helpers such as the release tools honest.
+- `mypy` now checks the whole test tree as well, with a relaxed override for test functions:
+  one-off assertions may be untyped, but their bodies are checked. The 128 errors this exposed were
+  fixed (annotations and `Optional` narrowing, no behaviour change), and the shared harness stays
+  fully annotated.
 - The overlay shadow, background and bar colours now come from `theme` constants, and the About
   link uses the same accent instead of a duplicate hex string. The values are unchanged (a test
   pins them); the HUD looks exactly as before.

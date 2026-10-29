@@ -25,7 +25,7 @@ make a branch and PR, and keep the gates green.
 | Global pause hotkey | Done: live, conflict-reporting global key | — | — |
 | Windows adapter tests | Done: real paths run on the Windows CI leg | — | — |
 | Settings key renames | Done: SETTINGS_VERSION 5, one-time settings reset | — | — |
-| `mypy` for tests and scripts | Scripts + helpers done; test bodies deferred | Low | M-L |
+| `mypy` for tests and scripts | Done: src, scripts and the test tree | — | — |
 | `EngineState` protocol | Type debt | Low runtime, high churn | M-L |
 | Merge `PositionTimeline.at` with the crossing core | Code size | High | M |
 | Centralise overlay colours | Done: one palette for the HUD | — | — |
@@ -76,32 +76,17 @@ Under the settings policy there is no migration: a v4 file is moved to
 The generated reference and every code and test reference use the new keys. `cluster_m` remains the
 name of the engine's clustering distance parameter; only the stored setting was renamed.
 
-## 5. `mypy` for tests and scripts (scripts and helpers done, test bodies optional)
+## 5. `mypy` for tests and scripts (done)
 
-**Current state:** `mypy` is strict for `src`, `scripts` and the shared test harness
-(`tests/conftest.py`, `engine_helpers.py`, `gamelog_helpers.py`, `replay.py`).
+`mypy` is strict for `src` and `scripts`; the whole `tests` tree is checked too, with the relaxed
+test override: test functions may be untyped (one-off assertions), but their bodies and calls are
+checked (`check_untyped_defs`). The shared harness (`conftest.py`, `engine_helpers.py`,
+`gamelog_helpers.py`, `replay.py`) is kept fully annotated.
 
-- The release/build scripts were already fully annotated; the only errors came from mypy resolving
-  the *installed* package, which has no `py.typed` marker. `mypy_path = ["src"]` makes it use the
-  source tree instead, so no script changed.
-- The harness needed six annotations in `conftest.py` (the concrete `QApplication` type and the
-  fixture return types). That is the shared code every scenario runs through, so it is worth
-  checking; individual test modules are not.
-
-**Test bodies remain outside.** With the relaxed override (untyped/incomplete defs and untyped calls
-allowed, `check_untyped_defs` on) they still report about **128 errors in 20 files**, mostly
-annotations and narrowing `Optional` results in one-off assertions. Typing them would churn most of
-the suite for little drift protection.
-
-**Proposal for the test bodies (choose one):**
-
-- **Relaxed test typing:** add `tests` to `files`, then a per-module override for `tests` that
-  disables `disallow_untyped_defs` / `disallow_incomplete_defs` / `disallow_untyped_calls` while
-  keeping `check_untyped_defs` on, and fix the remaining real errors.
-- **Do nothing:** keep the strict source, scripts and shared-harness pass. This is a deliberate
-  choice, not an oversight.
-
-**Acceptance:** both `mypy` and `mypy --platform win32` pass with the chosen scope; no runtime change.
+The scripts needed no code change (only `mypy_path = ["src"]` for the installed package). The test
+tree exposed 128 errors, all type-only: missing annotations, narrowing `Optional` results, and
+module-attribute lookups used to monkeypatch internals. They are fixed without changing what any
+test asserts. The config guard test keeps the test tree and the override in place.
 
 ## 6. `EngineState` protocol (deferred)
 

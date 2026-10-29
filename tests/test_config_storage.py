@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import errno
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,7 +10,6 @@ import pytest
 
 from brake_trainer import __version__
 from brake_trainer import config as config_module
-from brake_trainer import fileio as fileio_module
 from brake_trainer import storage as storage_module
 from brake_trainer.buildinfo import build_id
 from brake_trainer.config import SETTINGS_VERSION, Settings, load_settings, save_settings
@@ -165,7 +165,7 @@ def test_a_failed_settings_fsync_keeps_the_old_file_and_removes_the_temporary(
     def full(*args, **kwargs):
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr(fileio_module.os, "fsync", full)
+    monkeypatch.setattr(os, "fsync", full)
     assert not save_settings(Settings(volume=0.9), path)
 
     assert path.read_text(encoding="utf-8") == original
@@ -349,7 +349,7 @@ def test_a_failed_replace_keeps_the_old_file_and_removes_the_temporary(store, mo
     def refuse(*args, **kwargs):
         raise OSError(errno.EACCES, "Permission denied")
 
-    monkeypatch.setattr(fileio_module.os, "replace", refuse)
+    monkeypatch.setattr(os, "replace", refuse)
     result = store.save(_data("Car A", 2))
 
     assert not result.ok and not result.changed
@@ -366,7 +366,7 @@ def test_a_full_disk_is_reported_and_the_temporary_file_is_removed(store, monkey
     def full(*args, **kwargs):
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr(fileio_module.os, "fsync", full)
+    monkeypatch.setattr(os, "fsync", full)
     result = store.save(_data("Car A", 2))
 
     assert not result.ok and not result.changed
@@ -442,7 +442,12 @@ def test_a_legacy_name_is_resolved_only_once_per_identity(store, monkeypatch):
 
     calls: list[Path] = []
     original = store._stored_names
-    monkeypatch.setattr(store, "_stored_names", lambda p: calls.append(p) or original(p))
+
+    def stored_names(path):
+        calls.append(path)
+        return original(path)
+
+    monkeypatch.setattr(store, "_stored_names", stored_names)
 
     assert store.save(_data("Car A", 2, 19.0))
     assert store.save(_data("Car A", 3, 20.0))
