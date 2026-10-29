@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QScreen
 from PySide6.QtWidgets import QLabel
 
 from brake_trainer.config import Settings
@@ -69,7 +71,7 @@ def test_removing_another_screen_leaves_the_hud_alone(qapp, monkeypatch):
     calls: list[int] = []
     monkeypatch.setattr(window, "move_to_default", lambda: calls.append(1))
 
-    window._screen_removed(object())  # not the screen this window is on
+    window._screen_removed(cast(QScreen, object()))  # not the screen this window is on
 
     assert calls == []
 

@@ -263,7 +263,7 @@ def test_the_win32_backend_reports_a_taken_combination_and_a_generic_refusal(mon
 def test_the_hotkey_is_unsupported_off_windows(monkeypatch):
     from brake_trainer.ui import hotkey as ui_hotkey
 
-    monkeypatch.setattr(ui_hotkey.sys, "platform", "linux")
+    monkeypatch.setattr(sys, "platform", "linux")
     control = ui_hotkey.create_pause_hotkey(lambda: None, lambda _message: None)
 
     assert not control.apply("Ctrl+Alt+P")

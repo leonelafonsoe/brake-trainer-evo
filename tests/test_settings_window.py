@@ -20,11 +20,8 @@ from PySide6.QtWidgets import (
 from brake_trainer.config import Settings
 from brake_trainer.models import SectorRun, TrackData
 from brake_trainer.settings_spec import TABS, SettingSpec
-from brake_trainer.storage import DeleteEntry, DeleteRun, DeleteSector
+from brake_trainer.storage import DataEdit, DataSnapshot, DeleteEntry, DeleteRun, DeleteSector
 from brake_trainer.ui.settings import SettingsWindow
-from brake_trainer.ui.settings import data_page as data_page_module
-from brake_trainer.ui.settings import form as form_module
-from brake_trainer.ui.settings import window as settings_window_module
 from brake_trainer.ui.settings.form import _get, _set
 
 pytestmark = pytest.mark.usefixtures("close_qt_windows")
@@ -50,7 +47,12 @@ def _stored(store) -> TrackData:
 
 def test_building_the_window_does_not_scan_the_data_folder(qapp, store, monkeypatch):
     calls: list[int] = []
-    monkeypatch.setattr(store, "entries", lambda: calls.append(1) or [])
+
+    def entries():
+        calls.append(1)
+        return []
+
+    monkeypatch.setattr(store, "entries", entries)
 
     _window(qapp, store)
 
@@ -60,7 +62,7 @@ def test_building_the_window_does_not_scan_the_data_folder(qapp, store, monkeypa
 def test_a_data_snapshot_is_rendered_only_while_visible(qapp, store, monkeypatch):
     window = _window(qapp, store)
     snapshot = store.snapshot()
-    calls: list = []
+    calls: list[DataSnapshot] = []
     monkeypatch.setattr(window, "render_data", lambda snap: calls.append(snap))
 
     monkeypatch.setattr(window, "isVisible", lambda: False)
@@ -76,11 +78,12 @@ def test_a_hidden_window_closes_without_asking(qapp, store, monkeypatch):
     window = _window(qapp, store)
     window.load(Settings(volume=0.4))  # different from the current settings
     asked: list[int] = []
-    monkeypatch.setattr(
-        settings_window_module.QMessageBox,
-        "question",
-        lambda *args, **kwargs: asked.append(1) or QMessageBox.StandardButton.Yes,
-    )
+
+    def question(*args, **kwargs):
+        asked.append(1)
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", question)
 
     window.close()
 
@@ -99,7 +102,7 @@ def test_a_visible_window_asks_before_discarding(qapp, store, monkeypatch):
         asked.append(1)
         return next(answers)
 
-    monkeypatch.setattr(settings_window_module.QMessageBox, "question", question)
+    monkeypatch.setattr(QMessageBox, "question", question)
 
     window.close()
     assert asked == [1]
@@ -213,7 +216,7 @@ def test_an_invalid_hotkey_blocks_apply_and_says_why(qapp, store, monkeypatch):
     warnings: list[str] = []
     window.applied.connect(applied.append)
     monkeypatch.setattr(
-        form_module.QMessageBox,
+        QMessageBox,
         "warning",
         lambda parent, title, text: warnings.append(text),
     )
@@ -285,7 +288,7 @@ def test_the_data_tree_lists_entries_and_requests_deletes(qapp, store):
     _stored(store)
     window = _window(qapp, store)
     _render(window, store)
-    requested: list = []
+    requested: list[DataEdit] = []
     window.edit_requested.connect(requested.append)
 
     top = window._tree.topLevelItem(0)
@@ -295,7 +298,9 @@ def test_the_data_tree_lists_entries_and_requests_deletes(qapp, store):
     assert top.text(2) == "game's sector lines"
 
     sector = top.child(0)
+    assert sector is not None
     run = sector.child(0)
+    assert run is not None
     assert sector.text(0) == "S1" and sector.childCount() == 2
     assert run.text(0) == "18.000 s" and run.text(1) == "1 braking point"
 
@@ -315,8 +320,12 @@ def test_selecting_a_parent_covers_its_children(qapp, store):
     assert top is not None
 
     window._tree.clearSelection()
-    top.child(0).setSelected(True)
-    top.child(0).child(0).setSelected(True)
+    sector = top.child(0)
+    assert sector is not None
+    sector.setSelected(True)
+    run = sector.child(0)
+    assert run is not None
+    run.setSelected(True)
     assert window.selected_edits() == [DeleteSector("Monza", "Car A", 0)]
 
 
@@ -324,14 +333,17 @@ def test_deleting_a_sector_asks_first(qapp, store, monkeypatch):
     _stored(store)
     window = _window(qapp, store)
     _render(window, store)
-    requested: list = []
+    requested: list[DataEdit] = []
     window.edit_requested.connect(requested.append)
-    sector = window._tree.topLevelItem(0).child(0)
+    top = window._tree.topLevelItem(0)
+    assert top is not None
+    sector = top.child(0)
+    assert sector is not None
     window._tree.clearSelection()
     sector.setSelected(True)
 
     monkeypatch.setattr(
-        data_page_module.QMessageBox,
+        QMessageBox,
         "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.No,
     )
@@ -339,7 +351,7 @@ def test_deleting_a_sector_asks_first(qapp, store, monkeypatch):
     assert requested == []
 
     monkeypatch.setattr(
-        data_page_module.QMessageBox,
+        QMessageBox,
         "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
@@ -351,7 +363,7 @@ def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
     _stored(store)
     window = _window(qapp, store)
     _render(window, store)
-    requested: list = []
+    requested: list[DataEdit] = []
     window.edit_requested.connect(requested.append)
     top = window._tree.topLevelItem(0)
     assert top is not None
@@ -359,7 +371,7 @@ def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
     top.setSelected(True)
 
     monkeypatch.setattr(
-        data_page_module.QMessageBox,
+        QMessageBox,
         "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.No,
     )
@@ -367,7 +379,7 @@ def test_deleting_a_whole_entry_asks_first(qapp, store, monkeypatch):
     assert requested == []  # cancelled: nothing is deleted
 
     monkeypatch.setattr(
-        data_page_module.QMessageBox,
+        QMessageBox,
         "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
@@ -392,7 +404,7 @@ def test_refreshing_keeps_an_expanded_entry_open(qapp, store):
 def test_without_a_selection_delete_does_nothing(qapp, store):
     _stored(store)
     window = _window(qapp, store)
-    requested: list = []
+    requested: list[DataEdit] = []
     window.edit_requested.connect(requested.append)
 
     window._tree.clearSelection()

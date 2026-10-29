@@ -4,7 +4,7 @@ import json
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine
-from brake_trainer.models import DATA_VERSION, SectorRun, TrackData
+from brake_trainer.models import DATA_VERSION, SectorResult, SectorRun, TrackData
 from brake_trainer.storage import DeleteSector, StoreResult
 
 from .conftest import Driver
@@ -133,7 +133,7 @@ def test_each_accepted_sector_saves_and_rebuilds_zones_once(store, monkeypatch):
     # On Windows with real-time antivirus, a second JSON write per sector can stall the telemetry
     # loop. Keep the common path at one save and one rebuild, with a single rebuild when the session
     # starts.
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(use_game_log=False, warmup_laps=0),
         store,

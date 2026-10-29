@@ -6,12 +6,13 @@ import asyncio
 import threading
 import time
 from dataclasses import replace
+from typing import Any, cast
 
 from brake_trainer.audio import AudioPlayer
 from brake_trainer.config import Settings, SettingsHolder
 from brake_trainer.engine import BrakeEngine
-from brake_trainer.models import Sample, SectorRun, TrackData
-from brake_trainer.storage import DeleteRun, DeleteSector
+from brake_trainer.models import Sample, SectorRun, TrackData, ViewState
+from brake_trainer.storage import DataSnapshot, DeleteRun, DeleteSector
 from brake_trainer.telemetry import ExitReason
 from brake_trainer.ui import worker as worker_module
 from brake_trainer.ui.worker import EngineWorker
@@ -35,13 +36,13 @@ def _count_flushes(worker: EngineWorker) -> list[int]:
         flushed.append(1)
         original()
 
-    worker._engine.flush = counting_flush
+    cast(Any, worker._engine).flush = counting_flush
     return flushed
 
 
-def _install_reader(monkeypatch, *, delay: float = 0.0) -> tuple[list, threading.Event]:
+def _install_reader(monkeypatch, *, delay: float = 0.0) -> tuple[list[Any], threading.Event]:
     """Replace the real telemetry reader; its run() waits for the stop event after ``delay``."""
-    readers: list = []
+    readers: list[Any] = []
     created = threading.Event()
 
     class FakeReader:
@@ -72,7 +73,7 @@ def test_a_settings_change_is_only_queued_until_the_worker_runs_it(qapp, store):
         applied.append(settings)
         original(settings)
 
-    engine.apply_settings = counting_apply
+    cast(Any, engine).apply_settings = counting_apply
     new = replace(engine.settings, learning_enabled=False)
 
     worker.update_settings(new)
@@ -102,7 +103,7 @@ def test_a_queued_settings_change_rebuilds_zones_once(qapp, store):
         rebuilt.append(1)
         original()
 
-    worker._engine._rebuild_zones = counting_rebuild
+    cast(Any, worker._engine)._rebuild_zones = counting_rebuild
     worker.update_settings(replace(driver.engine.settings, min_peak=1.0))
 
     driver.feed(0.0001, 100.0, 0.0)
@@ -151,7 +152,7 @@ def test_a_crashed_loop_still_flushes_once(qapp, store, monkeypatch):
     monkeypatch.setattr(worker_module, "TelemetryReader", CrashingReader)
     worker = _worker(store)
     flushed = _count_flushes(worker)
-    states: list = []
+    states: list[ViewState] = []
     worker.state.connect(states.append)
 
     worker.start()
@@ -164,7 +165,7 @@ def test_a_crashed_loop_still_flushes_once(qapp, store, monkeypatch):
 
 def test_a_telemetry_error_reaches_the_view_state_and_clears_on_recovery(qapp, store):
     worker = _worker(store)
-    states: list = []
+    states: list[ViewState] = []
     worker.state.connect(states.append)
 
     worker._on_telemetry_error("capture could not start")
@@ -208,8 +209,8 @@ def test_the_worker_streams_samples_and_reports_the_game_closing(qapp, store, mo
 
     monkeypatch.setattr(worker_module, "TelemetryReader", SamplingReader)
     worker = _worker(store)
-    states: list = []
-    closed: list = []
+    states: list[ViewState] = []
+    closed: list[int] = []
     worker.state.connect(states.append)
     worker.game_closed.connect(lambda: closed.append(1))
 
@@ -225,7 +226,7 @@ def test_the_worker_streams_samples_and_reports_the_game_closing(qapp, store, mo
 
 def test_a_sample_older_than_the_timeout_is_not_shown_as_live(qapp, store):
     worker = _worker(store)
-    states: list = []
+    states: list[ViewState] = []
     worker.state.connect(states.append)
 
     worker._on_sample(
@@ -252,7 +253,7 @@ def test_a_data_edit_requested_by_the_ui_is_applied_on_the_next_pending_pass(qap
     data.sectors[0] = [SectorRun(18.0, [0.05]), SectorRun(19.0, [])]
     assert store.save(data)
     worker = _worker(store)
-    changed: list = []
+    changed: list[int] = []
     worker.data_changed.connect(lambda: changed.append(1))
 
     worker.request_edit(DeleteRun("Monza", "Car A", 0, 18.0, (0.05,)))
@@ -269,7 +270,7 @@ def test_the_worker_publishes_the_data_tab_snapshot(qapp, store):
     data.sectors[0] = [SectorRun(18.0, [0.05])]
     assert store.save(data)
     worker = _worker(store)
-    snapshots: list = []
+    snapshots: list[DataSnapshot] = []
     worker.data_snapshot.connect(snapshots.append)
 
     worker.request_data_refresh()
@@ -284,7 +285,7 @@ def test_an_applied_edit_publishes_a_fresh_snapshot(qapp, store):
     data.sectors[0] = [SectorRun(18.0, [0.05])]
     assert store.save(data)
     worker = _worker(store)
-    snapshots: list = []
+    snapshots: list[DataSnapshot] = []
     worker.data_snapshot.connect(snapshots.append)
 
     worker.request_edit(DeleteSector("Monza", "Car A", 0))
@@ -297,7 +298,7 @@ def test_an_applied_edit_publishes_a_fresh_snapshot(qapp, store):
 
 def test_a_game_log_cut_reaches_the_engine_and_publishes_state(qapp, store):
     worker = _worker(store)
-    states: list = []
+    states: list[ViewState] = []
     worker.state.connect(states.append)
     driver = Driver(worker._engine)
     driver.feed(0.10, 200.0, 0.0)
@@ -314,7 +315,7 @@ def test_a_game_log_split_teaches_the_engine(qapp, store):
     holder = SettingsHolder(Settings(use_game_log=True, warmup_laps=0))
     audio = AudioPlayer(lambda: holder.value, backend=lambda _wav: None)
     worker = EngineWorker(holder, store, audio)
-    states: list = []
+    states: list[ViewState] = []
     worker.state.connect(states.append)
     driver = Driver(worker._engine)
     for pos in (0.10, 0.20, 0.25):
@@ -334,7 +335,7 @@ def test_the_idle_tick_applies_edits_and_publishes_state(qapp, store):
     data.sectors[0] = [SectorRun(18.0, [0.05])]
     assert store.save(data)
     worker = _worker(store)
-    states: list = []
+    states: list[ViewState] = []
     worker.state.connect(states.append)
     worker.request_edit(DeleteSector("Monza", "Car A", 0))
 

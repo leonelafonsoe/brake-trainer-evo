@@ -11,6 +11,7 @@ def _generator():
     spec = importlib.util.spec_from_file_location(
         "gen_settings_doc", ROOT / "scripts" / "gen_settings_doc.py"
     )
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

@@ -87,10 +87,17 @@ def test_settings_window_data_tree_and_selected_edits(store, qapp):
     tree = window._tree
     assert tree.topLevelItemCount() == 1
     entry = tree.topLevelItem(0)
-    assert entry.childCount() == 3 and entry.child(0).childCount() == 3
+    assert entry is not None
+    sector = entry.child(0)
+    assert sector is not None
+    run = sector.child(0)
+    assert run is not None
+    assert entry.childCount() == 3 and sector.childCount() == 3
 
-    entry.child(0).child(0).setSelected(True)  # one run
-    entry.child(1).setSelected(True)  # one whole sector
+    run.setSelected(True)  # one run
+    other = entry.child(1)
+    assert other is not None
+    other.setSelected(True)  # one whole sector
     assert window.selected_edits() == [
         DeleteRun("Monza", "Car A", 0, 18.0, (0.05,)),
         DeleteSector("Monza", "Car A", 1),
@@ -98,7 +105,7 @@ def test_settings_window_data_tree_and_selected_edits(store, qapp):
 
     tree.clearSelection()
     entry.setSelected(True)
-    entry.child(0).setSelected(True)  # covered by the entry
+    sector.setSelected(True)  # covered by the entry
     assert window.selected_edits() == [DeleteEntry("Monza", "Car A")]
     window.close()
     window.deleteLater()

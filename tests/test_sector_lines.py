@@ -7,7 +7,7 @@ import pytest
 
 from brake_trainer.config import Settings
 from brake_trainer.engine import N_SECTORS, BrakeEngine
-from brake_trainer.models import OutcomeKind, Sample
+from brake_trainer.models import OutcomeKind, Sample, SectorResult
 from brake_trainer.timeline import crossing_between
 
 from .conftest import DT, LENGTH, Driver
@@ -66,6 +66,7 @@ def test_a_sector_closes_at_the_line_not_at_the_next_sample(store):
 
     snap = engine.snapshot()
     assert snap.sector == 1
+    assert snap.sector_elapsed is not None
     assert abs(snap.sector_elapsed - (2 / 3) * DT) < 1e-9
 
 
@@ -158,7 +159,7 @@ def test_the_sector_that_began_on_the_line_counts_once_the_lines_are_learned(sto
     # line. The S1 that has just begun began on the start/finish line, which both layouts share, and
     # will end on the game's own S1 line, so it is timed correctly: it is not thrown away with the
     # learning lap.
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(Settings(warmup_laps=0), store, on_sector=results.append)
     driver = Driver(engine)
     driver.lap(CORNERS, start=0.0001, stop=0.30)
@@ -182,7 +183,7 @@ def test_a_sector_already_running_when_the_lines_are_learned_is_re_timed(store):
     # The same read can instead land with the car mid-sector: that sector began on the equal splits
     # the app had to use until the game's lines were known. The samples still say when the car
     # crossed the game's line, so the pass is moved onto it instead of being thrown away.
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(Settings(warmup_laps=0), store, on_sector=results.append)
     driver = Driver(engine)
     driver.lap(CORNERS, start=0.0001, stop=0.30)
@@ -214,7 +215,7 @@ def test_a_late_split_read_after_the_car_passed_the_new_line_re_times_from_that_
     dt = 1 / 60
     speed = 250.0
     step = speed / 3.6 * dt / LENGTH
-    results: list = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(
         Settings(warmup_laps=0, use_game_log=True), store, on_sector=results.append
     )
@@ -297,7 +298,7 @@ def test_line_crossing_does_not_clamp_a_line_that_is_not_between_the_samples():
 
 
 def test_laps_before_the_lines_are_known_are_not_counted(store):
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(Settings(warmup_laps=0), store, on_sector=results.append)
     driver = Driver(engine)
     driver.lap(CORNERS)  # a full lap, but the game never said where its lines are
@@ -333,7 +334,7 @@ def test_the_sectors_the_lines_arrived_too_late_for_are_timed_from_the_samples(s
     # A whole lap can close before the buffered log brings the lines. Those sectors were measured
     # on the stand-in equal splits and dropped; once the real lines are known the samples can time
     # them, so a fresh track does not lose its first lap to the game's log buffer.
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(Settings(warmup_laps=0), store, on_sector=results.append)
     driver = Driver(engine)
     # The app attaches mid-sector: that first pass is partial and is never counted.
@@ -361,13 +362,14 @@ def test_the_sectors_the_lines_arrived_too_late_for_are_timed_from_the_samples(s
     assert [len(runs) for runs in saved.sectors] == [1, 2, 2]
     lap1 = timed[-3:]
     assert [r.sector for r in lap1] == [0, 1, 2]
-    assert abs(sum(r.duration for r in lap1) - lap_time) < 0.3  # a whole lap, line to line
+    durations = [r.duration for r in lap1 if r.duration is not None]
+    assert abs(sum(durations) - lap_time) < 0.3  # a whole lap, line to line
 
 
 def test_a_sector_the_game_took_out_is_not_timed_when_the_lines_arrive(store):
     # The cut can be reported before the lines are known: recovering the sector's time afterwards
     # would put back a run the game threw away.
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(Settings(warmup_laps=0), store, on_sector=results.append)
     driver = Driver(engine)
     driver.lap(CORNERS, start=0.0001, stop=0.30)
@@ -474,7 +476,7 @@ def test_settling_the_lines_while_paused_stores_nothing(store):
     # A fresh track holds the passes that closed before the game's lines arrived, so they can be
     # timed once the lines turn up. If the driver pauses learning meanwhile, giving up on the lines
     # must not write those passes: pausing freezes the data.
-    results = []
+    results: list[SectorResult] = []
     engine = BrakeEngine(Settings(warmup_laps=0), store, on_sector=results.append)
     driver = Driver(engine)
     for _ in range(2):
@@ -530,7 +532,7 @@ def test_a_second_car_on_a_learned_track_counts_its_first_lap(store):
     driver.lap(CORNERS)  # a clean lap, so Car A has something to be a reference for
     engine.flush()
 
-    results = []
+    results: list[SectorResult] = []
     messages: list[str] = []
     other = Driver(
         BrakeEngine(
