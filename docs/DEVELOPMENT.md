@@ -142,6 +142,7 @@ src/brake_trainer/
     lines.py      the game's sector lines, learned from its split log
     limits.py     braking zones and the game's track-limit signals
     cues.py       braking events and the cues they produce
+    state.py      the shared EngineState protocol the mixins are checked against
     constants.py  shared constants (a leaf module)
   fileio.py       one atomic JSON writer (temp file, fsync, replace)
   storage.py      per track + car JSON, quarantine, atomic saves

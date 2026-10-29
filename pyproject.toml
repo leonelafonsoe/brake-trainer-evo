@@ -83,6 +83,9 @@ ignore_missing_imports = true
 [tool.coverage.run]
 branch = true
 source = ["src/brake_trainer"]
+# Type-only module: the EngineState protocol is never imported at runtime (annotations only), so
+# measuring it would only add 0% statements to the report.
+omit = ["src/brake_trainer/engine/state.py"]
 
 [tool.coverage.report]
 show_missing = true

@@ -43,6 +43,9 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   one-off assertions may be untyped, but their bodies are checked. The 128 errors this exposed were
   fixed (annotations and `Optional` narrowing, no behaviour change), and the shared harness stays
   fully annotated.
+- The engine mixins now share an `EngineState` protocol (`engine/state.py`) instead of annotating
+  `self` as `BrakeEngine`: the 48 localized `# type: ignore[misc]` comments are gone and mypy
+  checks each mixin against the shared contract. No runtime change.
 - The overlay shadow, background and bar colours now come from `theme` constants, and the About
   link uses the same accent instead of a duplicate hex string. The values are unchanged (a test
   pins them); the HUD looks exactly as before.

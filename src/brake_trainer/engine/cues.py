@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from ..models import CueKind, Sample
 
 if TYPE_CHECKING:
-    from .engine import BrakeEngine
+    from .state import EngineState
 
 # Braking ends this far below the start threshold. The same 0.15 gap the old two-setting pair
 # defaulted to (0.25 start / 0.10 release), without asking the driver to keep two numbers in step.
@@ -25,13 +25,10 @@ class _BrakeEvent:
 
 
 class CuesMixin:
-    # BrakeEngine inherits this mixin, so mypy's rule that an explicit self type must be a
-    # supertype of its class does not hold: the annotations are right and only the check needs
-    # the per-method ignore. The state below is owned by BrakeEngine; it is declared here with
-    # the full type it can hold between samples.
+    # The full shared state lives in state.py; this keeps the type this mixin assigns explicit.
     _event: _BrakeEvent | None
 
-    def _track_braking(self: BrakeEngine, s: Sample, pos: float) -> None:  # type: ignore[misc]
+    def _track_braking(self: EngineState, s: Sample, pos: float) -> None:
         st = self._settings
         if not self._braking and s.brake >= st.brake_threshold:
             self._braking = True
@@ -46,7 +43,7 @@ class CuesMixin:
             if s.brake <= max(0.01, st.brake_threshold - _BRAKE_HYSTERESIS):
                 self._braking, self._event = False, None
 
-    def _add_onset(self: BrakeEngine, pos: float) -> None:  # type: ignore[misc]
+    def _add_onset(self: EngineState, pos: float) -> None:
         if not self._settings.learning_enabled:
             return
         sector = self._sector_of(pos)
@@ -59,11 +56,11 @@ class CuesMixin:
             self._rebuild_zones()
             self._save(self._data)
 
-    def _lead_m(self: BrakeEngine, speed_kmh: float) -> float:  # type: ignore[misc]
+    def _lead_m(self: EngineState, speed_kmh: float) -> float:
         st = self._settings
         return max(_MIN_LEAD_M, max(speed_kmh / 3.6, 0.1) * st.warn_lead_s)
 
-    def _emit_cues(self: BrakeEngine, s: Sample, pos: float) -> None:  # type: ignore[misc]
+    def _emit_cues(self: EngineState, s: Sample, pos: float) -> None:
         st = self._settings
         lead = self._lead_m(s.speed_kmh)
         for z in self._zones:

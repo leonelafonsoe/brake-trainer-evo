@@ -14,7 +14,7 @@ from .constants import _HISTORY_S, _LINE_MATCH, _LINES_WAIT_LAPS
 from .passes import _LapRun, _LostPass, _Pass, keep_fastest
 
 if TYPE_CHECKING:
-    from .engine import BrakeEngine
+    from .state import EngineState
 
 log = logging.getLogger("brake_trainer.engine")
 
@@ -40,14 +40,11 @@ def full_bounds(n: int, inner: Sequence[float] | None) -> list[float]:
 
 
 class LinesMixin:
-    # BrakeEngine inherits this mixin, so mypy's rule that an explicit self type must be a
-    # supertype of its class does not hold: the annotations are right and only the check needs
-    # the per-method ignore. The state below is owned by BrakeEngine; it is declared here with
-    # the full type it can hold between samples.
+    # The full shared state lives in state.py; these keep the types this mixin assigns explicit.
     _splits: dict[int, tuple[float, int, float]]
     _pass: _Pass | None
 
-    def _start_line_learning(self: BrakeEngine) -> None:  # type: ignore[misc]
+    def _start_line_learning(self: EngineState) -> None:
         """Wait for the game's splits again, if this entry has nothing that would be re-filed."""
         data = self._data
         if data is None or data.boundaries is not None or data.total_runs():
@@ -57,7 +54,7 @@ class LinesMixin:
         self._splits.clear()
         self._on_message("Waiting for the game's sector lines again")
 
-    def _at_time(self: BrakeEngine, at: float) -> CarAt | None:  # type: ignore[misc]
+    def _at_time(self: EngineState, at: float) -> CarAt | None:
         """The car at ``at``, from the sample history.
 
         The interpolation rules - including the fallbacks for a reset, a teleport and a
@@ -67,23 +64,23 @@ class LinesMixin:
         """
         return self._timeline.at(at, self._car_now())
 
-    def _car_now(self: BrakeEngine) -> CarAt | None:  # type: ignore[misc]
+    def _car_now(self: EngineState) -> CarAt | None:
         """The car as the engine knows it now, for a lookup at or after the newest sample."""
         s = self._last
         if s is None:
             return None
         return CarAt(s.t, clamp_pos(s.pos), s.speed_kmh, s.in_pit, self._lap_no)
 
-    def _sector_of(self: BrakeEngine, pos: float) -> int:  # type: ignore[misc]
+    def _sector_of(self: EngineState, pos: float) -> int:
         return min(max(bisect_right(self._bounds, pos) - 1, 0), self._n - 1)
 
-    def _progress(self: BrakeEngine, pos: float) -> float:  # type: ignore[misc]
+    def _progress(self: EngineState, pos: float) -> float:
         pos = min(max(pos, 0.0), 0.99999)
         k = self._sector_of(pos)
         lo, hi = self._bounds[k], self._bounds[k + 1]
         return min(max((pos - lo) / (hi - lo), 0.0), 1.0)
 
-    def _setup_bounds(self: BrakeEngine) -> None:  # type: ignore[misc]
+    def _setup_bounds(self: EngineState) -> None:
         """Sector lines for this track + car: the game's own, or the equal splits.
 
         Whether they are the game's own because this entry learned them, because another car
@@ -100,7 +97,7 @@ class LinesMixin:
         self._learning_lines = bool(fresh and self._settings.use_game_log)
         self._bounds = full_bounds(self._n, data.boundaries)
 
-    def _lines_watch(self: BrakeEngine) -> None:  # type: ignore[misc]
+    def _lines_watch(self: EngineState) -> None:
         """Give up on the game's splits after a few laps, rather than counting nothing for ever."""
         if not self._learning_lines:
             return
@@ -114,7 +111,7 @@ class LinesMixin:
         ):
             self._rebuild_zones()
 
-    def _settle_lines(self: BrakeEngine, message: str) -> bool:  # type: ignore[misc]
+    def _settle_lines(self: EngineState, message: str) -> bool:
         """Stop waiting for the game's lines and keep the passes they were too late for.
 
         Returns whether stored runs changed, so the caller can rebuild the zones.
@@ -136,7 +133,7 @@ class LinesMixin:
         self._on_message(message)
         return changed
 
-    def report_split(self: BrakeEngine, index: int, at: float) -> None:  # type: ignore[misc]
+    def report_split(self: EngineState, index: int, at: float) -> None:
         """The game's log reported a sector split; learn the line it crossed.
 
         ``index`` is the game's sector index: 0 ends the first sector, 1 the second, and 2 is the
@@ -161,7 +158,7 @@ class LinesMixin:
             return
         self._learn_split(index, at)
 
-    def _audit_later_split(self: BrakeEngine, index: int, at: float) -> None:  # type: ignore[misc]
+    def _audit_later_split(self: EngineState, index: int, at: float) -> None:
         """Compare a split with the line already learned. Verbose log only; never moves a line."""
         if not log.isEnabledFor(logging.DEBUG):
             return
@@ -179,7 +176,7 @@ class LinesMixin:
         else:
             self._audit_split(index, found.lap, at, found)
 
-    def _learn_split(self: BrakeEngine, index: int, at: float) -> None:  # type: ignore[misc]
+    def _learn_split(self: EngineState, index: int, at: float) -> None:
         """Learn one inner line from a split on a fresh entry, once both lines share a lap."""
         found = self._at_time(at)
         if found is None:
@@ -218,7 +215,7 @@ class LinesMixin:
             return
         self._learn_lines(first[0], second[0])
 
-    def _audit_split(self: BrakeEngine, index: int, lap: int, at: float, car: CarAt) -> None:  # type: ignore[misc]
+    def _audit_split(self: EngineState, index: int, lap: int, at: float, car: CarAt) -> None:
         """Compare the game's line with the line the app learned, from the same split.
 
         On a later lap the game's split timestamp says when the car really crossed the line; the
@@ -255,7 +252,7 @@ class LinesMixin:
             side,
         )
 
-    def _learn_lines(self: BrakeEngine, first: float, second: float) -> None:  # type: ignore[misc]
+    def _learn_lines(self: EngineState, first: float, second: float) -> None:
         """Adopt the game's two sector lines (both found on one lap) and use them from here on."""
         data = self._data
         if data is None:
@@ -298,7 +295,7 @@ class LinesMixin:
             f"({self._length_m * first:.0f} m / {self._length_m * second:.0f} m)"
         )
 
-    def _reanchor(self: BrakeEngine, run: _Pass, pos: float, t: float) -> None:  # type: ignore[misc]
+    def _reanchor(self: EngineState, run: _Pass, pos: float, t: float) -> None:
         """Move the pass in progress onto the game's line the sector really began on.
 
         It began on one of the stand-in equal splits, which has just moved. The samples still say
@@ -326,7 +323,7 @@ class LinesMixin:
             flagged=set(reasons),
         )
 
-    def _retime_lost_sectors(self: BrakeEngine) -> None:  # type: ignore[misc]
+    def _retime_lost_sectors(self: EngineState) -> None:
         """Time the sectors that closed before the game's lines arrived, from the samples.
 
         The game buffers its log, so the lines can turn up a lap or more after the sectors that
@@ -352,7 +349,7 @@ class LinesMixin:
             self._rebuild_zones()
             self._save(data)
 
-    def _store_late(self: BrakeEngine, entry: _LostPass, duration: float) -> bool:  # type: ignore[misc]
+    def _store_late(self: EngineState, entry: _LostPass, duration: float) -> bool:
         """Store and report a sector timed after the fact; True when there was anything to save.
 
         ``duration`` comes either from the samples around the game's own lines (they arrived late)
@@ -401,7 +398,7 @@ class LinesMixin:
         )
         return changed
 
-    def _forget_early(self: BrakeEngine, onsets: list[float]) -> bool:  # type: ignore[misc]
+    def _forget_early(self: EngineState, onsets: list[float]) -> bool:
         """Drop the stand-in vote a re-timed pass left; its timed run carries those onsets now."""
         data = self._data
         if data is None:
@@ -412,6 +409,6 @@ class LinesMixin:
                 return True
         return False
 
-    def _crossing_time(self: BrakeEngine, lap: int, line: float) -> float | None:  # type: ignore[misc]
+    def _crossing_time(self: EngineState, lap: int, line: float) -> float | None:
         """When the car crossed ``line`` during ``lap`` (see :meth:`PositionTimeline.crossing`)."""
         return self._timeline.crossing(lap, line)

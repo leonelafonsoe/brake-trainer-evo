@@ -25,7 +25,7 @@ from ..outcomes import (
 from .constants import _COVERAGE_REQUIRED, _HISTORY_S
 
 if TYPE_CHECKING:
-    from .engine import BrakeEngine
+    from .state import EngineState
 
 
 def keep_fastest(
@@ -86,15 +86,12 @@ class _LapRun:
 
 
 class PassesMixin:
-    # BrakeEngine inherits this mixin, so mypy's rule that an explicit self type must be a
-    # supertype of its class does not hold: the annotations are right and only the check needs
-    # the per-method ignore. The state below is owned by BrakeEngine; it is declared here with
-    # the full type it can hold between samples.
+    # The full shared state lives in state.py; these keep the types this mixin assigns explicit.
     _pass: _Pass | None
     _last_closed: tuple[int, SectorRun] | None
     _last_result: SectorResult | None
 
-    def _pass_flag(self: BrakeEngine) -> DropReason | None:  # type: ignore[misc]
+    def _pass_flag(self: EngineState) -> DropReason | None:
         """The most important reason the sector in progress will not count, if any."""
         if self._pass is None:
             return None
@@ -102,7 +99,7 @@ class PassesMixin:
             return None
         return next((flag for flag in PASS_FLAGS if flag in self._pass.flagged), None)
 
-    def _keep_onsets(self: BrakeEngine, run: _Pass | None) -> None:  # type: ignore[misc]
+    def _keep_onsets(self: EngineState, run: _Pass | None) -> None:
         """Keep where the driver braked in a pass that only the sector lines kept from counting.
 
         A pass flagged for the lines alone is a pass the driver drove normally through the sector:
@@ -130,7 +127,7 @@ class PassesMixin:
         """Were the sector lines the only thing keeping this pass from counting?"""
         return bool(reasons) and reasons <= LINES_REASONS
 
-    def _hold_lost(self: BrakeEngine, run: _Pass, sector: int, end: float) -> None:  # type: ignore[misc]
+    def _hold_lost(self: EngineState, run: _Pass, sector: int, end: float) -> None:
         """Keep a sector the lines arrived too late for, so it can be timed once they do.
 
         Only one the lines alone kept from counting is worth holding: a warm-up lap, a cut, a pit
@@ -146,17 +143,17 @@ class PassesMixin:
 
     # ------------------------------------------------------------------ sectors
 
-    def _flag(self: BrakeEngine, reason: DropReason) -> None:  # type: ignore[misc]
+    def _flag(self: EngineState, reason: DropReason) -> None:
         """Add a reason the pass in progress must not count (once per reason)."""
         if self._pass is not None:
             self._pass.flagged.add(reason)
 
-    def _unflag(self: BrakeEngine, reason: DropReason) -> None:  # type: ignore[misc]
+    def _unflag(self: EngineState, reason: DropReason) -> None:
         """Take a reason back: it no longer applies to the pass in progress."""
         if self._pass is not None:
             self._pass.flagged.discard(reason)
 
-    def _prune_lap_runs(self: BrakeEngine) -> None:  # type: ignore[misc]
+    def _prune_lap_runs(self: EngineState) -> None:
         """Forget the stored-run records older than the samples a late cut can reach.
 
         A report is attributed from the sample history, so once a run closed before that history
@@ -175,7 +172,7 @@ class PassesMixin:
         for key in [k for k, entry in self._lap_runs.items() if entry.at < cutoff]:
             del self._lap_runs[key]
 
-    def _restart_pass(self: BrakeEngine, sector: int, t: float, pos: float) -> None:  # type: ignore[misc]
+    def _restart_pass(self: EngineState, sector: int, t: float, pos: float) -> None:
         self._sector, self._pass, self._last_closed = (
             sector,
             _Pass(t, clean=False, start_pos=pos),
@@ -184,18 +181,18 @@ class PassesMixin:
         self._fired_warn.clear()
         self._fired_here.clear()
 
-    def _report(self: BrakeEngine, result: SectorResult) -> None:  # type: ignore[misc]
+    def _report(self: EngineState, result: SectorResult) -> None:
         self._last_result = result
         self._last_result_t = self._last.t if self._last else 0.0
         self._on_sector(result)
         self._on_message(result.describe())
 
-    def _report_dropped(self: BrakeEngine, idx: int, outcome: SectorOutcome) -> None:  # type: ignore[misc]
+    def _report_dropped(self: EngineState, idx: int, outcome: SectorOutcome) -> None:
         """Report a sector that did not count, remembering why for a cut reported later."""
         self._lap_notes[(self._lap_no, idx)] = outcome
         self._report(SectorResult(idx, None, False, None, render_outcome(outcome), outcome=outcome))
 
-    def _already_out(self: BrakeEngine, lap: int, idx: int) -> bool:  # type: ignore[misc]
+    def _already_out(self: EngineState, lap: int, idx: int) -> bool:
         """Did this sector already fail to count for a reason a cut report adds nothing to?
 
         That is a warm-up lap, the sector lines still being found, or a sector already reported as
@@ -209,7 +206,7 @@ class PassesMixin:
             return self._settings.learning_enabled and self._pass.paused
         return (lap, idx) in self._lap_notes
 
-    def _close_sector(self: BrakeEngine, t: float) -> None:  # type: ignore[misc]
+    def _close_sector(self: EngineState, t: float) -> None:
         run, idx, data = self._pass, self._sector, self._data
         self._last_closed = None
         # this run is being replaced; only what we store now counts (this lap's, not a late cut's

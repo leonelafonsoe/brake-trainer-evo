@@ -9,14 +9,15 @@ split to its log, so the two inner lines are learned from there (see
 
 The engine is split across mixins that share nothing but ``self``: session and storage here,
 sector passes in :mod:`.passes`, the sector lines in :mod:`.lines`, braking zones and track limits
-in :mod:`.limits`, and braking cues in :mod:`.cues`. Every mixin sees :class:`BrakeEngine` only
-for type checking, so the imports stay acyclic.
+in :mod:`.limits`, and braking cues in :mod:`.cues`. Every mixin sees the shared
+:class:`~.state.EngineState` protocol for type checking, so the imports stay acyclic.
 """
 
 from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from ..config import Settings
 from ..models import (
@@ -445,3 +446,11 @@ class BrakeEngine(PassesMixin, LinesMixin, LimitsMixin, CuesMixin):
             self._storage_warning = f"Data file {first.path.stem} moved to quarantine"
         else:
             self._storage_warning = f"Data file {first.path.stem} is read-only"
+
+
+if TYPE_CHECKING:
+    from .state import EngineState
+
+    def _check_engine_state(engine: BrakeEngine) -> EngineState:
+        """Type-only: mypy proves that the engine implements the mixins' shared contract."""
+        return engine
