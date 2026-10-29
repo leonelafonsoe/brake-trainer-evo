@@ -31,6 +31,7 @@ make a branch and PR, and keep the gates green.
 | Centralise overlay colours | Done: one palette for the HUD | — | — |
 | `acevo-sdk` 0.2 upgrade | Future game support | High (field) | M-L |
 | Code signing | Trust / SmartScreen | External | — |
+| Branch/archive cleanup | Done: `update-0.3.11` removed (content already on main) | — | — |
 
 ---
 
@@ -135,11 +136,11 @@ service such as SignPath (check eligibility against the non-commercial licence).
 signing step to `release.yml`, sign both the exe and the installer before checksums, and document
 the certificate/secret rotation. No code change until the account and certificate exist.
 
-## 11. Branch/archive cleanup
+## 11. Branch/archive cleanup (done)
 
-`update-0.3.11` is the only local branch not merged into `main`; its change was cherry-picked into
-the 0.3.11 history. Inspect `b265935`, tag it under `archive/` if it matters, then delete it. All
-other merged branches and stale `/tmp` worktrees were cleaned up after 0.6.0.
+`update-0.3.11` was the only local branch not merged into `main`. Its change is already on `main`
+as `c27d847` (the same patch, cherry-picked); there was no remote branch and no need for an archive
+tag, so the stale local branch was deleted. Nothing was lost.
 
 ---
 
