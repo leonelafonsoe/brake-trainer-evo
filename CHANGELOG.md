@@ -25,6 +25,11 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ### Changed
 
+- Settings JSON keys are clearer: `brake_on` → `brake_threshold`, `lead_s` → `warn_lead_s`,
+  `here_m` → `brake_now_m`, `here_hz` → `brake_now_hz`, `top_runs` → `kept_runs`,
+  `min_speed_drop` → `min_speed_shed` and `cluster_m` → `same_corner_m`. `SETTINGS_VERSION` is now
+  5, so an older settings file is archived as `settings.version-4-<stamp>.json` and the app starts
+  from defaults; tuning is lost once. Labels and behaviour are unchanged.
 - The real Windows adapters are tested on the Windows CI leg: the process handle, the `winsound`
   backend and the single-instance mutex. The tests skip cleanly on Linux and macOS, and the fake
   `ctypes`/injected-watcher tests still cover the surrounding logic everywhere.

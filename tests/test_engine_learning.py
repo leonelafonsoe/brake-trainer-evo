@@ -120,7 +120,7 @@ def test_a_new_reference_car_takes_effect_without_a_session_change(make_engine):
 
 
 def test_reducing_top_runs_keeps_only_the_fastest_stored_runs(store):
-    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0, top_runs=5), store)
+    engine = BrakeEngine(Settings(use_game_log=False, warmup_laps=0, kept_runs=5), store)
     driver = Driver(engine)
     for speed in (205, 200, 195, 190, 185, 180, 175):
         driver.lap(CORNERS, speed_fn=lambda p, v=speed: v)
@@ -129,7 +129,7 @@ def test_reducing_top_runs_keeps_only_the_fastest_stored_runs(store):
     assert all(len(runs) == 5 for runs in before.sectors)
     fastest = [sorted(r.t for r in runs) for runs in before.sectors]
 
-    engine.apply_settings(replace(engine.settings, top_runs=2))
+    engine.apply_settings(replace(engine.settings, kept_runs=2))
 
     after = store.load("Monza", "Car A", N_SECTORS)
     assert all(len(runs) == 2 for runs in after.sectors)

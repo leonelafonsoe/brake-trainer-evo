@@ -24,7 +24,7 @@ make a branch and PR, and keep the gates green.
 | Race-cut pair | Done: guarded at read and in the engine | — | — |
 | Global pause hotkey | Done: live, conflict-reporting global key | — | — |
 | Windows adapter tests | Done: real paths run on the Windows CI leg | — | — |
-| Settings key renames | Cosmetic / internal | Medium (settings reset) | M |
+| Settings key renames | Done: SETTINGS_VERSION 5, one-time settings reset | — | — |
 | `mypy` for tests and scripts | Scripts + helpers done; test bodies deferred | Low | M-L |
 | `EngineState` protocol | Type debt | Low runtime, high churn | M-L |
 | Merge `PositionTimeline.at` with the crossing core | Code size | High | M |
@@ -64,20 +64,17 @@ broken ctypes call or a changed `winsound` API fails the build; Linux and macOS 
 and the existing fake-ctypes and injected-watcher tests still cover the surrounding logic
 everywhere. See [DEVELOPMENT.md](DEVELOPMENT.md#where-the-tests-live).
 
-## 4. Settings key renames (optional, product decision)
+## 4. Settings key renames (done)
 
-**Current JSON keys:** `brake_on`, `lead_s`, `here_m`, `here_hz`, `top_runs`, `min_speed_drop`,
-`cluster_m`. The UI labels are already clear; the JSON keys are internal.
+`SETTINGS_VERSION` is now 5. The internal JSON keys are `brake_threshold`, `warn_lead_s`,
+`brake_now_m`, `brake_now_hz`, `kept_runs`, `min_speed_shed` and `same_corner_m` (renamed from
+`brake_on`, `lead_s`, `here_m`, `here_hz`, `top_runs`, `min_speed_drop` and `cluster_m`). The UI
+labels did not change.
 
-**Proposed names:** `brake_threshold`, `warn_lead_s`, `brake_now_m`, `brake_now_hz`, `kept_runs`,
-`min_speed_shed`, `same_corner_m`.
-
-**Impact:** a rename requires `SETTINGS_VERSION` 5. Under the 0.6.0 policy, an existing settings
-file is archived and the app starts from defaults, so users lose their tuning once. Labels and
-generated docs must be checked; all engine references and tests need the new field names.
-
-**Recommendation:** only do this if the reset is acceptable and the names will stay. It is cosmetic
-for users and moderately broad in code. **Branch:** `refactor/settings-key-renames`.
+Under the settings policy there is no migration: a v4 file is moved to
+`settings.version-4-<stamp>.json` and the app starts from defaults, so existing tuning is lost once.
+The generated reference and every code and test reference use the new keys. `cluster_m` remains the
+name of the engine's clustering distance parameter; only the stored setting was renamed.
 
 ## 5. `mypy` for tests and scripts (scripts and helpers done, test bodies optional)
 

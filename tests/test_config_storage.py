@@ -22,7 +22,18 @@ FIXTURES = Path(__file__).with_name("fixtures") / "settings"
 def test_settings_roundtrip(tmp_path):
     path = tmp_path / "s.json"
     original = Settings(
-        volume=0.3, overlay_x=120, warmup_laps=2, reference_car="296", pause_hotkey="Shift+F9"
+        volume=0.3,
+        overlay_x=120,
+        warmup_laps=2,
+        reference_car="296",
+        pause_hotkey="Shift+F9",
+        brake_threshold=0.4,
+        warn_lead_s=2.0,
+        brake_now_m=10.0,
+        brake_now_hz=2000,
+        kept_runs=5,
+        min_speed_shed=20.0,
+        same_corner_m=50.0,
     )
     save_settings(original, path)
     assert load_settings(path) == original
@@ -35,16 +46,16 @@ def test_settings_ignore_bad_values_and_clamp(tmp_path):
             {
                 "settings_version": SETTINGS_VERSION,
                 "volume": 7,
-                "lead_s": "fast",
+                "warn_lead_s": "fast",
                 "bogus": 1,
-                "top_runs": True,
+                "kept_runs": True,
             }
         )
     )
     st = load_settings(path)
     assert st.volume == 1.0
-    assert st.lead_s == Settings().lead_s
-    assert st.top_runs == Settings().top_runs
+    assert st.warn_lead_s == Settings().warn_lead_s
+    assert st.kept_runs == Settings().kept_runs
 
 
 def test_settings_missing_or_corrupt_file(tmp_path):
@@ -54,19 +65,29 @@ def test_settings_missing_or_corrupt_file(tmp_path):
     assert load_settings(bad) == Settings()
 
 
-def test_a_file_from_before_the_hotkey_keeps_its_values_and_gets_the_default(tmp_path):
-    # Adding a key does not change the stored layout: a v4 file simply has no `pause_hotkey`, so it
-    # loads with the default and is not archived.
+def test_a_v4_settings_file_with_the_old_keys_is_archived_and_starts_from_defaults(tmp_path):
+    # The key rename bumped the layout to 5. There is no migration: the old file is kept as
+    # evidence and the app starts from defaults instead of guessing at a renamed layout.
     path = tmp_path / "settings.json"
-    path.write_text(
-        json.dumps({"settings_version": SETTINGS_VERSION, "volume": 0.4}), encoding="utf-8"
+    original = json.dumps(
+        {
+            "settings_version": SETTINGS_VERSION - 1,
+            "brake_on": 0.5,
+            "lead_s": 2.0,
+            "here_m": 10.0,
+            "here_hz": 2000,
+            "top_runs": 5,
+            "min_speed_drop": 20.0,
+            "cluster_m": 50.0,
+        }
     )
+    path.write_text(original, encoding="utf-8")
 
-    loaded = load_settings(path)
+    assert load_settings(path) == Settings()  # the old keys are never read
 
-    assert loaded.volume == 0.4
-    assert loaded.pause_hotkey == Settings().pause_hotkey
-    assert path.exists()
+    archived = list(tmp_path.glob(f"settings.version-{SETTINGS_VERSION - 1}-*.json"))
+    assert len(archived) == 1
+    assert archived[0].read_text(encoding="utf-8") == original
 
 
 def test_a_corrupt_settings_file_is_moved_aside_not_overwritten(tmp_path):
@@ -94,7 +115,7 @@ def test_settings_are_never_written_when_the_unreadable_file_cannot_be_moved(tmp
 
 
 def test_non_finite_settings_fall_back_to_the_default():
-    assert Settings.from_dict({"volume": float("nan"), "lead_s": float("inf")}) == Settings()
+    assert Settings.from_dict({"volume": float("nan"), "warn_lead_s": float("inf")}) == Settings()
     assert Settings(volume=float("nan")).clamped().volume == Settings().volume
 
 

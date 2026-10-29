@@ -457,7 +457,7 @@ def test_one_split_alone_does_not_move_the_lines(store):
 
 def test_a_log_with_no_splits_falls_back_to_equal_lines_and_still_times_the_first_laps(store):
     messages: list[str] = []
-    engine = BrakeEngine(Settings(warmup_laps=0, top_runs=12), store, on_message=messages.append)
+    engine = BrakeEngine(Settings(warmup_laps=0, kept_runs=12), store, on_message=messages.append)
     driver = Driver(engine)
     for _ in range(4):
         driver.lap(CORNERS)  # no split is ever reported

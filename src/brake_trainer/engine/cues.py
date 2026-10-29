@@ -33,17 +33,17 @@ class CuesMixin:
 
     def _track_braking(self: BrakeEngine, s: Sample, pos: float) -> None:  # type: ignore[misc]
         st = self._settings
-        if not self._braking and s.brake >= st.brake_on:
+        if not self._braking and s.brake >= st.brake_threshold:
             self._braking = True
             self._event = _BrakeEvent(pos, s.speed_kmh, s.brake)
         elif self._braking and self._event is not None:
             e = self._event
             e.peak = max(e.peak, s.brake)
             shed = e.speed - s.speed_kmh
-            if not e.counted and e.peak >= st.min_peak and shed >= st.min_speed_drop:
+            if not e.counted and e.peak >= st.min_peak and shed >= st.min_speed_shed:
                 e.counted = True
                 self._add_onset(e.pos)
-            if s.brake <= max(0.01, st.brake_on - _BRAKE_HYSTERESIS):
+            if s.brake <= max(0.01, st.brake_threshold - _BRAKE_HYSTERESIS):
                 self._braking, self._event = False, None
 
     def _add_onset(self: BrakeEngine, pos: float) -> None:  # type: ignore[misc]
@@ -61,7 +61,7 @@ class CuesMixin:
 
     def _lead_m(self: BrakeEngine, speed_kmh: float) -> float:  # type: ignore[misc]
         st = self._settings
-        return max(_MIN_LEAD_M, max(speed_kmh / 3.6, 0.1) * st.lead_s)
+        return max(_MIN_LEAD_M, max(speed_kmh / 3.6, 0.1) * st.warn_lead_s)
 
     def _emit_cues(self: BrakeEngine, s: Sample, pos: float) -> None:  # type: ignore[misc]
         st = self._settings
@@ -70,11 +70,11 @@ class CuesMixin:
             dist = ((z - pos) % 1.0) * self._length_m
             if dist > self._length_m / 2:
                 dist -= self._length_m  # the point is behind us
-            if abs(dist) <= st.here_m and z not in self._fired_here:
+            if abs(dist) <= st.brake_now_m and z not in self._fired_here:
                 self._fired_here.add(z)
                 if s.brake < st.skip_zone_if_braking:
                     self._on_cue(CueKind.HERE)
-            elif st.here_m < dist <= lead and z not in self._fired_warn:
+            elif st.brake_now_m < dist <= lead and z not in self._fired_warn:
                 self._fired_warn.add(z)
                 if s.brake < st.skip_zone_if_braking:
                     self._on_cue(CueKind.WARN)

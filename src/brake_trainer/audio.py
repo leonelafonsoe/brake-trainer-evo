@@ -62,7 +62,7 @@ class AudioPlayer:
         self._cache: dict[tuple[int, int, float], bytes] = {}
 
     def _tone(self, kind: CueKind, st: Settings) -> bytes:
-        hz, ms = (st.warn_hz, _WARN_MS) if kind is CueKind.WARN else (st.here_hz, _HERE_MS)
+        hz, ms = (st.warn_hz, _WARN_MS) if kind is CueKind.WARN else (st.brake_now_hz, _HERE_MS)
         key = (hz, ms, round(st.volume, 2))
         if key not in self._cache:
             self._cache[key] = make_tone(hz, ms, st.volume)

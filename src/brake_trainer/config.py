@@ -29,25 +29,25 @@ _unreadable_settings: set[Path] = set()
 @dataclass(frozen=True, slots=True)
 class Settings:
     # --- braking detection ---
-    brake_on: float = DEFAULTS["brake_on"]  # brake above this = braking started
+    brake_threshold: float = DEFAULTS["brake_threshold"]  # brake above this = braking started
     min_peak: float = DEFAULTS["min_peak"]  # ignore light touches below this peak
     # km/h that must be shed for an event to count
-    min_speed_drop: float = DEFAULTS["min_speed_drop"]
-    cluster_m: float = DEFAULTS["cluster_m"]  # onsets closer than this are the same corner
+    min_speed_shed: float = DEFAULTS["min_speed_shed"]
+    same_corner_m: float = DEFAULTS["same_corner_m"]  # onsets closer than this are one corner
     # --- sectors & learning ---
     # off: cues still play, nothing is saved or changed
     learning_enabled: bool = DEFAULTS["learning_enabled"]
-    top_runs: int = DEFAULTS["top_runs"]  # fastest runs kept per sector
+    kept_runs: int = DEFAULTS["kept_runs"]  # fastest runs kept per sector
     # laps ignored after leaving the pits (cold tyres and brakes)
     warmup_laps: int = DEFAULTS["warmup_laps"]
     reference_car: str = DEFAULTS["reference_car"]  # "" = automatic
     # --- cues ---
-    lead_s: float = DEFAULTS["lead_s"]
-    here_m: float = DEFAULTS["here_m"]
+    warn_lead_s: float = DEFAULTS["warn_lead_s"]
+    brake_now_m: float = DEFAULTS["brake_now_m"]
     skip_zone_if_braking: float = DEFAULTS["skip_zone_if_braking"]
     volume: float = DEFAULTS["volume"]
     warn_hz: int = DEFAULTS["warn_hz"]
-    here_hz: int = DEFAULTS["here_hz"]
+    brake_now_hz: int = DEFAULTS["brake_now_hz"]
     # --- app ---
     telemetry_hz: float = DEFAULTS["telemetry_hz"]
     game_process: str = DEFAULTS["game_process"]

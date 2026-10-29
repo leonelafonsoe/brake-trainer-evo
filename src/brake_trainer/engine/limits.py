@@ -116,7 +116,7 @@ class LimitsMixin:
         if self._data is None:
             self._zones = []
             return
-        cluster, length = self._settings.cluster_m, self._length_m
+        cluster, length = self._settings.same_corner_m, self._length_m
         self._ref_zones = build_zones(self._ref.sectors, cluster, length) if self._ref else []
         early = self._early_runs()
         own: list[list[SectorRun]] = [[] for _ in range(self._n)]
@@ -432,7 +432,7 @@ class LimitsMixin:
         for r in previous:
             if not any(r is k for k in kept):
                 kept.append(r)
-        self._data.sectors[idx] = sorted(kept, key=lambda r: r.t)[: self._settings.top_runs]
+        self._data.sectors[idx] = sorted(kept, key=lambda r: r.t)[: self._settings.kept_runs]
         if self._last_closed is not None and self._last_closed[1] is run:
             self._last_closed = None
         self._rebuild_zones()

@@ -391,7 +391,7 @@ class OverlayWindow(QWidget):
             self._approach.set_value(0)
             return
         dist = snap.next_zone_m
-        if dist <= st.here_m * 2:
+        if dist <= st.brake_now_m * 2:
             color = theme.RED
         elif dist <= snap.lead_m:
             color = theme.AMBER
