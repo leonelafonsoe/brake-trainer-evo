@@ -17,6 +17,7 @@ from .logsetup import configure_logging, debug_requested_on_startup, set_debug
 from .paths import data_dir, settings_path
 from .storage import TrackStore
 from .ui import theme
+from .ui.hotkey import create_pause_hotkey
 from .ui.icon import app_icon
 from .ui.notifications import warn as notify_warning
 from .ui.overlay import OverlayWindow
@@ -90,12 +91,25 @@ def main() -> int:
     def warn(message: str) -> None:
         notify_warning(tray, settings_window, "Settings not saved", message)
 
+    # The hotkey needs the controller and the controller needs the hotkey, but the callback only
+    # runs once the app is running, long after both exist.
+    controller: AppController
+
+    def toggle_learning() -> None:
+        controller.toggle_learning()
+
+    def warn_hotkey(message: str) -> None:
+        notify_warning(tray, settings_window, "Global pause hotkey", message)
+
+    pause_hotkey = create_pause_hotkey(toggle_learning, warn_hotkey)
+
     controller = AppController(
         holder=holder,
         worker=worker,
         overlay=overlay,
         window=settings_window,
         toggles=toggles,
+        hotkey=pause_hotkey,
         save=save_settings,
         settings_path=settings_path,
         set_debug=set_debug,
@@ -148,6 +162,9 @@ def main() -> int:
     menu.addAction("Quit", app.quit)
     tray.setContextMenu(menu)
     tray.show()
+
+    # Register after the tray exists: a Windows conflict must be visible, not just logged.
+    pause_hotkey.apply(holder.value.pause_hotkey)
 
     app.aboutToQuit.connect(settings_window.save_geometry)
     app.aboutToQuit.connect(controller.shutdown)

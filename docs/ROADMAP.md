@@ -22,13 +22,13 @@ make a branch and PR, and keep the gates green.
 | Item | Value | Risk | Effort |
 |---|---|---|---|
 | Race-cut pair | Done: guarded at read and in the engine | — | — |
-| Global pause hotkey | Driver UX | Medium-high | M |
-| Windows adapter tests | Reliability | Low | S |
+| Global pause hotkey | Done: live, conflict-reporting global key | — | — |
+| Windows adapter tests | Done: real paths run on the Windows CI leg | — | — |
 | Settings key renames | Cosmetic / internal | Medium (settings reset) | M |
-| `mypy` for tests and scripts | Type safety | Low | M-L |
+| `mypy` for tests and scripts | Scripts + helpers done; test bodies deferred | Low | M-L |
 | `EngineState` protocol | Type debt | Low runtime, high churn | M-L |
 | Merge `PositionTimeline.at` with the crossing core | Code size | High | M |
-| Centralise overlay colours | Consistency | Low | S |
+| Centralise overlay colours | Done: one palette for the HUD | — | — |
 | `acevo-sdk` 0.2 upgrade | Future game support | High (field) | M-L |
 | Code signing | Trust / SmartScreen | External | — |
 
@@ -44,46 +44,25 @@ raw block instead of hex text. The field notes and the valid-pair behaviour are 
 [GAME_DATA.md](GAME_DATA.md#track-limits) and the regression tests in
 `tests/test_telemetry_audio.py` and `tests/test_track_limits.py`.
 
-## 2. Global pause hotkey
+## 2. Global pause hotkey (done)
 
-**Where:** new `src/brake_trainer/ui/hotkey.py` (or a Win32 adapter), `app.py`, settings metadata.
+Settings -> App -> **Global pause hotkey** (default `Ctrl+Alt+P`, empty = off) pauses and resumes
+learning from anywhere, including while driving. The parser accepts Ctrl/Alt/Shift/Win plus A-Z,
+0-9 or F1-F12, rejects duplicate modifiers and unsupported keys with a sentence the form shows, and
+requires a modifier for letters and digits so the app does not take that key from other windows.
+`RegisterHotKey` is called directly through ctypes (no new dependency) and a Qt native event filter
+handles `WM_HOTKEY`; the binding applies live, is re-registered when it changes, and is
+unregistered on exit. A Windows conflict is reported in the tray and the log. The parser and
+lifecycle are tested with a fake backend everywhere; the real API is exercised on the Windows CI
+leg. See [GUIDE.md](GUIDE.md#pausing-learning) and [SETTINGS.md](SETTINGS.md).
 
-**Current state:** pause/resume is available from the overlay button, tray menu and Settings. The
-overlay is a non-focusable tool window, so there is no keyboard path while driving.
+## 3. Windows adapter tests (done)
 
-**Proposal:**
-
-- Add a setting `pause_hotkey` (text, default `Ctrl+Alt+P`, empty = off) and validate it at apply
-  time. Parse modifiers (Ctrl/Alt/Shift/Win) plus a key (A-Z, 0-9, F1-F12); reject duplicate
-  modifiers and unsupported keys with a clear message.
-- Implement registration through Win32 `RegisterHotKey` on a message-only window or a Qt
-  `QAbstractNativeEventFilter` receiving `WM_HOTKEY`.
-- Register on startup and on setting change; unregister on quit and on failure. A conflict
-  (`ERROR_HOTKEY_ALREADY_REGISTERED`) must be visible (tray message + log), not silent.
-- Keep the setting live only where possible; otherwise say "applies on restart" next to it, as the
-  telemetry rate does.
-- No new dependency. Inject the Win32 backend so the parser and lifecycle are testable on Linux.
-
-**Tests:** parser accepts/rejects; fake backend gets one register/unregister per change; a conflict
-does not crash the app; non-Windows returns "unsupported" without raising.
-
-**Docs:** GUIDE controls and SETTINGS (generated). **Branch:** `feat/global-pause-hotkey`.
-
-## 3. Windows adapter tests
-
-**Where:** `tests/test_telemetry_audio.py`, `tests/test_app.py`.
-
-**Current state:** the real `ctypes` process watcher (`open_process_watcher`) and the `winsound`
-backend are only exercised as no-ops off Windows; `_create_app_mutex` is tested with a fake ctypes.
-The Windows CI leg is the right place for the real paths.
-
-**Proposal:** add tests marked `skipif(sys.platform != "win32")`:
-
-- `open_process_watcher(os.getpid())` returns a watcher, `exited()` is false, `close()` works;
-- the `winsound` backend calls `PlaySound` with the generated WAV (monkeypatch `winsound`);
-- the single-instance mutex allows the first process and refuses a second one.
-
-**Acceptance:** Windows CI runs them; Linux skips them cleanly. **Branch:** `test/windows-adapters`.
+The real process handle (`open_process_watcher`), the `winsound` backend and the single-instance
+mutex now have tests marked `skipif(sys.platform != "win32")`. The Windows CI leg runs them, so a
+broken ctypes call or a changed `winsound` API fails the build; Linux and macOS skip them cleanly,
+and the existing fake-ctypes and injected-watcher tests still cover the surrounding logic
+everywhere. See [DEVELOPMENT.md](DEVELOPMENT.md#where-the-tests-live).
 
 ## 4. Settings key renames (optional, product decision)
 
@@ -100,19 +79,30 @@ generated docs must be checked; all engine references and tests need the new fie
 **Recommendation:** only do this if the reset is acceptable and the names will stay. It is cosmetic
 for users and moderately broad in code. **Branch:** `refactor/settings-key-renames`.
 
-## 5. `mypy` for tests and scripts (optional)
+## 5. `mypy` for tests and scripts (scripts and helpers done, test bodies optional)
 
-**Current state:** `mypy` is strict for `src` only. Running it over `tests` + `scripts` currently
-reports **613 errors in 35 files**, mostly missing annotations in tests. Test code is not
-production code, but helper drift (fixtures, replay harness, release scripts) is real.
+**Current state:** `mypy` is strict for `src`, `scripts` and the shared test harness
+(`tests/conftest.py`, `engine_helpers.py`, `gamelog_helpers.py`, `replay.py`).
 
-**Proposal (choose one):**
+- The release/build scripts were already fully annotated; the only errors came from mypy resolving
+  the *installed* package, which has no `py.typed` marker. `mypy_path = ["src"]` makes it use the
+  source tree instead, so no script changed.
+- The harness needed six annotations in `conftest.py` (the concrete `QApplication` type and the
+  fixture return types). That is the shared code every scenario runs through, so it is worth
+  checking; individual test modules are not.
 
-- **Relaxed test typing:** add `tests` and `scripts` to `files`, then a per-module override for
-  `tests` and the top-level script modules that disables `disallow_untyped_defs` /
-  `disallow_untyped_calls` while keeping `check_untyped_defs` on. Fix the remaining real errors.
-- **Scripts first:** include only `scripts` in strict mypy; leave tests out.
-- **Do nothing:** keep the strict source pass. This is a deliberate choice, not an oversight.
+**Test bodies remain outside.** With the relaxed override (untyped/incomplete defs and untyped calls
+allowed, `check_untyped_defs` on) they still report about **128 errors in 20 files**, mostly
+annotations and narrowing `Optional` results in one-off assertions. Typing them would churn most of
+the suite for little drift protection.
+
+**Proposal for the test bodies (choose one):**
+
+- **Relaxed test typing:** add `tests` to `files`, then a per-module override for `tests` that
+  disables `disallow_untyped_defs` / `disallow_incomplete_defs` / `disallow_untyped_calls` while
+  keeping `check_untyped_defs` on, and fix the remaining real errors.
+- **Do nothing:** keep the strict source, scripts and shared-harness pass. This is a deliberate
+  choice, not an oversight.
 
 **Acceptance:** both `mypy` and `mypy --platform win32` pass with the chosen scope; no runtime change.
 
@@ -143,16 +133,13 @@ unless a concrete bug forces the change.
 rules explicit, and add cases for a reset inside a frame, a start/finish wrap, a future timestamp
 and a missing earlier sample. **Branch:** `refactor/timeline-interpolation-core`.
 
-## 8. Centralise overlay colours and metrics (low priority)
+## 8. Centralise overlay colours (done)
 
-**Current state:** most metrics are now scaled through `_px`, but some colours are still literal:
-the shadow (`QColor(0, 0, 0, 230)`), the default overlay background (`QColor(12, 14, 18)`) and the
-bar colours in `ui/widgets.py`. The About link duplicates `theme.ACCENT`.
-
-**Proposal:** add `theme.OVERLAY_BG`, `SHADOW`, bar track/fill/separator constants and use them in
-`overlay.py`/`widgets.py`/`about_page.py`. Keep the existing values byte-for-byte so the look does
-not change. **Acceptance:** visual check at 1.00 and 1.50; no test can pin colours cheaply.
-**Branch:** `refactor/overlay-theme-constants`.
+The overlay shadow, background, dim glyph, and the bar track, progress, outline and separator are
+now RGBA constants in `theme` (values unchanged). The About tab formats its link colour from
+`theme.ACCENT` instead of duplicating the hex string. A test pins the channel values so the
+refactor cannot drift; a visual check at 1.00 and 1.50 is part of the PR review. `ui/icon.py` keeps
+its own artwork palette on purpose: it is a generated image, not HUD chrome.
 
 ## 9. `acevo-sdk` 0.2 upgrade (future, field-tested)
 

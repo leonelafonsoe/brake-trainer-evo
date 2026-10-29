@@ -15,7 +15,8 @@ GREEN = "#3ddc84"
 AMBER = "#ffb020"
 RED = "#ff4d4f"
 ACCENT = "#4da3ff"
-TEXT_DIM = "rgba(255, 255, 255, 175)"
+TEXT_DIM_RGBA = (255, 255, 255, 175)
+TEXT_DIM = "rgba({}, {}, {}, {})".format(*TEXT_DIM_RGBA)
 BUTTON_TEXT = "#0b0e12"  # dark text on ACCENT
 
 # F1-style sector colours
@@ -23,6 +24,15 @@ SECTOR_PENDING = "#6b7280"
 SECTOR_SLOWER = "#ffd23f"
 SECTOR_GOOD = "#3ddc84"
 SECTOR_BEST = "#b266ff"
+
+# Overlay and bar colours, as straight RGBA channels: the overlay computes alpha at runtime and
+# QColor does not parse the CSS rgba() form used above. These values are part of the look.
+SHADOW = (0, 0, 0, 230)  # text shadow
+OVERLAY_BG = (12, 14, 18)  # overlay fill; the alpha comes from the background setting
+BAR_TRACK = (0, 0, 0, 120)  # bar behind the sector/progress fill
+BAR_PROGRESS = (255, 255, 255, 110)  # fill of the sector being driven
+BAR_OUTLINE = (255, 255, 255, 230)  # outline of the sector being driven
+BAR_SEPARATOR = (0, 0, 0, 170)  # the game's sector line, drawn between segments
 
 STATUS_COLORS = {
     SectorStatus.PENDING: SECTOR_PENDING,

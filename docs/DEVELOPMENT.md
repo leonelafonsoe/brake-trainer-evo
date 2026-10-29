@@ -56,8 +56,8 @@ uv sync --locked --extra dev
 uv run pre-commit run --all-files  # ruff, formatting, YAML/TOML, whitespace, mypy
 uv run ruff format --check .
 uv run ruff check .
-uv run mypy
-uv run mypy --platform win32   # the Windows-only branches (ctypes, winsound, tasklist)
+uv run mypy                       # src, scripts and the shared test harness, strict
+uv run mypy --platform win32      # the Windows-only branches (ctypes, winsound, tasklist)
 uv run pytest -q -W error
 uv run pytest -q -W error --cov    # coverage with the floor from pyproject.toml
 uv run python scripts/gen_settings_doc.py --check
@@ -99,8 +99,16 @@ regenerate the settings reference after changing a setting.
 | Composition root, single instance | `tests/test_app.py` |
 | Pure layers do not import Qt/adapters | `tests/test_architecture.py` |
 | Settings application, save warnings, shutdown | `tests/test_controller.py` |
+| Global pause hotkey parsing and registration | `tests/test_hotkey.py` |
 | Status line and widget geometry | `tests/test_status.py`, `tests/test_widgets.py` |
 | Docs, links, release tools, generated files | `tests/test_docs.py`, `tests/test_docs_links.py`, `tests/test_release_tools.py` |
+
+Four adapters have a real implementation only on Windows: the process handle
+(`open_process_watcher`), `winsound`, the single-instance mutex and the global pause hotkey
+(`RegisterHotKey` with the `WM_HOTKEY` filter). Their tests are marked
+`skipif(sys.platform != "win32")`, so the Windows CI leg exercises the real code and Linux/macOS
+skip them cleanly. The logic around them (an injected watcher, a fake `ctypes`, the hotkey parser
+and register/unregister lifecycle) is still tested on every platform.
 
 `tests/conftest.py` has the fixtures that make a scenario short:
 
@@ -110,6 +118,10 @@ regenerate the settings reference after changing a setting.
   teardown. A widget test module marks itself with
   `pytestmark = pytest.mark.usefixtures("close_qt_windows")`.
 - `make_engine` builds an engine with warm-up and game-log following off for deterministic tests.
+
+The shared harness (`tests/conftest.py`, `engine_helpers.py`, `gamelog_helpers.py`, `replay.py`) is
+type-checked strictly, because a mistake there can weaken every scenario built on it. Individual
+test modules are not: typing one-off assertions costs more than the drift it would catch.
 
 Do not use fixed sleeps for asynchronous behaviour. `GameLogTail.poll_once()` is the seam for a
 single read, and `threading.Event`/`asyncio.Event`/condition polling replace guessed delays.
@@ -285,9 +297,10 @@ check, lint, mypy and the generated settings reference. The tests run on Linux w
 3.12 and on Windows with 3.12, then the Windows program is built. The build is attached to the
 workflow run as an artifact (kept 14 days) so anyone can download and try the change. Nothing is
 published, and a failure on any operating system blocks the build. The packaged program is started
-once with a temporary app folder and must write its `startup app=` line before the build is
-accepted. Coverage is measured on the Linux 3.12 leg, must stay above the floor in
-`pyproject.toml`, and is uploaded as `coverage-xml`.
+once with a temporary app folder, must write its `startup app=` line and must stay running for a
+moment afterwards before the build is accepted: a crash in the first event of the event loop (a
+broken native filter, for example) fails the build. Coverage is measured on the Linux 3.12 leg,
+must stay above the floor in `pyproject.toml`, and is uploaded as `coverage-xml`.
 
 ### Nightly (`nightly.yml`)
 

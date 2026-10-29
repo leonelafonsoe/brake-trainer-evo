@@ -51,6 +51,8 @@ def _range(spec: SettingSpec) -> str:
         return "on / off"
     if spec.kind == "text":
         return "text"
+    if spec.kind == "hotkey":
+        return "key combination"
     assert spec.lo is not None and spec.hi is not None
     lo, hi, unit = _fmt(spec.lo), _fmt(spec.hi), spec.suffix.strip()
     text = f"{lo} - {hi}{' ' + unit if unit else ''}"

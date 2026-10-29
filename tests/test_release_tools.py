@@ -219,7 +219,22 @@ def test_the_smoke_test_waits_for_the_startup_line(tmp_path):
         ".write_text('startup app=0.0.0 build=test\\n'); time.sleep(5)",
     ]
 
-    assert smoke.wait_for_startup(command, timeout=10) == 0
+    assert smoke.wait_for_startup(command, timeout=10, grace=0.1) == 0
+
+
+def test_the_smoke_test_fails_when_the_app_crashes_after_its_startup_line():
+    import sys
+
+    command = [
+        sys.executable,
+        "-c",
+        "import os, pathlib, time; "
+        "pathlib.Path(os.environ['BRAKE_TRAINER_HOME'], 'brake_trainer.log')"
+        ".write_text('startup app=0.0.0 build=test\\n'); time.sleep(0.2); raise SystemExit(7)",
+    ]
+
+    with pytest.raises(SystemExit, match="just after its startup line"):
+        smoke.wait_for_startup(command, timeout=10, grace=1.0)
 
 
 def test_the_smoke_test_fails_when_the_app_exits_early(tmp_path):
@@ -309,6 +324,30 @@ def test_the_gates_check_windows_types():
     gates = (ROOT / ".github" / "actions" / "gates" / "action.yml").read_text(encoding="utf-8")
 
     assert "mypy --platform win32" in gates
+
+
+def test_mypy_checks_the_release_scripts_from_source():
+    import tomllib
+
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    mypy = config["tool"]["mypy"]
+
+    assert {"src", "scripts"} <= set(mypy["files"])
+    assert "src" in mypy["mypy_path"]
+
+
+def test_mypy_checks_the_shared_test_helpers():
+    import tomllib
+
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    checked = set(config["tool"]["mypy"]["files"])
+
+    assert {
+        "tests/conftest.py",
+        "tests/engine_helpers.py",
+        "tests/gamelog_helpers.py",
+        "tests/replay.py",
+    } <= checked
 
 
 def test_every_windows_build_is_smoke_tested():

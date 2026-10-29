@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -8,6 +10,9 @@ from brake_trainer.config import Settings
 from brake_trainer.engine import BrakeEngine
 from brake_trainer.models import CueKind, Sample
 from brake_trainer.storage import TrackStore
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QApplication
 
 DT = 1 / 30
 LENGTH = 5000.0
@@ -94,7 +99,7 @@ class Driver:
 
 
 @pytest.fixture(scope="session")
-def qapp():
+def qapp() -> Iterator[QApplication]:
     """One QApplication for the whole test session (offscreen, no display needed)."""
     import os
 
@@ -102,13 +107,14 @@ def qapp():
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication([])
+    existing = QApplication.instance()
+    app = existing if isinstance(existing, QApplication) else QApplication([])
     yield app
     app.processEvents()
 
 
 @pytest.fixture
-def close_qt_windows(qapp):
+def close_qt_windows(qapp: QApplication) -> Iterator[None]:
     """Destroy any top-level window a test made before the interpreter tears Qt down.
 
     Modules that build widgets mark themselves with
@@ -123,18 +129,18 @@ def close_qt_windows(qapp):
 
 
 @pytest.fixture
-def store(tmp_path):
+def store(tmp_path: Path) -> TrackStore:
     return TrackStore(tmp_path / "data")
 
 
 @pytest.fixture
-def cues():
+def cues() -> list[CueKind]:
     return []
 
 
 @pytest.fixture
-def make_engine(store, cues):
-    def factory(**overrides) -> BrakeEngine:
+def make_engine(store: TrackStore, cues: list[CueKind]) -> Callable[..., BrakeEngine]:
+    def factory(**overrides: Any) -> BrakeEngine:
         # use_game_log off keeps the tests off the game's log: without a split in sight the engine
         # would spend the first laps waiting for the game's sector lines before counting anything.
         return BrakeEngine(

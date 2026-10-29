@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from brake_trainer import app
 
 
@@ -34,3 +36,25 @@ def test_the_single_instance_guard_refuses_a_second_instance(monkeypatch):
     monkeypatch.setattr(app.sys, "platform", "win32")
     monkeypatch.setitem(sys.modules, "ctypes", _fake_ctypes(183))  # ERROR_ALREADY_EXISTS
     assert app._create_app_mutex() is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="creates a real named Windows mutex")
+def test_the_single_instance_mutex_allows_one_process_on_windows():
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handles: list[int | None] = []
+    try:
+        assert app._create_app_mutex() is True  # the first instance creates the mutex
+        handles.append(app._app_mutex)
+        assert app._create_app_mutex() is False  # the same name now already exists
+        handles.append(app._app_mutex)
+    finally:
+        for handle in handles:
+            if handle:
+                kernel32.CloseHandle(handle)
+        app._app_mutex = None

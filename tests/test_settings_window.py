@@ -5,9 +5,12 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
+    QKeySequenceEdit,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -20,6 +23,7 @@ from brake_trainer.settings_spec import TABS, SettingSpec
 from brake_trainer.storage import DeleteEntry, DeleteRun, DeleteSector
 from brake_trainer.ui.settings import SettingsWindow
 from brake_trainer.ui.settings import data_page as data_page_module
+from brake_trainer.ui.settings import form as form_module
 from brake_trainer.ui.settings import window as settings_window_module
 from brake_trainer.ui.settings.form import _get, _set
 
@@ -154,12 +158,85 @@ def test_apply_shows_the_clamped_value_and_emits_it(qapp, store):
     assert _get(widget, spec) == 1.0  # the form shows what will actually be used
 
 
+def test_the_pause_hotkey_is_captured_from_the_keyboard(qapp, store):
+    window = _window(qapp, store)
+    window.show()
+    qapp.processEvents()
+    try:
+        _, widget = window._widgets["pause_hotkey"]
+        assert isinstance(widget, QKeySequenceEdit)
+        assert widget.maximumSequenceLength() == 1
+        assert widget.isClearButtonEnabled()  # the clear button is how "off" is set
+
+        widget.setFocus()
+        qapp.processEvents()
+        QTest.keyClick(
+            widget,
+            Qt.Key.Key_P,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier,
+        )
+        qapp.processEvents()
+        assert window.collect().pause_hotkey == "Ctrl+Alt+P"
+
+        QTest.keyClick(widget, Qt.Key.Key_F10, Qt.KeyboardModifier.MetaModifier)
+        qapp.processEvents()
+        assert window.collect().pause_hotkey == "Win+F10"  # Qt says Meta; Windows says Win
+
+        widget.clear()
+        assert window.collect().pause_hotkey == ""
+    finally:
+        window.hide()  # the test changed the form; closing it now would ask to discard
+
+
+def test_a_win_hotkey_round_trips_through_the_capture_field(qapp, store):
+    # Qt spells the Windows key Meta; the settings text uses Win and must survive a reload.
+    window = _window(qapp, store)
+
+    window.load(Settings(pause_hotkey="Win+F10"))
+
+    assert window.collect().pause_hotkey == "Win+F10"
+
+
+def test_the_about_page_uses_the_theme_accent():
+    from brake_trainer import __version__
+    from brake_trainer.ui import theme
+    from brake_trainer.ui.settings.about_page import _ABOUT_HTML
+
+    html = _ABOUT_HTML.format(version=__version__, accent=theme.ACCENT)
+
+    assert f"color: {theme.ACCENT}" in html
+
+
+def test_an_invalid_hotkey_blocks_apply_and_says_why(qapp, store, monkeypatch):
+    window = _window(qapp, store)
+    applied: list[Settings] = []
+    warnings: list[str] = []
+    window.applied.connect(applied.append)
+    monkeypatch.setattr(
+        form_module.QMessageBox,
+        "warning",
+        lambda parent, title, text: warnings.append(text),
+    )
+    spec, widget = window._widgets["pause_hotkey"]
+    _set(widget, spec, "P")
+
+    window._apply()
+
+    assert applied == []  # a hotkey that cannot work is not saved
+    assert warnings and "modifier" in warnings[0]
+
+    _set(widget, spec, "Shift+F9")
+    window._apply()
+    assert applied and applied[-1].pause_hotkey == "Shift+F9"
+
+
 def test_every_visible_setting_has_a_widget_of_the_right_kind(qapp, store):
     window = _window(qapp, store)
     visible = [spec for specs in TABS.values() for spec in specs]
     classes = {
         "bool": QCheckBox,
         "text": QLineEdit,
+        "hotkey": QKeySequenceEdit,
         "float": QDoubleSpinBox,
         "int": QSpinBox,
         "optint": QSpinBox,
@@ -175,6 +252,8 @@ def test_every_visible_setting_has_a_widget_of_the_right_kind(qapp, store):
 def _different_value(spec: SettingSpec):
     if spec.kind == "bool":
         return not spec.default
+    if spec.kind == "hotkey":
+        return "Shift+F9"
     if spec.kind == "text":
         return "different"
     assert spec.bounds is not None

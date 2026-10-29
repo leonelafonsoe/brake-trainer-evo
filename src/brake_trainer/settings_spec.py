@@ -12,7 +12,9 @@ import math
 from dataclasses import dataclass
 from typing import Any, Literal
 
-Kind = Literal["bool", "int", "optint", "float", "text"]
+from .hotkey import DEFAULT_PAUSE_HOTKEY
+
+Kind = Literal["bool", "int", "optint", "float", "text", "hotkey"]
 
 # Bumped when the stored settings layout changes. A file with any other version is archived and the
 # app starts from defaults (see config.load_settings): there is no migration code to keep.
@@ -81,7 +83,7 @@ class SettingSpec:
                 number = float(value)
                 if math.isfinite(number):
                     return number
-        elif self.kind == "text" and isinstance(value, str):
+        elif self.kind in {"text", "hotkey"} and isinstance(value, str):
             return value
         raise TypeError(f"{self.name} is not a valid {self.kind}: {value!r}")
 
@@ -318,6 +320,17 @@ SPECS: tuple[SettingSpec, ...] = (
         tab="App",
         label="Game process name contains",
         tip="Part of the game's process name, used to detect that it is running or has closed.",
+    ),
+    SettingSpec(
+        name="pause_hotkey",
+        kind="hotkey",
+        default=DEFAULT_PAUSE_HOTKEY,
+        tab="App",
+        label="Global pause hotkey",
+        tip=(
+            "Click the field and press the combination. Ctrl, Alt, Shift or Win plus a letter,"
+            " digit or F1-F12; F-keys may be used alone. Use the clear button to turn it off."
+        ),
     ),
     SettingSpec(
         name="use_game_log",

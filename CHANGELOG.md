@@ -8,6 +8,12 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 - A [roadmap](docs/ROADMAP.md) of the remaining product and engineering ideas, with the current
   state, risks, acceptance criteria and suggested branches for each.
+- A global pause hotkey for learning, `Ctrl+Alt+P` by default (Settings → App; empty = off). It is
+  registered with Windows directly (no new dependency), applies live and is unregistered on exit.
+  Click the field and press the combination to change it. A letter or digit needs a modifier so the
+  app does not take that key from other windows; F1-F12 may be used alone. A conflict is shown in
+  the tray and the log, the settings window refuses a hotkey it cannot parse, and existing settings
+  files load with the new default.
 
 ### Fixed
 
@@ -16,6 +22,25 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
   gained, `0..5 000 m` left to give back, a finite delta) and treats anything else as no cut, in the
   reader and in the engine. A block that shifts in a game update can no longer drop sectors from
   noise, and the decode tolerates the SDK handing over the raw block instead of hex text.
+
+### Changed
+
+- The real Windows adapters are tested on the Windows CI leg: the process handle, the `winsound`
+  backend and the single-instance mutex. The tests skip cleanly on Linux and macOS, and the fake
+  `ctypes`/injected-watcher tests still cover the surrounding logic everywhere.
+- The Windows build smoke test now waits a moment after the startup line and fails if the packaged
+  app exits, so a crash in the first native event (such as a broken event filter) cannot pass the
+  build.
+- `mypy` now checks the release and build scripts (`scripts/`) in strict mode as well as `src`,
+  resolving the package from the source tree. They were already fully annotated, so no script
+  changed; the extra check keeps helpers such as the release tools honest. Tests remain outside the
+  strict pass.
+- The shared test harness (`tests/conftest.py`, the synthetic driver, the game-log and replay
+  helpers) is now type-checked strictly too. That is the code every scenario runs through; the
+  individual test modules stay outside the strict pass.
+- The overlay shadow, background and bar colours now come from `theme` constants, and the About
+  link uses the same accent instead of a duplicate hex string. The values are unchanged (a test
+  pins them); the HUD looks exactly as before.
 
 ## 0.6.0 - 2026-10-25
 

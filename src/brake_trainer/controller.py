@@ -43,6 +43,14 @@ class Overlay(Protocol):
     def apply_settings(self, settings: Settings) -> None: ...
 
 
+class HotkeyRegistration(Protocol):
+    """The part of ``brake_trainer.hotkey.HotkeyControl`` the settings policy uses."""
+
+    def apply(self, text: str) -> bool: ...
+
+    def close(self) -> None: ...
+
+
 class Window(Protocol):
     def isVisible(self) -> bool: ...
 
@@ -60,6 +68,7 @@ class AppController:
         overlay: Overlay,
         window: Window,
         toggles: Mapping[str, Toggle],
+        hotkey: HotkeyRegistration,
         save: Callable[[Settings, Path], bool],
         settings_path: Callable[[], Path],
         set_debug: Callable[[bool], None],
@@ -71,6 +80,7 @@ class AppController:
         self._overlay = overlay
         self._window = window
         self._toggles = toggles
+        self._hotkey = hotkey
         self._save = save
         self._settings_path = settings_path
         self._set_debug = set_debug
@@ -98,6 +108,7 @@ class AppController:
             )
         self._worker.update_settings(settings)
         self._overlay.apply_settings(settings)
+        self._hotkey.apply(settings.pause_hotkey)
         self._set_debug(self._forced_debug or settings.debug_logging)
         for field, action in self._toggles.items():
             action.blockSignals(True)
@@ -111,6 +122,10 @@ class AppController:
 
     def set_learning(self, enabled: bool) -> None:
         self.apply(replace(self._holder.value, learning_enabled=enabled))
+
+    def toggle_learning(self) -> None:
+        """Pause or resume learning; used by the tray, the overlay button and the hotkey."""
+        self.set_learning(not self._holder.value.learning_enabled)
 
     def set_always_on_top(self, enabled: bool) -> None:
         self.apply(replace(self._holder.value, overlay_always_on_top=enabled))
@@ -137,6 +152,7 @@ class AppController:
         path = self._settings_path()
         if not self._save(self._holder.value, path):
             log.error("Could not save settings to %s", path)
+        self._hotkey.close()
         self._worker.request_stop()
         if not self._worker.wait(5000):
             # A live QThread must not be destroyed when main() returns. terminate() is a last

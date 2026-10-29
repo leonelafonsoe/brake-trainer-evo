@@ -70,6 +70,19 @@ class FakeToggle:
         self.checked = checked
 
 
+class FakeHotkey:
+    def __init__(self) -> None:
+        self.applied: list[str] = []
+        self.closed = 0
+
+    def apply(self, text: str) -> bool:
+        self.applied.append(text)
+        return True
+
+    def close(self) -> None:
+        self.closed += 1
+
+
 class FakeSave:
     """Save callback with scripted results (default: success)."""
 
@@ -92,6 +105,7 @@ def parts(tmp_path: Path):
         "learning_enabled": FakeToggle(),
         "overlay_always_on_top": FakeToggle(),
     }
+    hotkey = FakeHotkey()
     save = FakeSave()
     warnings: list[str] = []
     debug: list[bool] = []
@@ -101,6 +115,7 @@ def parts(tmp_path: Path):
         overlay=overlay,
         window=window,
         toggles=toggles,
+        hotkey=hotkey,
         save=save,
         settings_path=lambda: tmp_path / "settings.json",
         set_debug=debug.append,
@@ -114,6 +129,7 @@ def parts(tmp_path: Path):
         overlay=overlay,
         window=window,
         toggles=toggles,
+        hotkey=hotkey,
         save=save,
         warnings=warnings,
         debug=debug,
@@ -130,6 +146,7 @@ def test_apply_updates_every_consumer_and_saves(parts):
     assert parts.save.calls == [(wanted, parts.path)]
     assert parts.worker.settings == [wanted]
     assert parts.overlay.settings == [wanted]
+    assert parts.hotkey.applied == [wanted.pause_hotkey]
     assert parts.debug == [True]
     assert parts.toggles["learning_enabled"].checked is False
     assert parts.window.loaded == []  # hidden: no need to reload an invisible form
@@ -174,6 +191,11 @@ def test_typed_setters_change_only_their_field(parts):
     assert parts.holder.value.learning_enabled is False
     assert parts.holder.value.overlay_always_on_top is True
 
+    parts.controller.toggle_learning()  # the tray, overlay and hotkey share this
+    assert parts.holder.value.learning_enabled is True
+    parts.controller.toggle_learning()
+    assert parts.holder.value.learning_enabled is False
+
     parts.controller.set_always_on_top(False)
     assert parts.holder.value.overlay_always_on_top is False
 
@@ -199,6 +221,7 @@ def test_shutdown_saves_stops_and_waits_once(parts):
     parts.controller.shutdown()
 
     assert parts.save.calls == [(parts.holder.value, parts.path)]
+    assert parts.hotkey.closed == 1
     assert parts.worker.stop_requests == 1
     assert parts.worker.waits == [5000]
     assert parts.worker.terminated == 0
@@ -212,6 +235,7 @@ def test_shutdown_terminates_a_worker_that_will_not_stop(tmp_path: Path, caplog)
         overlay=FakeOverlay(),
         window=FakeWindow(),
         toggles={},
+        hotkey=FakeHotkey(),
         save=FakeSave(),
         settings_path=lambda: tmp_path / "settings.json",
         set_debug=lambda _on: None,

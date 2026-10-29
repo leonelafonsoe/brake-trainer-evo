@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .fileio import write_json_atomic
+from .hotkey import HotkeyError, parse_hotkey
 from .metadata import save_metadata
 from .settings_spec import DEFAULTS, SPEC_BY_NAME
 from .settings_spec import LIMITS as _LIMITS
@@ -50,6 +51,8 @@ class Settings:
     # --- app ---
     telemetry_hz: float = DEFAULTS["telemetry_hz"]
     game_process: str = DEFAULTS["game_process"]
+    # global Win32 hotkey that pauses/resumes learning ("" = off); see hotkey.py
+    pause_hotkey: str = DEFAULTS["pause_hotkey"]
     close_with_game: bool = DEFAULTS["close_with_game"]
     # follow the game's log for the cuts it reports after the fact
     use_game_log: bool = DEFAULTS["use_game_log"]
@@ -82,6 +85,18 @@ class Settings:
             if fixed != value:
                 changes[name] = fixed
         return replace(self, **changes)
+
+    def validation_error(self) -> str:
+        """Why these settings cannot be applied, or "" when they are valid.
+
+        Numeric values are clamped and typed values fall back to their default on load, but a
+        hotkey that cannot be parsed would silently never work, so the form refuses it instead.
+        """
+        try:
+            parse_hotkey(self.pause_hotkey)
+        except HotkeyError as exc:
+            return str(exc)
+        return ""
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> Settings:

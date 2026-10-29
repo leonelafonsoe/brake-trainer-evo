@@ -10,7 +10,7 @@ from ... import __version__
 from .. import theme
 
 _ABOUT_HTML = (
-    "<style>a {{ color: #4da3ff; }}</style>"
+    "<style>a {{ color: {accent}; }}</style>"
     "<h3>Brake Trainer EVO {version}</h3>"
     "<p>Learns where you brake on each track and car, and beeps as you approach those points.</p>"
     "<p><b>Credits</b><br>"
@@ -30,7 +30,7 @@ class AboutPageMixin:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(16, 16, 16, 16)
-        label = QLabel(_ABOUT_HTML.format(version=__version__))
+        label = QLabel(_ABOUT_HTML.format(version=__version__, accent=theme.ACCENT))
         label.setTextFormat(Qt.TextFormat.RichText)
         label.setWordWrap(True)
         label.setOpenExternalLinks(True)

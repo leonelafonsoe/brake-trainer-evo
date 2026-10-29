@@ -21,7 +21,9 @@ FIXTURES = Path(__file__).with_name("fixtures") / "settings"
 
 def test_settings_roundtrip(tmp_path):
     path = tmp_path / "s.json"
-    original = Settings(volume=0.3, overlay_x=120, warmup_laps=2, reference_car="296")
+    original = Settings(
+        volume=0.3, overlay_x=120, warmup_laps=2, reference_car="296", pause_hotkey="Shift+F9"
+    )
     save_settings(original, path)
     assert load_settings(path) == original
 
@@ -50,6 +52,21 @@ def test_settings_missing_or_corrupt_file(tmp_path):
     bad = tmp_path / "bad.json"
     bad.write_text("{not json")
     assert load_settings(bad) == Settings()
+
+
+def test_a_file_from_before_the_hotkey_keeps_its_values_and_gets_the_default(tmp_path):
+    # Adding a key does not change the stored layout: a v4 file simply has no `pause_hotkey`, so it
+    # loads with the default and is not archived.
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({"settings_version": SETTINGS_VERSION, "volume": 0.4}), encoding="utf-8"
+    )
+
+    loaded = load_settings(path)
+
+    assert loaded.volume == 0.4
+    assert loaded.pause_hotkey == Settings().pause_hotkey
+    assert path.exists()
 
 
 def test_a_corrupt_settings_file_is_moved_aside_not_overwritten(tmp_path):

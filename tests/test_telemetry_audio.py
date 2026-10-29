@@ -4,7 +4,9 @@ import asyncio
 import io
 import logging
 import math
+import os
 import struct
+import sys
 import threading
 import time
 import wave
@@ -13,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from brake_trainer import audio as audio_module
-from brake_trainer.audio import AudioPlayer, make_tone
+from brake_trainer.audio import AudioPlayer, _winsound_backend, make_tone
 from brake_trainer.config import Settings
 from brake_trainer.models import CueKind
 from brake_trainer.telemetry import (
@@ -371,13 +373,36 @@ def test_an_empty_process_name_never_matches_the_task_list():
 
 
 def test_open_process_watcher_is_a_noop_off_windows():
-    import sys
-
     from brake_trainer.telemetry import open_process_watcher
 
     if sys.platform != "win32":
         assert open_process_watcher(1234) is None
     assert open_process_watcher(0) is None
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="opens a real Windows process handle")
+def test_open_process_watcher_tracks_a_running_process_on_windows():
+    from brake_trainer.telemetry import open_process_watcher
+
+    watcher = open_process_watcher(os.getpid())
+    assert watcher is not None
+    try:
+        assert watcher.exited() is False  # this test process is still running
+    finally:
+        watcher.close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="plays through the real winsound module")
+def test_the_winsound_backend_plays_the_generated_wav_from_memory(monkeypatch):
+    import winsound
+
+    played: list[tuple[bytes, int]] = []
+    monkeypatch.setattr(winsound, "PlaySound", lambda wav, flags: played.append((wav, flags)))
+
+    wav = make_tone(880, 90, 0.4)
+    _winsound_backend(wav)
+
+    assert played == [(wav, winsound.SND_MEMORY)]
 
 
 def test_make_tone_is_valid_wav_and_volume_scales():
