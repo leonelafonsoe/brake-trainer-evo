@@ -18,7 +18,7 @@ from ..models import (
 from .constants import _CUT_WARNING, _HISTORY_S
 
 if TYPE_CHECKING:
-    from .engine import BrakeEngine
+    from .state import EngineState
 
 log = logging.getLogger("brake_trainer.engine")
 
@@ -75,13 +75,9 @@ def race_cut_active(gained_ms: int, deadline_m: int) -> bool:
 
 
 class LimitsMixin:
-    # BrakeEngine inherits this mixin, so mypy's rule that an explicit self type must be a
-    # supertype of its class does not hold: the annotations are right and only the check needs
-    # the per-method ignore. The state below is owned by BrakeEngine; it is declared here with
-    # the full type it can hold between samples.
     _last_closed: tuple[int, SectorRun] | None
 
-    def _using_ref(self: BrakeEngine, i: int) -> bool:  # type: ignore[misc]
+    def _using_ref(self: EngineState, i: int) -> bool:
         """Is sector ``i`` still using borrowed braking points?
 
         Borrowed points are matched by track position, so the other car's sector lines do not
@@ -93,7 +89,7 @@ class LimitsMixin:
         borrowed = any(lo <= z < hi for z in self._ref_zones)
         return borrowed and len(self._data.sectors[i]) < _OWN_RUNS_TO_REPLACE_REF
 
-    def _early_runs(self: BrakeEngine) -> list[list[SectorRun]]:  # type: ignore[misc]
+    def _early_runs(self: EngineState) -> list[list[SectorRun]]:
         """The kept onsets as stand-in runs, one per pass, filed under the sector they fall in.
 
         The passes were not timed, so they have no time of their own: only their onsets are carried,
@@ -112,7 +108,7 @@ class LimitsMixin:
                 runs[sector].append(SectorRun(0.0, onsets))
         return runs
 
-    def _rebuild_zones(self: BrakeEngine) -> None:  # type: ignore[misc]
+    def _rebuild_zones(self: EngineState) -> None:
         if self._data is None:
             self._zones = []
             return
@@ -129,8 +125,8 @@ class LimitsMixin:
         zones += [z for z in self._ref_zones if self._using_ref(self._sector_of(z))]
         self._zones = merge_zones(zones, cluster, length)
 
-    def _check_track_limits(  # type: ignore[misc]
-        self: BrakeEngine, s: Sample, pos: float, prev: tuple[float, int] | None = None
+    def _check_track_limits(
+        self: EngineState, s: Sample, pos: float, prev: tuple[float, int] | None = None
     ) -> None:
         """Track limits and other infractions, from the game's telemetry.
 
@@ -162,7 +158,7 @@ class LimitsMixin:
         self._check_race_cut(s, pos)
         self._check_lap_flag(s, pos, prev)
 
-    def _check_race_cut(self: BrakeEngine, s: Sample, pos: float) -> None:  # type: ignore[misc]
+    def _check_race_cut(self: EngineState, s: Sample, pos: float) -> None:
         """The game's per-excursion track-limits signal: the race-cut pair.
 
         A cut is up while either field is set. A *new* cut is the pair coming up, the gained time
@@ -197,8 +193,8 @@ class LimitsMixin:
             return
         self._on_message(f"Off the track at {pos:.0%}: S{idx + 1} won't count")
 
-    def _check_lap_flag(  # type: ignore[misc]
-        self: BrakeEngine, s: Sample, pos: float, prev: tuple[float, int] | None = None
+    def _check_lap_flag(
+        self: EngineState, s: Sample, pos: float, prev: tuple[float, int] | None = None
     ) -> None:
         """The one-shot lap flag: drop the sector the infraction happened in.
 
@@ -252,8 +248,8 @@ class LimitsMixin:
         else:
             self._on_warning(_CUT_WARNING)
 
-    def _flag_attribution(  # type: ignore[misc]
-        self: BrakeEngine, pos: float, prev: tuple[float, int] | None
+    def _flag_attribution(
+        self: EngineState, pos: float, prev: tuple[float, int] | None
     ) -> tuple[float, int] | None:
         """Where and on which lap a fresh one-shot flag belongs, or None to leave it to the log.
 
@@ -280,7 +276,7 @@ class LimitsMixin:
             return None
         return prev_pos, prev_lap
 
-    def report_infraction(self: BrakeEngine, reason: str, at: float) -> None:  # type: ignore[misc]
+    def report_infraction(self: EngineState, reason: str, at: float) -> None:
         """The game's log reported a cut; drop the sector it happened in.
 
         Called from the log tail (same thread as :meth:`update`). ``at`` is when the game wrote the
@@ -347,8 +343,8 @@ class LimitsMixin:
         )
         self._on_message(self._report_text(reason, where, lap, took_back))
 
-    def _report_text(  # type: ignore[misc]
-        self: BrakeEngine, reason: str, where: float, lap: int, took_back: bool
+    def _report_text(
+        self: EngineState, reason: str, where: float, lap: int, took_back: bool
     ) -> str:
         """What to tell the driver about a reported cut, always naming the sector it dropped.
 
@@ -362,26 +358,26 @@ class LimitsMixin:
             f"{reason}{self._lap_phrase(lap)} at {where:.0%}: {self._drop_text(where, took_back)}"
         )
 
-    def _laps_back(self: BrakeEngine, lap: int) -> str:  # type: ignore[misc]
+    def _laps_back(self: EngineState, lap: int) -> str:
         """``this lap`` when a report is about the lap being driven, else how far back it is."""
         back = self._lap_no - lap
         if back <= 0:
             return "this lap"
         return "1 lap back" if back == 1 else f"{back} laps back"
 
-    def _lap_phrase(self: BrakeEngine, lap: int) -> str:  # type: ignore[misc]
+    def _lap_phrase(self: EngineState, lap: int) -> str:
         """The lap a report belongs to, for the message, when it is not the one being driven."""
         back = self._lap_no - lap
         if back <= 0:
             return ""
         return " in the previous lap" if back == 1 else " in an earlier lap"
 
-    def _drop_text(self: BrakeEngine, where: float, took_back: bool) -> str:  # type: ignore[misc]
+    def _drop_text(self: EngineState, where: float, took_back: bool) -> str:
         """The sector a dropped spot fell in, and what happened to its run: "S2 won't count"."""
         outcome = "had its stored run taken back" if took_back else "won't count"
         return f"S{self._sector_of(where) + 1} {outcome}"
 
-    def _attribute(self: BrakeEngine, reason: DropReason, where: float, lap: int) -> bool | None:  # type: ignore[misc]
+    def _attribute(self: EngineState, reason: DropReason, where: float, lap: int) -> bool | None:
         """Make the sector of ``lap`` at ``where`` not count.
 
         Returns True when a stored run was taken back, False when the sector had none, and None
@@ -407,7 +403,7 @@ class LimitsMixin:
             self._status[idx] = SectorStatus.PENDING
         return self._drop_run(lap, idx)
 
-    def _drop_run(self: BrakeEngine, lap: int, idx: int) -> bool:  # type: ignore[misc]
+    def _drop_run(self: EngineState, lap: int, idx: int) -> bool:
         """Take back the run ``lap`` stored for sector ``idx``; True if there was one to take.
 
         Both the stored run and the run it displaced when it was kept are undone, as the top-runs
@@ -439,7 +435,7 @@ class LimitsMixin:
         self._save(self._data)
         return True
 
-    def _trace_track_limits(self: BrakeEngine, s: Sample, pos: float) -> None:  # type: ignore[misc]
+    def _trace_track_limits(self: EngineState, s: Sample, pos: float) -> None:
         """Verbose log of the game's track-limit signals, only when one of them changes.
 
         This is the detail a report about a missed sector needs: what the game actually reported

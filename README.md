@@ -51,9 +51,10 @@ Get a build from the [Releases page](https://github.com/leonelafonsoe/brake-trai
 - **Nightly**: a pre-release rebuilt after every change to `main`, for trying the newest code.
 
 The programs are not code-signed, so Windows SmartScreen may warn the first time (see
-[Troubleshooting](docs/GUIDE.md#installing-and-running)). Each versioned release lists its
-changes and has `SHA256SUMS.txt` to verify the installer and zip. The rolling Nightly pre-release
-has only the portable zip.
+[Troubleshooting](docs/GUIDE.md#installing-and-running)). Code signing is a planned improvement once
+a certificate or a suitable open-source signing service is available; there is no signing step yet.
+Each versioned release lists its changes and has `SHA256SUMS.txt` to verify the installer and zip.
+The rolling Nightly pre-release has only the portable zip.
 
 ## Quick start (from source)
 

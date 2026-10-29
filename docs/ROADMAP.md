@@ -26,11 +26,12 @@ make a branch and PR, and keep the gates green.
 | Windows adapter tests | Done: real paths run on the Windows CI leg | — | — |
 | Settings key renames | Done: SETTINGS_VERSION 5, one-time settings reset | — | — |
 | `mypy` for tests and scripts | Done: src, scripts and the test tree | — | — |
-| `EngineState` protocol | Type debt | Low runtime, high churn | M-L |
+| `EngineState` protocol | Done: mixins checked against one protocol | — | — |
 | Merge `PositionTimeline.at` with the crossing core | Code size | High | M |
 | Centralise overlay colours | Done: one palette for the HUD | — | — |
 | `acevo-sdk` 0.2 upgrade | Future game support | High (field) | M-L |
 | Code signing | Trust / SmartScreen | External | — |
+| Branch/archive cleanup | Done: `update-0.3.11` removed (content already on main) | — | — |
 
 ---
 
@@ -88,19 +89,13 @@ tree exposed 128 errors, all type-only: missing annotations, narrowing `Optional
 module-attribute lookups used to monkeypatch internals. They are fixed without changing what any
 test asserts. The config guard test keeps the test tree and the override in place.
 
-## 6. `EngineState` protocol (deferred)
+## 6. `EngineState` protocol (done)
 
-**Current state:** the engine is split across four mixins. Their methods annotate
-`self: BrakeEngine`, and mypy's explicit-self rule forces **48** `# type: ignore[misc]` (11 in
-`passes.py`, 18 in `lines.py`, 15 in `limits.py`, 4 in `cues.py`).
-
-**Why it was deferred:** a checked protocol would declare the shared state and every cross-mixin
-method — roughly 100 lines duplicating signatures — for no runtime behaviour. The ignores are
-localized and the engine has strong behaviour tests.
-
-**If attempted:** add `engine/state.py` with an `EngineState` `Protocol` (attributes and methods),
-annotate each mixin's `self` with it, and let mypy prove the contract. Do it in one mechanical PR
-with no behaviour change. **Branch:** `refactor/engine-state-protocol`.
+The four mixins now annotate `self: EngineState`, a protocol in `engine/state.py` that declares the
+shared attributes and cross-mixin operations. The 48 `# type: ignore[misc]` comments are gone, and
+mypy checks every mixin access against the contract. `BrakeEngine` remains the implementation; the
+mixins keep only the few attribute declarations whose assignments would otherwise infer a narrower
+type. No runtime change.
 
 ## 7. Merge `PositionTimeline.at` with the crossing core (deferred)
 
@@ -141,11 +136,11 @@ service such as SignPath (check eligibility against the non-commercial licence).
 signing step to `release.yml`, sign both the exe and the installer before checksums, and document
 the certificate/secret rotation. No code change until the account and certificate exist.
 
-## 11. Branch/archive cleanup
+## 11. Branch/archive cleanup (done)
 
-`update-0.3.11` is the only local branch not merged into `main`; its change was cherry-picked into
-the 0.3.11 history. Inspect `b265935`, tag it under `archive/` if it matters, then delete it. All
-other merged branches and stale `/tmp` worktrees were cleaned up after 0.6.0.
+`update-0.3.11` was the only local branch not merged into `main`. Its change is already on `main`
+as `c27d847` (the same patch, cherry-picked); there was no remote branch and no need for an archive
+tag, so the stale local branch was deleted. Nothing was lost.
 
 ---
 
