@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from brake_trainer.timeline import HistoryPoint, PositionTimeline
+from brake_trainer.timeline import CarAt, HistoryPoint, PositionTimeline
 
 
 def _timeline(*points: tuple[float, float, int]) -> PositionTimeline:
@@ -87,3 +87,33 @@ def test_crossing_keeps_a_normal_fast_crossing_below_the_jump_limit():
     # The guard is for teleports, not for a fast car: a move this side of JUMP_LAP still crosses.
     timeline = _timeline((1.0, 0.20, 4), (2.0, 0.24, 4))
     assert timeline.crossing(4, 0.22) == pytest.approx(1.5)
+
+
+def test_at_does_not_interpolate_across_a_reset_to_an_earlier_lap():
+    # Position and lap both go backwards: a reset, not a start/finish crossing.
+    timeline = _timeline((1.0, 0.40, 7), (2.0, 0.10, 3))
+    found = timeline.at(1.5)
+    assert found is not None
+    assert (found.pos, found.lap) == (0.40, 7)
+
+
+def test_at_uses_the_current_car_for_a_future_timestamp():
+    timeline = _timeline((1.0, 0.20, 4), (2.0, 0.30, 4))
+    latest = CarAt(2.5, 0.55, 250.0, False, 5)
+
+    assert timeline.at(2.5, latest) is latest
+
+    # Without a current car, a future time falls back to the newest sample, not an extrapolation.
+    found = timeline.at(3.0)
+    assert found is not None
+    assert (found.pos, found.lap) == (0.30, 4)
+
+
+def test_at_returns_none_before_the_kept_history():
+    timeline = _timeline((10.0, 0.20, 4), (11.0, 0.30, 4))
+    assert timeline.at(9.0) is None
+
+
+def test_crossing_on_the_start_finish_line_uses_the_wrap():
+    timeline = _timeline((1.0, 0.98, 4), (2.0, 0.02, 4), (3.0, 0.04, 5))
+    assert timeline.crossing(5, 0.0) == pytest.approx(timeline.lap_start(5))
