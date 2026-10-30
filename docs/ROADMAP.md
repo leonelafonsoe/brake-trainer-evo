@@ -25,24 +25,10 @@ repository.
 
 | Item | Value | Risk | Effort |
 |---|---|---|---|
-| Merge `PositionTimeline.at` with the crossing core | Timing-code clarity | High | M |
 | `acevo-sdk` 0.2 upgrade | Future game support | High (field) | M-L |
 | Code signing | Trust / SmartScreen | External | — |
 
-## 1. Merge `PositionTimeline.at` with the crossing core (deferred)
-
-**Current state:** `crossing` and `lap_start` share `crossing_between`. `at` still has its own
-interpolation because it carries different lap-number, jump/teleport and start/finish wrap rules.
-
-**Why deferred:** it is the most delicate part of the timing code, and the current tests are the
-only oracle for reset/teleport/wrap edge cases. The duplication is real but the risk/reward is poor
-unless a concrete bug forces the change.
-
-**If attempted:** extract a small segment helper that returns before/after, lap and share, keep the
-rules explicit, and add cases for a reset inside a frame, a start/finish wrap, a future timestamp
-and a missing earlier sample. **Branch:** `refactor/timeline-interpolation-core`.
-
-## 2. `acevo-sdk` 0.2 upgrade (field-tested)
+## 1. `acevo-sdk` 0.2 upgrade (field-tested)
 
 **Current state:** pinned to `acevo-sdk>=0.1.1,<0.2.0`. The 0.2.0 release changes log parsing,
 lap-authority and validity handling; the app's pin comment says 0.2.0 withholds frames until a clean
@@ -53,7 +39,7 @@ verify live frames, sector lines, cuts and game-exit detection on track, then up
 docs and ignore. This is a field-validation task, not a blind dependency bump.
 **Branch:** `deps/acevo-sdk-0.2`.
 
-## 3. Code signing (external)
+## 2. Code signing (external)
 
 The installer and exe are unsigned, so SmartScreen warns. Code signing needs a certificate or a
 service such as SignPath (check eligibility against the non-commercial licence). If adopted, add the
