@@ -143,7 +143,7 @@ Link instead of duplicating a long explanation, and keep each page owning one jo
 ## Release and versioning
 
 - The version lives in `pyproject.toml` and `src/brake_trainer/__init__.py`; they must match.
-- This branch targets **0.6.0**. Bump only as part of a release.
+- This branch targets **0.7.0**. Bump only as part of a release.
 - A version tag must match the project version and have a non-empty changelog section; `## Unreleased`
   must be empty when tagging.
 - Pre-release tags use the hyphen form (`v0.4.0-rc1`); the Release workflow treats only those as

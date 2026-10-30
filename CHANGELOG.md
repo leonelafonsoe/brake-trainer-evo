@@ -4,16 +4,15 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.7.0 - 2026-10-29
+
 ### Added
 
-- A [roadmap](docs/ROADMAP.md) of the remaining product and engineering ideas, with the current
-  state, risks, acceptance criteria and suggested branches for each.
 - A global pause hotkey for learning, `Ctrl+Alt+P` by default (Settings → App; empty = off). It is
   registered with Windows directly (no new dependency), applies live and is unregistered on exit.
   Click the field and press the combination to change it. A letter or digit needs a modifier so the
   app does not take that key from other windows; F1-F12 may be used alone. A conflict is shown in
-  the tray and the log, the settings window refuses a hotkey it cannot parse, and existing settings
-  files load with the new default.
+  the tray and the log, and the settings window refuses a hotkey it cannot parse.
 
 ### Fixed
 

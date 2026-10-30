@@ -120,6 +120,9 @@ quit (✕) buttons. Right-click for the same actions plus *Always on top* and *R
 tray icon has the same toggles, including *Overlay click-through*. By default the overlay opens at
 the top centre of the main screen.
 
+**Pause hotkey.** `Ctrl+Alt+P` pauses or resumes learning globally, so it works with the game
+focused. Change it in Settings -> App (empty = off).
+
 ## Documentation
 
 | Document | What is in it |
@@ -143,7 +146,7 @@ src/brake_trainer/
   config.py        settings (frozen dataclass, validated, JSON)
   settings_spec.py settings metadata: labels, ranges, tabs and defaults
   engine/          braking-point learning and cues (pure logic: engine, passes, lines,
-                   limits, cues, constants)
+                   limits, cues, state, constants)
   timeline.py      position history and interpolated line crossings
   fileio.py        atomic JSON writes shared by settings and learned data
   storage.py       per track + car persistence
