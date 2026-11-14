@@ -6,14 +6,13 @@ is noted with the date it was checked and is removed when handled.
 
 ## State (14 November 2026)
 
-- **0.7.0** is the last published release (29 October 2026). It shipped the race-cut guard, the
-  global pause hotkey, the Windows adapter tests, the settings key rename (`SETTINGS_VERSION` 5),
-  the HUD colour constants and the typing/engine-protocol cleanup. See the
-  [changelog](../CHANGELOG.md).
-- **0.7.1** is prepared on `release/0.7.1` (14 November 2026): the **timeline interpolation
+- **0.7.0** shipped the race-cut guard, the global pause hotkey, the Windows adapter tests, the
+  settings key rename (`SETTINGS_VERSION` 5), the HUD colour constants and the
+  typing/engine-protocol cleanup (29 October 2026).
+- **0.7.1** is the current versioned release (14 November 2026): the **timeline interpolation
   refactor** (PR #60) plus the tooling alignment (`ruff` pre-commit pin, pytest-asyncio loop scope).
-  It stays on `acevo-sdk` 0.1.1, so the SDK move has a known-good build to fall back to. It waits on
-  its pull request, the full gate run and the in-game candidate check; no tag yet.
+  It stays on `acevo-sdk` 0.1.1, so the SDK move has a known-good build to fall back to. The
+  [changelog](../CHANGELOG.md) has both entries.
 - No open code PRs. The only open pull request is Dependabot **#65** (`acevo-sdk` 0.2.1), which is
   now the head of the queue and still waits on the field validation in item 1.
 - Settings schema is **5** (old v4 files were archived on upgrade); learned data is **1**. No
