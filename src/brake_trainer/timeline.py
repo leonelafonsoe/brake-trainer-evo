@@ -53,6 +53,23 @@ class CarAt:
     lap: int
 
 
+@dataclass(frozen=True, slots=True)
+class _Segment:
+    """The samples either side of a time, and whether the gap can be interpolated honestly.
+
+    ``lap`` is the lap label for a time in the gap: the later sample's on the start/finish seam,
+    the earlier one everywhere else. ``share`` is how far through the gap the requested time is.
+    ``interpolate`` is false when the gap is empty, spans a reset or teleport, changes lap in a way
+    that is not a start/finish crossing, or wraps the line; the earlier sample is the answer then.
+    """
+
+    before: HistoryPoint
+    after: HistoryPoint | None
+    lap: int
+    share: float
+    interpolate: bool
+
+
 class PositionTimeline:
     """A bounded sample history and the position/time lookups built on it."""
 
@@ -78,29 +95,46 @@ class PositionTimeline:
             self._points.popleft()
 
     def at(self, at: float, latest: CarAt | None = None) -> CarAt | None:
-        """The car at ``at``, interpolated between the samples around it.
+        """The car at ``at``; None when it is older than the kept history.
 
         ``latest`` is the car as the engine knows it now. It is used when ``at`` is at or after the
         newest sample: the current state is more accurate than the history, and the newest sample
-        may carry the lap number from before the line it just crossed.
-
-        A pair whose samples both carry the old lap number but whose positions wrap the line is not
-        interpolated across: the position would be in the new lap while the label stayed on the old
-        one. The earlier sample is the safe choice there too, as it is for a pair spanning a reset
-        or teleport: interpolating across one would invent a position the car never had. A pair one
-        lap number apart is the frame just after the line instead: the first sample after the
-        crossing still carries the old number, so the line was crossed on it and every time between
-        the two belongs to the new lap. Those are interpolated as usual and labelled with the later
-        sample's lap.
-
-        ``in_pit`` is a discrete state, not a quantity: it is taken from the earlier sample and
-        deliberately not interpolated, since the car is either in the pit lane or it is not.
-
-        ``None`` when ``at`` is older than the kept history: guessing from the current position
-        would drop the wrong sector, which is worse than saying nothing.
+        may carry the lap number from before the line it just crossed. Otherwise the gap around
+        ``at`` comes from :meth:`_segment_at`, which owns the lap, reset and wrap rules.
         """
         if latest is not None and at >= latest.t:
             return latest
+        segment = self._segment_at(at)
+        if segment is None:
+            return None
+        if not segment.interpolate or segment.after is None:
+            return _car_at(segment.before, segment.lap)
+        after = segment.after
+        delta = wrap_delta(after.pos - segment.before.pos)
+        moved = _between(segment.before.pos, segment.before.pos + delta, segment.share)
+        speed = _between(segment.before.speed_kmh, after.speed_kmh, segment.share)
+        return CarAt(at, clamp_pos(moved % 1.0), speed, segment.before.in_pit, segment.lap)
+
+    def _segment_at(self, at: float) -> _Segment | None:
+        """Bracket ``at`` and decide whether interpolating across the gap is honest.
+
+        The gap is bracketed by the last sample at or before ``at`` and the first after it:
+
+        * no earlier sample: the time is older than the kept history, so the answer is None rather
+          than a guess from the current position;
+        * no later sample: the newest sample is the answer; extrapolating would invent a position;
+        * a lap number one greater is the start/finish seam: the sample that crossed the line still
+          carries the old number, so every time between the two belongs to the new lap and the gap
+          is interpolated with that label;
+        * any other lap change is a reset or teleport, and a position change larger than
+          :data:`JUMP_LAP` is too: interpolating would invent a position the car never had, so the
+          earlier sample is where the event happened;
+        * a gap whose interpolation would cross 1.0 or 0.0 within one lap number is the line the
+          wrong way round (or a backward reset): the earlier sample is the safe answer.
+
+        ``in_pit`` is a discrete state, not a quantity: it comes from the earlier sample and is
+        deliberately not interpolated.
+        """
         before: HistoryPoint | None = None
         after: HistoryPoint | None = None
         for point in reversed(self._points):
@@ -111,31 +145,22 @@ class PositionTimeline:
         if before is None:
             return None
         if after is None:
-            return _car_at(before, before.lap)
+            return _Segment(before, None, before.lap, 0.0, False)
         new_lap = after.lap == before.lap + 1
         if after.lap != before.lap and not new_lap:
-            # No pair on one lap to interpolate across: the earlier sample is the safe choice.
-            return _car_at(before, before.lap)
-        # One lap apart means the line was crossed on the earlier sample: everything between them
-        # belongs to the new lap, so that is the label even when falling back to the earlier sample.
+            return _Segment(before, None, before.lap, 0.0, False)
         lap = after.lap if new_lap else before.lap
         span = after.t - before.t
         if span <= 0.0:
-            return _car_at(before, lap)
-        share = (at - before.t) / span
+            return _Segment(before, after, lap, 0.0, False)
+        share = _share(before.t, after.t, at)
         delta = wrap_delta(after.pos - before.pos)
         if abs(delta) > JUMP_LAP or (new_lap and delta < 0.0):
-            # A reset or teleport between the samples - or, on a new lap, positions that do not run
-            # forwards - means interpolating would invent a position the car never had, so the
-            # earlier sample is where the event happened.
-            return _car_at(before, lap)
-        moved = before.pos + delta * share
+            return _Segment(before, after, lap, share, False)
+        moved = _between(before.pos, before.pos + delta, share)
         if moved >= 1.0 or moved <= 0.0:
-            # The pair wraps the start/finish line inside one lap number, forwards or backwards:
-            # interpolating would put the position in the next lap under this lap's label.
-            return _car_at(before, lap)
-        speed = before.speed_kmh + (after.speed_kmh - before.speed_kmh) * share
-        return CarAt(at, clamp_pos(moved % 1.0), speed, before.in_pit, lap)
+            return _Segment(before, after, lap, share, False)
+        return _Segment(before, after, lap, share, True)
 
     def crossing(self, lap: int, line: float) -> float | None:
         """When the car crossed ``line`` during ``lap``, interpolated between two samples.
@@ -191,6 +216,22 @@ class PositionTimeline:
         return None
 
 
+def _share(start: float, end: float, value: float) -> float:
+    """Where ``value`` lies between ``start`` and ``end`` (1.0 when the span is empty)."""
+    span = end - start
+    return (value - start) / span if span > 0.0 else 1.0
+
+
+def _between(start: float, end: float, share: float) -> float:
+    """The value ``share`` of the way from ``start`` to ``end``, clamped to the segment.
+
+    This is the one linear model the live position (:meth:`PositionTimeline.at`) and a buffered
+    log event (:func:`crossing_between`) both use, so the two cannot drift apart in their
+    arithmetic.
+    """
+    return start + (end - start) * min(max(share, 0.0), 1.0)
+
+
 def _car_at(point: HistoryPoint, lap: int) -> CarAt:
     return CarAt(point.t, point.pos, point.speed_kmh, point.in_pit, lap)
 
@@ -210,6 +251,9 @@ def crossing_between(
     show no crossing at all - there is no time to interpolate, and returning the current sample
     is the honest no-crossing fallback; clamping a share into ``[0, 1]`` would instead invent a
     crossing at a sample where the car was on the other side of the line.
+
+    The share and the linear step are the same ones :meth:`PositionTimeline.at` uses, so a buffered
+    line and a live position cannot drift apart in their arithmetic.
     """
     if t0 is None or p0 is None or t1 <= t0:
         return t1
@@ -221,6 +265,5 @@ def crossing_between(
     else:
         if not (p0 < line <= p1):  # the line is not between the samples
             return t1
-        span = p1 - p0
-        share = (line - p0) / span if span > 0.0 else 1.0
-    return t0 + (t1 - t0) * min(max(share, 0.0), 1.0)
+        share = _share(p0, p1, line)
+    return _between(t0, t1, share)

@@ -4,6 +4,13 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+### Changed
+
+- `PositionTimeline.at` and `crossing_between` now share one segment/interpolation core; the
+  reset, teleport and start/finish-wrap rules live in one place. Added edge-case tests for a reset
+  inside a frame, a future timestamp, a missing earlier sample and a start/finish crossing. No
+  behaviour change.
+
 ## 0.7.0 - 2026-10-29
 
 ### Added
