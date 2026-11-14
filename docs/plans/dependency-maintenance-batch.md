@@ -3,7 +3,7 @@
 **Spec branch:** `deps/maintenance-batch`
 **Base commit:** `dbb6da9` (`main`, "docs: record the post-0.7.0 state and next queue")
 **Repositories:** `brake-trainer-evo` only
-**Status:** awaiting sign-off
+**Status:** approved; T1 and T2 delivered on this branch.
 
 ## 1. Objective
 
