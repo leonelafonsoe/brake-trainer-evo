@@ -34,10 +34,11 @@ _ERROR_FRAMES = "telemetry frames could not be read"
 
 # The graphics block carries the game's "race cut" fields, its own record of the last off-track:
 # the time it judged the driver gained, and how far they still have to drive to give it back. The
-# SDK decodes the graphics region but does not surface these three, so they are read from the raw
-# bytes (``FrameData.graphics_raw``) at the offsets its offset table already defines. Those offsets
-# are an assumption the SDK does not publish, so every read is checked against the plausibility
-# bounds in ``models`` before it reaches the engine.
+# SDK decodes the graphics region but does not surface these three, and acevo-sdk 0.2 drops the raw
+# region bytes from a normal capture, so the adapter reads the graphics mapping itself through the
+# SDK's ``RegionReader``. The offsets are the ones its offset table already defines; they are an
+# assumption the SDK does not publish, so every read is checked against the plausibility bounds in
+# ``models`` before it reaches the engine.
 _GFX_RACE_CUT_OFFSET = 2464  # race_cut_gained_time_ms (int32), then distance_to_deadline (int32)
 _GFX_RACE_CUT_BYTES = 12  # ...then race_cut_current_delta (float32)
 
@@ -142,7 +143,7 @@ def _frame_time(frame: Any) -> float:
     return time.time()
 
 
-def _race_cut(frame: Any) -> tuple[int, int, float]:
+def _race_cut(raw: bytes | None) -> tuple[int, int, float]:
     """The game's race-cut fields from the raw graphics bytes: (gained_ms, deadline_m, delta_s).
 
     All zero when the game has not flagged an off-track, when the region is not there yet, or when
@@ -150,22 +151,12 @@ def _race_cut(frame: Any) -> tuple[int, int, float]:
     block could otherwise look like a cut and drop sectors continuously; a plausible gain, a
     sane give-back distance and a finite delta are what the game's own record looks like.
     """
-    raw = getattr(frame, "graphics_raw", None)
     if not raw:
         return 0, 0, 0.0
-    start = _GFX_RACE_CUT_OFFSET * 2  # hex: two characters per byte
-    try:
-        chunk = raw[start : start + _GFX_RACE_CUT_BYTES * 2]
-        if len(chunk) < _GFX_RACE_CUT_BYTES * 2:
-            return 0, 0, 0.0
-        data = bytes.fromhex(chunk)
-    except (TypeError, ValueError):
-        # Not hex text: the SDK may hand over the raw block itself, and a corrupt read must not
-        # end the session.
+    chunk = raw[_GFX_RACE_CUT_OFFSET : _GFX_RACE_CUT_OFFSET + _GFX_RACE_CUT_BYTES]
+    if len(chunk) < _GFX_RACE_CUT_BYTES:
         return 0, 0, 0.0
-    gained = int.from_bytes(data[0:4], "little", signed=True)
-    deadline = int.from_bytes(data[4:8], "little", signed=True)
-    delta = struct.unpack_from("<f", data, 8)[0]
+    gained, deadline, delta = struct.unpack("<iif", chunk)
     if not (
         1 <= gained <= RACE_CUT_MAX_GAINED_MS
         and 0 <= deadline <= RACE_CUT_MAX_DEADLINE_M
@@ -175,7 +166,7 @@ def _race_cut(frame: Any) -> tuple[int, int, float]:
     return gained, deadline, delta
 
 
-def sample_from_frame(frame: Any) -> Sample | None:
+def sample_from_frame(frame: Any, raw_graphics: bytes | None = None) -> Sample | None:
     """Reduce an SDK frame to a :class:`Sample`; None if the game isn't in a session."""
     gfx = getattr(frame, "graphics", None) or {}
     phys = getattr(frame, "physics", None) or {}
@@ -189,7 +180,7 @@ def sample_from_frame(frame: Any) -> Sample | None:
     if not track or not car:  # menus, loading screens
         return None
     length = stat.get("track_length_m") or (gfx.get("lap_length_km") or 0) * 1000 or None
-    gained, deadline, delta = _race_cut(frame)
+    gained, deadline, delta = _race_cut(raw_graphics)
     return Sample(
         track=str(track),
         car=str(car),
@@ -207,15 +198,114 @@ def sample_from_frame(frame: Any) -> Sample | None:
     )
 
 
+class _GraphicsSource(Protocol):
+    """The slice of the SDK's region reader the telemetry loop needs."""
+
+    def read(self) -> bytes | None: ...
+
+    def close(self) -> None: ...
+
+
+_GRAPHICS_RETRY_S = 1.0  # a failed graphics-region open is retried no faster than this
+
+
+def _open_graphics_region() -> Any | None:
+    """Open the game's graphics shared-memory region, or None when it is not published yet."""
+    try:
+        from acevo import RegionReader
+        from acevo.capture import REGIONS
+
+        reader = RegionReader(*REGIONS["graphics"])
+        return reader if reader.open() else None
+    except Exception:
+        # Includes a missing symbol in a future SDK: the reader degrades to "no cut data".
+        log.debug("Could not open the graphics region", exc_info=True)
+        return None
+
+
+class _GraphicsReader(_GraphicsSource):
+    """Lazily reads the graphics region, reopening it when the game republishes it.
+
+    acevo-sdk 0.2 drops ``graphics_raw`` from a normal capture, but the race-cut fields are not
+    decoded, so it reads the same mapping through the SDK's own ``RegionReader``. Opens are lazy
+    and rate-limited: the game creates the region some time after the capture starts.
+    """
+
+    def __init__(
+        self,
+        open_reader: Callable[[], Any] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._open_reader = open_reader or _open_graphics_region
+        self._clock = clock
+        self._reader: Any = None
+        self._last_attempt: float | None = None
+
+    def read(self) -> bytes | None:
+        if self._reader is None:
+            now = self._clock()
+            if self._last_attempt is not None and now - self._last_attempt < _GRAPHICS_RETRY_S:
+                return None
+            self._last_attempt = now
+            try:
+                self._reader = self._open_reader()
+            except Exception:
+                self._reader = None
+            if self._reader is None:
+                return None
+        try:
+            return bytes(self._reader.read_raw())
+        except Exception:
+            # The game may have recreated the mapping: close it and reopen on the next poll.
+            self.close()
+            return None
+
+    def close(self) -> None:
+        reader, self._reader = self._reader, None
+        self._last_attempt = None
+        if reader is not None:
+            with contextlib.suppress(Exception):
+                reader.close()
+
+
+class _LiveCapture:
+    """The default capture, released from the 0.2 lap-boundary frame gate."""
+
+    def __init__(self, capture: Any) -> None:
+        self._capture = capture
+
+    async def start_capture(self) -> bool:
+        started = await self._capture.start_capture()
+        # acevo-sdk 0.2.2 ``TelemetryCapture.start_capture`` (capture.py:948) arms
+        # ``_recording_awaiting_boundary``; the loop then appends no frame until the next clean lap
+        # boundary clears it. The live overlay and learning need the outlap, so release the gate.
+        self._capture._recording_awaiting_boundary = False
+        return bool(started)
+
+    def is_capturing(self) -> bool:
+        return bool(self._capture.is_capturing())
+
+    def get_stop_reason(self) -> str | None:
+        reason = self._capture.get_stop_reason()
+        return reason if isinstance(reason, str) else None
+
+    def get_frames(self) -> Any:
+        return self._capture.get_frames()
+
+    def clear(self) -> None:
+        self._capture.clear()
+
+    async def stop_capture(self) -> Any:
+        return await self._capture.stop_capture()
+
+    def get_metadata(self) -> Any:
+        return self._capture.get_metadata()
+
+
 def _default_capture_factory(hz: float) -> Any:
     from acevo import TelemetryCapture
 
-    # See the dependency pin in ``pyproject.toml``: acevo-sdk 0.2.0 starves the live overlay.
-    #
-    # The SDK stops capturing after 120 s standing still before the first lap (pits, online
-    # lobby). Switch that off; the reader restarts capture if anything else stops it.
-    TelemetryCapture.IDLE_TIMEOUT_SECONDS = float("inf")
-    return TelemetryCapture(hz=hz)
+    return _LiveCapture(TelemetryCapture(hz=hz))
 
 
 async def _wait_or_stop(stop: asyncio.Event, delay: float) -> bool:
@@ -294,6 +384,7 @@ class TelemetryReader:
         process_watcher: Callable[[int], ProcessWatcher | None] = open_process_watcher,
         on_restart: Callable[[], None] = lambda: None,
         poll_s: float = 0.1,
+        graphics_reader: Callable[[], _GraphicsSource] = _GraphicsReader,
     ) -> None:
         self._get_settings = get_settings
         self._on_sample = on_sample
@@ -305,6 +396,7 @@ class TelemetryReader:
         self._open_watcher = process_watcher
         self._on_restart = on_restart
         self._poll_s = poll_s
+        self._graphics_reader = graphics_reader
         self._bad_frames = 0
         self._frame_failed = False
 
@@ -319,13 +411,14 @@ class TelemetryReader:
         delay = _RESTART_DELAY_S
         watch = _GameWatch(self._probe, self._open_watcher)
         cap: Any = None
+        graphics: _GraphicsSource | None = None
         logged_regions = False
         try:
             while not stop.is_set():
                 if cap is None:
                     try:
                         cap = self._capture_factory(self._get_settings().telemetry_hz)
-                        await cap.start_capture()
+                        started = await cap.start_capture()
                     except Exception:
                         log.exception("Telemetry failed: %s", _ERROR_START)
                         self._on_error(_ERROR_START)
@@ -333,6 +426,8 @@ class TelemetryReader:
                             break
                         delay = min(delay * 2, _MAX_RESTART_DELAY_S)
                         continue
+                    if started:
+                        graphics = self._graphics_reader()
                     self._on_error("")  # a previous start or read failure is over
                     self._on_message("Waiting for the game...")
                     logged_regions = False
@@ -343,6 +438,8 @@ class TelemetryReader:
                     if not cap.is_capturing():
                         self._on_message(f"Telemetry stopped ({cap.get_stop_reason()}); restarting")
                         await self._stop_capture(cap)
+                        self._close_graphics(graphics)
+                        graphics = None
                         cap = None
                         self._on_restart()
                         if await _wait_or_stop(stop, _RESTART_DELAY_S):
@@ -351,10 +448,11 @@ class TelemetryReader:
 
                     frames = cap.get_frames()
                     cap.clear()  # keep memory flat
+                    raw_graphics = graphics.read() if frames and graphics is not None else None
                     if frames and not logged_regions:
                         logged_regions = True
                         self._log_regions(cap)
-                    self._deliver(frames)
+                    self._deliver(frames, raw_graphics)
 
                     # Game exit. With a process handle it is noticed on the next poll (~0.1 s);
                     # without one we fall back to listing processes once a second.
@@ -370,6 +468,8 @@ class TelemetryReader:
                     log.exception("Telemetry read failed")
                     self._on_error(_ERROR_READ)
                     await self._stop_capture(cap)
+                    self._close_graphics(graphics)
+                    graphics = None
                     cap = None
                     if await _wait_or_stop(stop, delay):
                         break
@@ -377,6 +477,7 @@ class TelemetryReader:
             return ExitReason.STOPPED
         finally:
             watch.close()
+            self._close_graphics(graphics)
             if cap is not None:
                 await self._stop_capture(cap)
 
@@ -385,11 +486,17 @@ class TelemetryReader:
         with contextlib.suppress(Exception):
             await cap.stop_capture()
 
-    def _deliver(self, frames: Any) -> None:
+    @staticmethod
+    def _close_graphics(graphics: _GraphicsSource | None) -> None:
+        if graphics is not None:
+            with contextlib.suppress(Exception):
+                graphics.close()
+
+    def _deliver(self, frames: Any, raw_graphics: bytes | None = None) -> None:
         """Turn frames into samples; one bad frame must not end the session."""
         for frame in frames:
             try:
-                sample = sample_from_frame(frame)
+                sample = sample_from_frame(frame, raw_graphics)
             except Exception:
                 self._bad_frames += 1
                 log.exception("Could not read a telemetry frame")
