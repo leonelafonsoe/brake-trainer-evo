@@ -12,7 +12,8 @@ is noted with the date it was checked and is removed when handled.
   [changelog](../CHANGELOG.md).
 - `main` also contains the **timeline interpolation refactor** (PR #60), recorded under
   `## Unreleased`. Nightly is green for that commit, but no versioned release contains it yet.
-- No open code PRs. Seven weekly Dependabot PRs are open (see the dependency queue below).
+- No open code PRs. The only open pull request is Dependabot **#65** (`acevo-sdk` 0.2.1), which is
+  waiting on the field validation in item 1 rather than on code.
 - Settings schema is **5** (old v4 files were archived on upgrade); learned data is **1**. No
   migration is pending.
 
@@ -39,24 +40,20 @@ that.
 
 ### 2. Dependency maintenance (weekly, Dependabot)
 
-Checked 14 November 2026; re-check before merging because Dependabot rebases.
+The 14 November 2026 batch is merged: `ruff` **0.17.4**, `pytest` **9.2.0**, `pytest-asyncio`
+**1.4.1.post1**, `mypy` **2.4.1**, `astral-sh/setup-uv` **10.3.3** and
+`softprops/action-gh-release` **3.0.4**, plus `ruff-pre-commit` `v0.17.4` in
+`.pre-commit-config.yaml`. `pytest` 9.2.0 needed `asyncio_default_fixture_loop_scope` in
+`pyproject.toml`; see [the batch spec](plans/dependency-maintenance-batch.md).
 
-| PR | Update | CI |
-|---|---|---|
-| #61 | `astral-sh/setup-uv` 10.3.2 → 10.3.3 | pass |
-| #62 | `ruff` 0.17.2 → 0.17.3 | pass |
-| #63 | `pytest` 9.1.1 → 9.2.0 | **fails** |
-| #64 | `mypy` 2.4.0 → 2.4.1 | pass |
-| #65 | `acevo-sdk` 0.1.1 → 0.2.1 | pass (field test still required) |
-| #66 | `pytest-asyncio` 1.4.0 → 1.4.1 | pass |
-| #67 | `softprops/action-gh-release` 3.0.3 → 3.0.4 | pass |
-
-Handle the safe updates; keep #63 open until the failing leg is understood and fixed; treat #65 as
-the SDK task above. Update `uv.lock` with the project, never by hand.
+Dependabot runs weekly for the `uv`, `github-actions` and `pre-commit` ecosystems; check
+`gh pr list` for what is open. Re-check each pull request before merging: rebasing re-resolves to
+the newest allowed patch, so the merged version can differ from the one in the diff. Update
+`uv.lock` with the project, never by hand.
 
 ### 3. Next release
 
-Once the timeline refactor is in a release and the dependency/SDK queue has settled, prepare a
+Once the timeline refactor is in a release and the `acevo-sdk` 0.2 item above has settled, prepare a
 release. It is a **patch** by default (**0.7.1**) unless a user-facing feature lands before the tag.
 Follow [the release pipeline](DEVELOPMENT.md#release-pipeline): bump, changelog, gates,
 `release_notes.py --check`, then tag. There is no tag or release branch yet.
