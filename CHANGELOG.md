@@ -6,6 +6,13 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ### Changed
 
+- `pre-commit` now runs `ruff` v0.17.3, a patch ahead of the pinned lock until the dependabot bump
+  lands, and Dependabot watches `.pre-commit-config.yaml` so the hook and the project cannot drift
+  apart again.
+- Pinned the pytest-asyncio fixture loop scope explicitly (`asyncio_default_fixture_loop_scope =
+  "function"`). pytest 9.2 turns the "loop scope is unset" deprecation into a start-up error under
+  `filterwarnings = ["error"]`, which stopped the suite from running at all. No behaviour change:
+  every test fixture is synchronous.
 - `PositionTimeline.at` and `crossing_between` now share one segment/interpolation core; the
   reset, teleport and start/finish-wrap rules live in one place. Added edge-case tests for a reset
   inside a frame, a future timestamp, a missing earlier sample and a start/finish crossing. No

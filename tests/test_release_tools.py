@@ -351,6 +351,22 @@ def test_mypy_checks_the_test_tree_with_relaxed_definitions():
     assert tests["check_untyped_defs"] is True
 
 
+def test_pytest_declares_the_asyncio_fixture_loop_scope():
+    """pytest 9.2 promotes a configure-time warning to an error, so the scope must be set.
+
+    pytest-asyncio warns from ``pytest_configure`` when this key is unset. With
+    ``filterwarnings = ["error"]`` that warning aborted the whole run with INTERNALERROR
+    before collection. Do not remove the setting: silence is what breaks CI.
+    """
+    import tomllib
+
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    scope = config["tool"]["pytest"]["ini_options"].get("asyncio_default_fixture_loop_scope")
+
+    assert scope in {"function", "class", "module", "package", "session"}
+
+
 def test_every_windows_build_is_smoke_tested():
     for name in ("ci.yml", "nightly.yml", "release.yml"):
         workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
