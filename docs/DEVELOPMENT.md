@@ -74,6 +74,9 @@ regenerate the settings reference after changing a setting.
 
 - **Warnings are errors.** `filterwarnings = ["error"]` makes any warning fail the run. Fix the
   cause; do not filter it away unless a dependency cannot be fixed.
+  `asyncio_default_fixture_loop_scope` is declared in `pyproject.toml` for this reason:
+  `pytest-asyncio` warns when it is unset, and from pytest 9.2 that configure-time warning is an
+  error that stops the run before collection.
 - **Every test has a 60-second timeout.** A hanging test fails instead of blocking CI.
 - **Coverage is a floor, not a target.** It lives in `pyproject.toml`; raise it when coverage
   improves, never lower it to let a change through.
