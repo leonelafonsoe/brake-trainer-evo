@@ -163,3 +163,30 @@ A change is done when the gates pass, behaviour has a test, `CHANGELOG.md` has a
 - Never lower the coverage floor, silence a warning globally, or delete a test to make a change pass.
 - Never commit a full game log, personal data, credentials or generated build output.
 - Never do a large unreviewed refactor in a bug-fix change.
+
+## Loop
+
+The `/loop` workflow (architect → builder → reviewer) uses this profile.
+
+- **Repositories:** `brake-trainer-evo` only. There are no submodules or sibling repositories, so
+  every spec touches one repository and has one PR.
+- **Spec directory:** `docs/plans/`.
+- **Branch:** one branch per spec, named by change type and kebab-case topic — `deps/…`,
+  `refactor/…`, `docs/…`, `release/…`. Tasks are commits on that branch, never separate branches.
+  Dependabot's own `dependabot/…` branches are merged as-is, never edited by hand.
+- **Fast gate** (after every task):
+  `uv run ruff format --check .` → `uv run ruff check .` → `uv run mypy` →
+  `uv run pytest -q -W error <focused paths>`.
+- **Full gate** (once, in Phase 3, before the PR): the "Gates" list above, in full — pre-commit
+  `--all-files`, both ruff steps, both `mypy` passes (including `--platform win32`), `pytest`
+  without and with `--cov`, and `gen_settings_doc.py --check`.
+- **Deploy:** none. Nothing is deployed or staged from a PR.
+- **Required checks:** the CI jobs `checks`, `tests (ubuntu-latest, 3.11)`,
+  `tests (ubuntu-latest, 3.12)`, `tests (windows-latest, 3.12)` and `windows-build`. The Security
+  workflow (`audit`) runs on its own schedule and on pull requests; it is advisory for merge
+  purposes.
+- **Candidate step:** the PR's `windows-build` artifact, downloaded and driven in-game. This is a
+  human step that the loop cannot perform; when it is skipped the report says so.
+- **Merge order:** single repository, so no cross-repository ordering. Merge only after the required
+  checks pass. Nightly then refreshes automatically from `main`; there is no post-merge step. A
+  versioned release is a separate task and is not run as part of a spec.
