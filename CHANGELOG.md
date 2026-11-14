@@ -6,9 +6,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ### Changed
 
-- `pre-commit` now runs `ruff` v0.17.3, a patch ahead of the pinned lock until the dependabot bump
-  lands, and Dependabot watches `.pre-commit-config.yaml` so the hook and the project cannot drift
-  apart again.
+- The `pre-commit` `ruff` hook is back in step with the pinned lock at `v0.17.4`, and Dependabot
+  now watches `.pre-commit-config.yaml`.
 - Pinned the pytest-asyncio fixture loop scope explicitly (`asyncio_default_fixture_loop_scope =
   "function"`). pytest 9.2 turns the "loop scope is unset" deprecation into a start-up error under
   `filterwarnings = ["error"]`, which stopped the suite from running at all. No behaviour change:
