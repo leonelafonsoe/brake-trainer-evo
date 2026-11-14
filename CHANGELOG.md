@@ -4,6 +4,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.7.1 - 2026-11-14
+
 ### Changed
 
 - The `pre-commit` `ruff` hook is back in step with the pinned lock at `v0.17.4`, and Dependabot
