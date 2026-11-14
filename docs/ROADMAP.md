@@ -6,14 +6,16 @@ is noted with the date it was checked and is removed when handled.
 
 ## State (14 November 2026)
 
-- **0.7.0** is the current versioned release (29 October 2026). It shipped the race-cut guard, the
+- **0.7.0** is the last published release (29 October 2026). It shipped the race-cut guard, the
   global pause hotkey, the Windows adapter tests, the settings key rename (`SETTINGS_VERSION` 5),
   the HUD colour constants and the typing/engine-protocol cleanup. See the
   [changelog](../CHANGELOG.md).
-- `main` also contains the **timeline interpolation refactor** (PR #60), recorded under
-  `## Unreleased`. Nightly is green for that commit, but no versioned release contains it yet.
+- **0.7.1** is prepared on `release/0.7.1` (14 November 2026): the **timeline interpolation
+  refactor** (PR #60) plus the tooling alignment (`ruff` pre-commit pin, pytest-asyncio loop scope).
+  It stays on `acevo-sdk` 0.1.1, so the SDK move has a known-good build to fall back to. It waits on
+  its pull request, the full gate run and the in-game candidate check; no tag yet.
 - No open code PRs. The only open pull request is Dependabot **#65** (`acevo-sdk` 0.2.1), which is
-  waiting on the field validation in item 1 rather than on code.
+  now the head of the queue and still waits on the field validation in item 1.
 - Settings schema is **5** (old v4 files were archived on upgrade); learned data is **1**. No
   migration is pending.
 
@@ -51,12 +53,14 @@ Dependabot runs weekly for the `uv`, `github-actions` and `pre-commit` ecosystem
 the newest allowed patch, so the merged version can differ from the one in the diff. Update
 `uv.lock` with the project, never by hand.
 
-### 3. Next release
+### 3. Next release (after the SDK move)
 
-Once the timeline refactor is in a release and the `acevo-sdk` 0.2 item above has settled, prepare a
-release. It is a **patch** by default (**0.7.1**) unless a user-facing feature lands before the tag.
-Follow [the release pipeline](DEVELOPMENT.md#release-pipeline): bump, changelog, gates,
-`release_notes.py --check`, then tag. There is no tag or release branch yet.
+0.7.1 is a **patch** because nothing in it is user-facing. The `acevo-sdk` 0.2 change is the
+opposite: it touches log parsing, lap authority and validity handling, so release it separately
+as **0.8.0** if anything becomes visible. Follow the
+[release pipeline](DEVELOPMENT.md#release-pipeline): bump, changelog, gates,
+`release_notes.py --check`, then tag. Merge the SDK pull request and field-test it before cutting
+that release.
 
 ## Deferred or external
 
