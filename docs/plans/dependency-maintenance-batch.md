@@ -277,8 +277,10 @@ surface: no user data, no schema, no settings, no `DATA_VERSION`/`SETTINGS_VERSI
 
 ### Outcome
 
-The ruff that `pre-commit run --all-files` executes is the same version as the ruff in `uv.lock`,
-and a weekly Dependabot pull request keeps it that way instead of leaving the gap unwatched.
+The ruff that `pre-commit run --all-files` executes is brought forward to `v0.17.3`, the version
+Dependabot PR #62 pins for the project, and a weekly Dependabot pull request maintains the hook from
+now on instead of leaving it unmanaged. The hook and the lock converge when #62 merges; until then
+the hook is one patch ahead, which is a strict improvement over drifting permanently apart.
 
 ### Current behaviour
 
@@ -300,7 +302,7 @@ nothing would ever raise the hook version again.
 1. **`.pre-commit-config.yaml`** — bump the single `rev` on line 23. Change nothing else; the hook
    ids, the `--fix` argument and the local `mypy` hook stay as they are.
 
-2. **`.github/dependabot.yml`** — add a fourth block, matching the shape of the existing ones:
+2. **`.github/dependabot.yml`** — add a third block, matching the shape of the existing ones:
 
    ```yaml
      - package-ecosystem: pre-commit
@@ -315,8 +317,12 @@ nothing would ever raise the hook version again.
 
 3. **`CHANGELOG.md`** — under `## Unreleased`:
 
-   > `pre-commit` now runs the same `ruff` version as the project (`v0.17.3`), and Dependabot
-   > watches `.pre-commit-config.yaml` so the two cannot drift apart again.
+   > `pre-commit` now runs `ruff` v0.17.3, a patch ahead of the pinned lock until the dependabot bump
+   > lands, and Dependabot watches `.pre-commit-config.yaml` so the hook and the project cannot drift
+   > apart again.
+
+   The wording must stay true at merge time: this PR lands before #62, so the hook is ahead of
+   `uv.lock` for the intervening merges. Do not claim the two are equal yet.
 
 ### Tests
 
