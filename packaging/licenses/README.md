@@ -6,7 +6,7 @@ each dependency is used for.
 
 | File | Source |
 | --- | --- |
-| `MIT-acevo-sdk.txt` | The `acevo-sdk` 0.1.1 wheel metadata (MIT). |
+| `MIT-acevo-sdk.txt` | The `acevo-sdk` 0.2.2 wheel metadata (MIT). |
 | `LGPL-3.0.txt` | The GNU Lesser General Public License v3.0, from <https://www.gnu.org/licenses/lgpl-3.0.txt>. |
 
 PyInstaller is a build-time tool, not part of the program; its licence and bootloader exception are

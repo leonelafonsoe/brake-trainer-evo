@@ -11,35 +11,19 @@ is noted with the date it was checked and is removed when handled.
   typing/engine-protocol cleanup (29 October 2026).
 - **0.7.1** is the current versioned release (14 November 2026): the **timeline interpolation
   refactor** (PR #60) plus the tooling alignment (`ruff` pre-commit pin, pytest-asyncio loop scope).
-  It stays on `acevo-sdk` 0.1.1, so the SDK move has a known-good build to fall back to. The
-  [changelog](../CHANGELOG.md) has both entries.
-- No open code PRs. The only open pull request is Dependabot **#65** (`acevo-sdk` 0.2.1), which is
-  now the head of the queue and still waits on the field validation in item 1.
+  The [changelog](../CHANGELOG.md) has both entries.
+- The **`acevo-sdk` 0.2 move** is implemented on `deps/acevo-sdk-0.2` (14 November 2026): 0.2.2 is
+  pinned, the frame gate and the graphics-region read are shimmed, both penalty addition shapes
+  count, replay/pause frames are ignored and alternate layouts key separately. It merges after the
+  `windows-build` candidate session; Dependabot **#65** is superseded by this branch and closed as
+  part of its delivery.
+- No other pull request is open.
 - Settings schema is **5** (old v4 files were archived on upgrade); learned data is **1**. No
   migration is pending.
 
 ## Immediate queue
 
-### 1. `acevo-sdk` 0.2 (field-tested)
-
-**Current state:** the app is pinned to `acevo-sdk>=0.1.1,<0.2.0`. Dependabot PR **#65** proposes
-0.1.1 → 0.2.1 and passes CI. The existing `ignore: 0.2.x` rule did **not** match 0.2.1; fix the
-range (for example `>=0.2.0, <0.3.0`) as part of this change.
-
-0.2 changes log parsing, lap-authority and validity handling. The old pin comment says 0.2.0
-withholds frames until a clean lap boundary, which starves the live overlay. CI cannot prove any of
-that.
-
-**To do:**
-
-- Use #65 (or a fresh `deps/acevo-sdk-0.2` branch) and review the 0.2 API changes, especially
-  `LapState.PUSH` → `LapState.VALID` usage.
-- Fix the pin comment, the Dependabot ignore range and the dependency/docs notes.
-- Build the Windows artifact and test on track: **live frames are not withheld**, sector lines,
-  cuts and game-exit detection, and the game's validity handling.
-- Merge only after that session. This is a field-validation task, not a blind bump.
-
-### 2. Dependency maintenance (weekly, Dependabot)
+### 1. Dependency maintenance (weekly, Dependabot)
 
 The 14 November 2026 batch is merged: `ruff` **0.17.4**, `pytest` **9.2.0**, `pytest-asyncio`
 **1.4.1.post1**, `mypy` **2.4.1**, `astral-sh/setup-uv` **10.3.3** and
@@ -52,14 +36,14 @@ Dependabot runs weekly for the `uv`, `github-actions` and `pre-commit` ecosystem
 the newest allowed patch, so the merged version can differ from the one in the diff. Update
 `uv.lock` with the project, never by hand.
 
-### 3. Next release (after the SDK move)
+### 2. Next release (separate task)
 
-0.7.1 is a **patch** because nothing in it is user-facing. The `acevo-sdk` 0.2 change is the
-opposite: it touches log parsing, lap authority and validity handling, so release it separately
-as **0.8.0** if anything becomes visible. Follow the
+0.7.1 is a **patch** because nothing in it is user-facing. The `acevo-sdk` 0.2 move is the opposite:
+it touches log parsing, lap authority and validity handling, so release it separately as **0.8.0**
+if anything becomes visible. Cutting that release is a separate task after this pull request is
+merged and field-tested; this branch does not bump the version. Then follow the
 [release pipeline](DEVELOPMENT.md#release-pipeline): bump, changelog, gates,
-`release_notes.py --check`, then tag. Merge the SDK pull request and field-test it before cutting
-that release.
+`release_notes.py --check`, then tag.
 
 ## Deferred or external
 

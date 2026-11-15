@@ -4,6 +4,26 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+### Changed
+
+- `acevo-sdk` moves from 0.1.1 to 0.2.2 (`>=0.2.2,<0.3.0`), and Dependabot watches its patch
+  releases again instead of ignoring the whole 0.2 line.
+- Live frames are no longer withheld until a clean lap boundary: the adapter releases the SDK's
+  frame gate, so the overlay and learning work from the outlap.
+- The race-cut pair is read from the graphics shared-memory region through the SDK's `RegionReader`
+  because 0.2 drops `graphics_raw` in normal capture. The 2464/2468/2472 offsets and the
+  plausibility bounds are unchanged.
+- Both penalty addition shapes (`Adding notification UINotificationType_SessionPenalty` and
+  `true {PENALTY_ADDED_KEY}`) count as cuts, while `{PENALTY_CLEARED_KEY}` clearances are ignored.
+  Every addition is still attributed at its own line time, so cuts in different sectors of one lap
+  each drop their own sector and no blanket time window is introduced.
+- Frames from replay, pause and teardown are ignored, so they cannot teach braking points; live
+  frames and builds without a status field behave as before.
+- Alternate track layouts are keyed separately as `Track [Configuration]` (for example
+  `Brands Hatch [Indy]`); default layouts, unknown tracks and existing data keep their old keys.
+- The obsolete patch of the SDK's 120 s idle timeout is gone: 0.2 removed the timeout, and the
+  SDK's 5 s heartbeat / 3 s disconnect timeouts stop a dead capture.
+
 ## 0.7.1 - 2026-11-14
 
 ### Changed

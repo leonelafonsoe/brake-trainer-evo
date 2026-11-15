@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import tomllib
 from datetime import date
 from pathlib import Path
 
@@ -193,6 +194,8 @@ def test_the_release_workflow_fails_closed_and_stamps_the_build():
 
     build = (ROOT / "scripts" / "build_exe.py").read_text(encoding="utf-8")
     assert "BUILD_FILE" in build and "--add-data" in build  # the commit reaches the frozen app
+    # The track catalog is package data: without it the frozen app cannot tell a layout apart.
+    assert re.search(r'"--collect-data",\s*"acevo"', build)
 
 
 def test_bump_version_updates_everything_and_keeps_an_empty_unreleased(project):
@@ -289,11 +292,19 @@ def test_dependabot_covers_uv_and_actions():
     assert "package-ecosystem: github-actions" in config
 
 
-def test_dependabot_ignores_the_incompatible_acevo_release():
+def test_dependabot_watches_acevo_patch_releases():
     config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
 
-    assert "dependency-name: acevo-sdk" in config
-    assert 'versions: ["0.2.x"]' in config
+    # The minor line is reviewed and pinned in pyproject.toml; its patches stay in Dependabot's
+    # review. Re-adding an ignore would silently stop the patch updates.
+    assert "dependency-name: acevo-sdk" not in config
+    assert "0.2.x" not in config
+
+
+def test_acevo_is_pinned_to_the_reviewed_minor_line():
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert "acevo-sdk>=0.2.2,<0.3.0" in project["project"]["dependencies"]
 
 
 def test_dependencies_are_locked_and_ci_refuses_a_stale_lock():

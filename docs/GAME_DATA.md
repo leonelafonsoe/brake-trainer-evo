@@ -17,12 +17,12 @@ game or its files.
 | Track position (0..1) | `graphics.normalized_car_position` | Where you are on the lap |
 | Brake pedal (0..1) | `physics.brake` | Braking events |
 | Speed | `physics.speed_kmh` | Braking events, cue timing |
-| Track / car name | `static.track`, `graphics.car_model` | Keys for the stored data |
+| Track / car name | `static.track` plus `static.track_configuration`, `graphics.car_model` | Keys for the stored data (see [track keys](#track-keys)) |
 | Track length | `static.track_length_m`, or `graphics.lap_length_km` | Metres from positions |
 | In the pit lane | `graphics.is_in_pit_lane` | Not learning in the pits; warm-up reset |
 | Lap still valid | `graphics.is_valid_lap` | Skipping the first sector the game invalidates |
-| Race cut (off-track) | `graphics.race_cut_gained_time_ms`, `graphics.distance_to_deadline` (raw graphics block) | Skipping the sector where an off-track happened |
-| Cuts reported after the fact | `Saved Games\ACE\Logs`: `UINotificationType_SessionPenalty` | Skipping the sector each cut happened in |
+| Race cut (off-track) | `graphics.race_cut_gained_time_ms`, `graphics.distance_to_deadline`, read from the graphics region through the SDK's `RegionReader` because 0.2 drops `graphics_raw` in normal capture | Skipping the sector where an off-track happened |
+| Cuts reported after the fact | `Saved Games\ACE\Logs`: `UINotificationType_SessionPenalty` and `{PENALTY_ADDED_KEY}` | Skipping the sector each cut happened in |
 | The game's sector lines | `Saved Games\ACE\Logs`: `Received split: ... index 0/1/2` | Where the three sectors begin and end |
 | Timestamp | frame timestamp | Sector times |
 
@@ -30,6 +30,26 @@ game or its files.
 (`normalized_position_source: physics_tyre_z`). That one is dead-reckoned and can jump, so the app
 uses the game's own value from the graphics block. Frames without a track or car name (menus,
 loading) are ignored.
+
+**Frame states.** The app samples only a live frame. Replay, pause and teardown frames still carry a
+position and a track, but the driver is not driving, so they are ignored and cannot teach braking
+points. Menus and loading screens were already rejected for having no track or car name. The SDK
+names the states (`AC_OFF`, `AC_REPLAY`, `AC_LIVE`, `AC_PAUSE`); a build without a status field is
+assumed live.
+
+### Track keys
+
+Learned data is keyed on the track label, which is also the name Settings -> Data shows. The default
+layout keeps the game's own `static.track` name, so existing files load unchanged. The default is the
+**catalog entry's declared default**, not the layout the track label happens to name: the two can
+differ (the Nürburgring Nordschleife entry declares `24h`, while its name names the `Nordschleife`
+layout). A non-default layout of a track the catalog knows gets ` [configuration]` (for example
+`Brands Hatch [Indy]`) and learns separately from the default layout. A repeated label such as
+`Nordschleife [Nordschleife]` is intentional: the label is also the store key, so suppressing the
+suffix would merge that layout with the entry's default. A track the catalog cannot resolve, or a
+frame without the field, keeps the raw game name, so its layouts share one entry; that limitation
+is documented rather than guessed. Changing a key never deletes existing data: the old entry stays
+and can still be selected and deleted in Settings -> Data.
 
 ### Sector lines
 
@@ -86,21 +106,27 @@ log are what make the check possible.
 Track limits follow the game, using its own signals:
 
 - **The game's log** (game build 0.5+) records one HUD notification per cut:
-  `Adding notification UINotificationType_SessionPenalty`. It is the only *per-excursion* signal the
-  game publishes — the shared memory cannot show a second cut in a lap it has already invalidated.
-  The warning line that follows it (`false {PENALTY_CLEARED_KEY}` in the current build) describes the
-  notification's HUD text; it is not a second event. The app follows the newest file in
-  `Saved Games\ACE\Logs` (Settings: *Game log folder*) and drops the sector each cut happened in.
+  `Adding notification UINotificationType_SessionPenalty`; the SDK documents an addition shape
+  `true {PENALTY_ADDED_KEY}` found in its 0.2.2 regression data. Both are cuts. A
+  `{PENALTY_CLEARED_KEY}` line (the `false ...` warning that follows) only clears the notification;
+  it is not an excursion of its own and is ignored. Every addition is attributed at its own line
+  time, so cuts in different sectors of one lap each drop their own sector, and no blanket time
+  window suppresses a second cut: the engine's `(lap, sector)` folding is the duplicate rule. The
+  shared memory cannot show a second cut in a lap it has already invalidated. The app follows the
+  newest file in `Saved Games\ACE\Logs` (Settings: *Game log folder*) and drops the sector each cut
+  happened in.
 - **`graphics.is_valid_lap`** is the game's verdict on the lap. It is a *state*: it drops when the
   game invalidates the lap and stays down until the lap ends, so on its own it marks only the first
   cut of a lap. Kept as a fallback for a build whose log the app cannot read.
 - **`graphics.race_cut_*`** (the *race-cut pair*: time gained and distance left to give it back)
   drops the sector while the off-track is under way, where the game publishes it. The SDK does not
-  surface these fields, so they are read at fixed offsets in the raw graphics block; a block that
-  shifts in a game update would otherwise feed arbitrary numbers to the engine. A pair is therefore
-  used only when the gain is `1..60 000 ms`, the give-back distance `0..5 000 m` and the delta is
-  finite; anything else is read as no cut, by both the reader and the engine. The log is the
-  authoritative per-cut signal; the pair is a live fallback for a build that fills it in.
+  decode these fields and 0.2 drops `graphics_raw` from a normal capture, so the app reads the
+  graphics region itself through the SDK's `RegionReader` and decodes the fixed offsets
+  (2464/2468/2472). A block that shifts in a game update would otherwise feed arbitrary numbers to
+  the engine, so a pair is used only when the gain is `1..60 000 ms`, the give-back distance
+  `0..5 000 m` and the delta is finite; anything else is read as no cut, by both the reader and the
+  engine. The log is the authoritative per-cut signal; the pair is a live fallback for a build that
+  fills it in.
 
 These signals overlap: the same cut can be seen live by the race-cut pair or the lap flag and again in
 the log. Each invalidation is recorded against a `(lap, sector)`, so the first signal to reach a
@@ -150,8 +176,10 @@ sector where the flag dropped.
 
 ### Behaviours worth knowing
 
-- **Idle timeout.** The SDK stops capturing after 120 s of standing still before the first lap
-  (sitting in the pits, waiting in an online lobby). The app disables that timeout.
+- **Capture timeouts.** The SDK stops capturing after 5 s without valid frame data (the game
+  crashed or quit) or after 3 s with all of its shared-memory regions disconnected. The 120 s idle
+  timeout that stopped a capture while standing still was removed in 0.2, so waiting in the pits or
+  an online lobby no longer ends it.
 - **Watchdog.** If capture stops for any other reason, the app logs
   `Telemetry stopped (<reason>); restarting`, waits two seconds and starts a new capture. The sector
   in progress is discarded so a gap cannot produce a wrong sector time.

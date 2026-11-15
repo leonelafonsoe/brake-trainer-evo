@@ -202,6 +202,11 @@ never saved into the new car's file.
 Braking points depend on weight, downforce, tyres and brakes, so treat borrowed points as a hint for
 the first laps.
 
+An alternate layout of a known track - for example Brands Hatch Indy - appears in Settings -> Data
+as `Track [Config]` (`Brands Hatch [Indy]`) and learns separately from the default layout, whose
+entry is unchanged. Only live driving teaches: frames from a replay or a pause are ignored, so
+neither changes your marks. The key details are in [GAME_DATA.md](GAME_DATA.md#track-keys).
+
 ## Pausing learning
 
 Pause learning (overlay button, tray menu, Settings, or the global hotkey) in a race so your saved
