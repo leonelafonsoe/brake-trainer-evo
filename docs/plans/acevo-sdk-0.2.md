@@ -359,10 +359,15 @@ Nothing else.
    the field, it gets its own evidence and rule.
 3. Keep the fixture rule: `notification_block.txt` is our real 0.9.1 cut; record that the SDK's
    parser does not recognise it, so the new fixture is the SDK-shaped build, not a replacement.
-   The new fixture contains exactly two event lines:
-   `[2026-08-18 23:13:02.935] [gameface] [warning] true {PENALTY_ADDED_KEY} #0` and
-   `[2026-08-18 23:13:20.000] [gameface] [warning] false {PENALTY_CLEARED_KEY} #296`, both from
-   the SDK's 0.2.2 regression data; the README says so.
+   The new fixture contains exactly two event lines, both copied verbatim from real evidence:
+   - the SDK addition line
+     `[2026-08-18 23:13:02.935] [gameface] [warning] true {PENALTY_ADDED_KEY} #0` from the
+     SDK's 0.2.2 regression data;
+   - the clearance line
+     `[2026-10-23 01:40:35.562] [gameface] [warning] false {PENALTY_CLEARED_KEY} #296` from our
+     own `notification_block.txt` (build 0.9.1).
+   Do not invent a timestamp or a line. The README states both provenances; the fixture proves the
+   parser accepts the SDK's addition shape and ignores a real clearance line.
 4. No engine change. The engine's `(lap, sector)` folding and its per-event attribution stay as
    they are.
 
