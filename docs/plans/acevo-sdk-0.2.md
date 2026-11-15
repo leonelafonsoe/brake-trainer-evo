@@ -504,17 +504,30 @@ Nothing else. No `TrackData`/`Sample` schema change, no `DATA_VERSION` change, n
 
 ### Design
 
-1. Add a cached `_default_config(track: str) -> str` in `telemetry.py`:
-   - import `resolve_track_key` and `find_track_by_name` from `acevo.catalogs` lazily;
-   - resolve the key; if none, return `""`;
-   - return the profile's `config_key` (the catalog's default configuration);
-   - catch any exception and return `""`, so a missing catalog degrades to the old behaviour.
-   Cache per track name; the catalog is static.
+1. Add cached, lazy, failure-safe helpers in `telemetry.py`:
+   - `_resolved_entry(track, configuration)` → `(entry_key, config_key)` from
+     `select_track_profile(track_name=track, config_name=configuration)`; `("", "")` when the
+     selector cannot resolve the pair.
+   - `_entry_default(entry_key)` → the catalog entry's **declared** `default_config` via
+     `find_track_by_name(entry_key)`; `""` when the entry or catalog is unavailable.
+   - `_default_config(track)` → the track's declared default via `resolve_track_key` +
+     `find_track_by_name`; used only as the fallback when the reported configuration does not
+     resolve.
+   The distinction matters: `select_track_profile(track_name=...)` prefers the configuration named by
+   the track label, which is not always the entry's declared default (Nürburgring Nordschleife
+   declares `24h`, but its label prefers `nordschleife`). Use the **resolved entry's** declared
+   default, never the label preference.
 2. Add `_track_label(track: str, configuration: str) -> str`:
    - empty configuration → `track`;
-   - unknown track (no default config) → `track`;
-   - configuration equal to the default (case-insensitive) → `track`;
+   - resolve the entry/config pair; if it resolves, compare the resolved config key with that
+     entry's declared default; equal → `track`, otherwise suffix;
+   - if the configuration does not resolve, use the track's declared default: no default → `track`,
+     otherwise suffix;
    - otherwise `f"{track} [{configuration}]"`.
+   The label is also the store key. A repeated `Track [Config]` (for example `Nordschleife
+   [Nordschleife]`) is intentional when the track name already names an alternate layout: suppressing
+   the suffix would merge that layout with the entry's default under one key. Document that reason
+   next to the helper and in `docs/GAME_DATA.md`.
 3. In `sample_from_frame()`, read `static.get("track_configuration")` and set
    `track = _track_label(str(track), str(configuration))`. The label stays the store key and the
    display name, so the Data tab shows `Brands Hatch [Indy]` for the alternate layout.
@@ -537,6 +550,14 @@ Nothing else. No `TrackData`/`Sample` schema change, no `DATA_VERSION` change, n
 - `_default_config` is called once per track (cache) — optional, but a direct unit test of the
   helper is enough.
 - Catalog import/lookup failure (monkeypatch `acevo.catalogs` import) → the raw track.
+- **Declared-default cases, not label preferences**:
+  - `Nurburgring Nordschleife` + `24h` (the entry's declared default) → raw.
+  - `Nurburgring Nordschleife` + `Nordschleife` (alternate) → `Nurburgring Nordschleife
+    [Nordschleife]`.
+  - `Nordschleife` + `24h` → raw; `Nordschleife` + `Nordschleife` → a distinct key (the repeated
+    label is intentional; assert it is not suppressed).
+  - `Nurburgring` + `GP` (the GP entry's declared default) → raw; `Nurburgring` + `Nordschleife` →
+    `Nurburgring [Nordschleife]`.
 - `build_exe.py` contains `--collect-data` and `acevo` (a text assertion in
   `tests/test_release_tools.py`, next to the existing `--add-data` assertion).
 
@@ -544,15 +565,19 @@ Nothing else. No `TrackData`/`Sample` schema change, no `DATA_VERSION` change, n
 
 1. A non-default `track_configuration` appends ` [<configuration>]` to `Sample.track`; a default
    configuration and an unknown track leave it unchanged.
-2. The value is the store key and display label; no `TrackData`/`Sample` field or
+2. The comparison uses the **resolved entry's declared default**, not the selector's label
+   preference: the four Nürburgring cases above pass.
+3. The value is the store key and display label; no `TrackData`/`Sample` field or
    `DATA_VERSION` changed.
-3. Existing default-layout data loads under the same key; alternate layouts use a different key.
-4. The catalog lookup is lazy, cached, and failure-safe.
-5. `scripts/build_exe.py` collects `acevo` package data; the `windows-build` check still passes.
-6. Fast gate passes:
+4. Existing default-layout data loads under the same key; alternate layouts use a different key,
+   including when the track label already names the alternate layout (no suppression).
+5. The catalog lookup is lazy, cached, and failure-safe.
+6. `scripts/build_exe.py` collects `acevo` package data; the `windows-build` check still passes.
+7. Fast gate passes:
    `uv run ruff format --check .` → `uv run ruff check .` → `uv run mypy` →
    `uv run pytest -q -W error tests/test_telemetry_audio.py tests/test_release_tools.py`.
-7. Only the four mapped files changed.
+8. Only the four original T4 files plus `docs/GAME_DATA.md` and
+   `packaging/licenses/README.md` (the Phase 3 follow-up) changed.
 
 ### Rollback
 
@@ -657,6 +682,15 @@ Nothing else.
 Revert the T5 commit. Dependabot will ignore 0.2.x again while the code is on 0.2.2, and the docs
 will describe the old state; that is inconsistent but harmless at runtime. Reverting T1-T4 as well
 restores the old pin and the ignore rule together.
+
+---
+
+## Phase 3 follow-up — licence provenance
+
+The whole-branch review found one stale provenance line outside the task maps:
+`packaging/licenses/README.md` still says the bundled `MIT-acevo-sdk.txt` is the `acevo-sdk` **0.1.1**
+wheel metadata. The text is byte-identical in 0.2.2, so no licence text changes; update only the
+source line to 0.2.2 in the T4 fix commit. No other packaging file changes.
 
 ---
 
