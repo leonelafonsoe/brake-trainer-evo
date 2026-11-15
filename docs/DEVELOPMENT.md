@@ -28,7 +28,8 @@ export QT_QPA_PLATFORM=offscreen    # the UI tests must not need a display
 The `dev` extra installs pytest, coverage, ruff, mypy and PyInstaller. `uv.lock` pins the exact
 resolved versions; CI uses `uv sync --locked --extra dev`, which fails if `uv.lock` is stale, so a
 dependency change must be committed with its lock. The runtime dependencies are PySide6 and
-`acevo-sdk` (pinned below 0.2.0; see the comment in `pyproject.toml`).
+`acevo-sdk` (pinned to 0.2.2 with `>=0.2.2,<0.3.0`; see the pin comment in `pyproject.toml` for the
+capture workarounds).
 
 ## Run from source
 
