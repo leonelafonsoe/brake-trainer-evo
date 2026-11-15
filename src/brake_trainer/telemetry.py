@@ -166,6 +166,23 @@ def _race_cut(raw: bytes | None) -> tuple[int, int, float]:
     return gained, deadline, delta
 
 
+def _live_frame(gfx: Mapping[str, Any]) -> bool:
+    """Is the graphics block showing a live session?
+
+    A replay, a pause or the teardown still carries a position and a track, so learning it would
+    teach braking points from a lap the driver is not driving. The SDK's 0.2 state model names the
+    states (``status`` 0 OFF, 1 REPLAY, 2 LIVE, 3 PAUSE); a build without the field is assumed live
+    so older captures keep working.
+    """
+    status = gfx.get("status")
+    if isinstance(status, int) and not isinstance(status, bool):
+        return status == 2  # AC_LIVE
+    name = gfx.get("status_name")
+    if isinstance(name, str) and name:
+        return name.upper() == "AC_LIVE"
+    return True
+
+
 def sample_from_frame(frame: Any, raw_graphics: bytes | None = None) -> Sample | None:
     """Reduce an SDK frame to a :class:`Sample`; None if the game isn't in a session."""
     gfx = getattr(frame, "graphics", None) or {}
@@ -174,6 +191,8 @@ def sample_from_frame(frame: Any, raw_graphics: bytes | None = None) -> Sample |
     if not all(isinstance(x, Mapping) for x in (gfx, phys, stat)):
         return None
     if gfx.get("error") or phys.get("error") or "normalized_car_position" not in gfx:
+        return None
+    if not _live_frame(gfx):
         return None
     track = stat.get("track")
     car = gfx.get("car_model") or stat.get("car_model")

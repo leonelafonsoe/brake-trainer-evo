@@ -160,6 +160,68 @@ def test_sample_rejected_outside_a_session(bad):
     assert sample_from_frame(bad) is None
 
 
+def _frame_with_state(**state: Any) -> Any:
+    """``frame()`` with the given AC state fields added to its graphics block."""
+    gfx = frame().graphics
+    return frame(graphics={**gfx, **state})
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"status": 2, "status_name": "AC_LIVE"},
+        {"status": 2},
+        {"status_name": "AC_LIVE"},
+        {"status_name": "ac_live"},
+        {"status": True, "status_name": "AC_LIVE"},  # a bool is not a state code
+        {},
+    ],
+    ids=[
+        "live-both-fields",
+        "live-number",
+        "live-name",
+        "live-name-any-case",
+        "bool-is-not-a-state-code",
+        "no-status-field",
+    ],
+)
+def test_sample_accepts_a_live_frame(state):
+    s = sample_from_frame(_frame_with_state(**state))
+    assert s is not None
+    assert (s.track, s.car, s.pos) == ("Monza", "Ferrari 296 GTB", 0.42)
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"status": 0, "status_name": "AC_OFF"},
+        {"status": 0},
+        {"status_name": "AC_OFF"},
+        {"status": 1, "status_name": "AC_REPLAY"},
+        {"status_name": "AC_REPLAY"},
+        {"status": 3, "status_name": "AC_PAUSE"},
+        {"status": 3},
+        {"status_name": "AC_PAUSE"},
+        {"status": 1, "status_name": "AC_LIVE"},  # the numeric field wins
+        {"status_name": "SOME_FUTURE_STATE"},
+    ],
+    ids=[
+        "off-both-fields",
+        "off-number",
+        "off-name",
+        "replay-both-fields",
+        "replay-name-only",
+        "pause-both-fields",
+        "pause-number",
+        "pause-name",
+        "numeric-status-wins",
+        "unknown-name",
+    ],
+)
+def test_sample_rejects_frames_that_are_not_live(state):
+    assert sample_from_frame(_frame_with_state(**state)) is None
+
+
 async def test_the_sdk_still_arms_the_frame_gate_after_start():
     # Tripwire for the T1 workaround: if a future acevo-sdk streams frames without a lap boundary,
     # drop ``_LiveCapture`` and this test rather than keeping a stale private-attribute patch.
