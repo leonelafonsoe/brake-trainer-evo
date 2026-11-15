@@ -24,10 +24,12 @@ from brake_trainer.telemetry import (
     GameProbe,
     GameStatus,
     TelemetryReader,
+    _default_config,
     _GameWatch,
     _GraphicsReader,
     _LiveCapture,
     _open_graphics_region,
+    _resolved_config,
     find_game_process,
     sample_from_frame,
 )
@@ -76,6 +78,107 @@ def test_sample_from_frame():
     assert (s.brake, s.length_m) == (0.7, 5793.0)
     assert s.lap_valid is False
     assert (s.cut_gained_ms, s.cut_deadline_m, s.cut_delta_s) == (0, 0, 0.0)  # no graphics bytes
+
+
+def _frame_with_static(**over: Any) -> Any:
+    """``frame()`` with the given fields added to its static block."""
+    return frame(static={**frame().static, **over})
+
+
+def test_sample_appends_a_non_default_track_configuration():
+    # Two layouts of one track report the same static.track; the label keeps their learned data
+    # apart and is what the Data tab shows.
+    s = sample_from_frame(_frame_with_static(track="Brands Hatch", track_configuration="Indy"))
+    assert s is not None
+    assert s.track == "Brands Hatch [Indy]"
+
+
+@pytest.mark.parametrize(
+    ("track", "configuration"),
+    [
+        ("Brands Hatch", "gp"),
+        ("Brands Hatch", "GP"),
+        ("Monza", "v0.4"),
+        ("Monza", "GP"),
+        ("Spa-Francorchamps", "gp"),
+        ("Fuji Speedway GP Short", "GP Short"),
+    ],
+    ids=[
+        "brands-hatch-key",
+        "brands-hatch-name",
+        "monza-name",
+        "monza-alias",
+        "spa-alias",
+        "fuji-layout-name",
+    ],
+)
+def test_sample_keeps_the_raw_name_for_the_default_layout(track, configuration):
+    # The game may report the config's key, name or alias. The catalog identifies them all as the
+    # default, so existing data keeps loading under the raw game name.
+    s = sample_from_frame(_frame_with_static(track=track, track_configuration=configuration))
+    assert s is not None
+    assert s.track == track
+
+
+@pytest.mark.parametrize(
+    ("over", "why"),
+    [
+        ({}, "absent"),
+        ({"track_configuration": None}, "none"),
+        ({"track_configuration": ""}, "empty"),
+    ],
+)
+def test_sample_keeps_the_raw_name_without_a_configuration(over, why):
+    s = sample_from_frame(_frame_with_static(track="Brands Hatch", **over))
+    assert s is not None, why
+    assert s.track == "Brands Hatch", why
+
+
+def test_sample_keeps_the_raw_name_for_a_track_outside_the_catalog():
+    s = sample_from_frame(
+        _frame_with_static(track="Nowhere Motor Speedway", track_configuration="Club")
+    )
+    assert s is not None
+    assert s.track == "Nowhere Motor Speedway"
+
+
+def test_the_catalog_defaults_and_config_resolution_are_cached():
+    _default_config.cache_clear()
+    _resolved_config.cache_clear()
+    try:
+        assert _default_config("Brands Hatch") == "gp"
+        assert _default_config("Nowhere Motor Speedway") == ""
+        first = _default_config.cache_info()
+        assert (first.hits, first.misses) == (0, 2)
+        assert _default_config("Brands Hatch") == "gp"
+        second = _default_config.cache_info()
+        assert (second.hits, second.misses) == (first.hits + 1, first.misses)
+
+        # The selector maps a name or alias to the canonical key, the comparison the label needs.
+        assert _resolved_config("Monza", "v0.4") == "v0_4"
+        assert _resolved_config("Monza", "GP") == "v0_4"
+        assert _resolved_config("Brands Hatch", "Indy") == "indy"
+        assert _resolved_config("Nowhere Motor Speedway", "Club") == ""
+    finally:
+        _default_config.cache_clear()
+        _resolved_config.cache_clear()
+
+
+def test_a_missing_track_catalog_keeps_the_raw_name(monkeypatch):
+    # A broken or frozen-without-data catalog must degrade to the pre-catalog behaviour, not stop
+    # samples. The unique track name keeps the cached "" from poisoning the catalog-backed tests.
+    monkeypatch.setitem(sys.modules, "acevo.catalogs", None)
+    _default_config.cache_clear()
+    _resolved_config.cache_clear()
+    try:
+        s = sample_from_frame(
+            _frame_with_static(track="Catalog Offline Raceway", track_configuration="Club")
+        )
+        assert s is not None
+        assert s.track == "Catalog Offline Raceway"
+    finally:
+        _default_config.cache_clear()
+        _resolved_config.cache_clear()
 
 
 def _raw_graphics(gained: int, deadline: int, delta: float) -> bytes:

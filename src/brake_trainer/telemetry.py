@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from enum import Enum
+from functools import cache
 from typing import Any, NamedTuple, Protocol
 
 from .config import Settings
@@ -183,6 +184,62 @@ def _live_frame(gfx: Mapping[str, Any]) -> bool:
     return True
 
 
+@cache
+def _default_config(track: str) -> str:
+    """The catalog's default configuration for ``track``, or "" when it cannot tell.
+
+    The catalog travels with ``acevo-sdk`` as package data. A frozen build without that data, a
+    future SDK that moves the helpers, or a track the catalog does not know must all keep keying
+    learned data on the raw game name, so the lookup is lazy and failure-safe and the catalog is
+    never imported until a sample actually needs a label.
+    """
+    try:
+        from acevo.catalogs import select_track_profile
+
+        _, profile = select_track_profile(track_name=track)
+        return str(profile.get("config_key") or "") if profile else ""
+    except Exception:
+        log.debug("Could not resolve the track configuration for %r", track, exc_info=True)
+        return ""
+
+
+@cache
+def _resolved_config(track: str, configuration: str) -> str:
+    """The catalog's canonical configuration key for a reported name, or "" if it cannot tell.
+
+    The game may report a configuration's key, its name or one of its aliases (``v0.4`` and
+    ``GP`` both name Monza's only layout). The SDK's selector resolves all of them, so comparing
+    raw strings would suffix a default layout and orphan the user's existing learned data.
+    """
+    try:
+        from acevo.catalogs import select_track_profile
+
+        _, profile = select_track_profile(track_name=track, config_name=configuration)
+        return str(profile.get("config_key") or "") if profile else ""
+    except Exception:
+        log.debug("Could not resolve %r for track %r", configuration, track, exc_info=True)
+        return ""
+
+
+def _track_label(track: str, configuration: str) -> str:
+    """The learned-data key and display label for a track and its game configuration.
+
+    The default layout keeps the raw game name, so existing files load unchanged. An alternate
+    layout appends its configuration (``Brands Hatch [Indy]``) and starts its own entry. A track
+    the catalog cannot resolve also keeps the raw name: guessing would be worse than the old
+    behaviour, where its layouts share one key.
+    """
+    if not configuration:
+        return track
+    default = _default_config(track)
+    if not default:
+        return track
+    resolved = _resolved_config(track, configuration)
+    if resolved and resolved == default:
+        return track
+    return f"{track} [{configuration}]"
+
+
 def sample_from_frame(frame: Any, raw_graphics: bytes | None = None) -> Sample | None:
     """Reduce an SDK frame to a :class:`Sample`; None if the game isn't in a session."""
     gfx = getattr(frame, "graphics", None) or {}
@@ -198,10 +255,11 @@ def sample_from_frame(frame: Any, raw_graphics: bytes | None = None) -> Sample |
     car = gfx.get("car_model") or stat.get("car_model")
     if not track or not car:  # menus, loading screens
         return None
+    configuration = stat.get("track_configuration") or ""
     length = stat.get("track_length_m") or (gfx.get("lap_length_km") or 0) * 1000 or None
     gained, deadline, delta = _race_cut(raw_graphics)
     return Sample(
-        track=str(track),
+        track=_track_label(str(track), str(configuration)),
         car=str(car),
         length_m=float(length) if length else None,
         pos=float(gfx["normalized_car_position"]),

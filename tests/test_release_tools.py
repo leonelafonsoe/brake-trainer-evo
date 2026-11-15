@@ -193,6 +193,8 @@ def test_the_release_workflow_fails_closed_and_stamps_the_build():
 
     build = (ROOT / "scripts" / "build_exe.py").read_text(encoding="utf-8")
     assert "BUILD_FILE" in build and "--add-data" in build  # the commit reaches the frozen app
+    # The track catalog is package data: without it the frozen app cannot tell a layout apart.
+    assert re.search(r'"--collect-data",\s*"acevo"', build)
 
 
 def test_bump_version_updates_everything_and_keeps_an_empty_unreleased(project):

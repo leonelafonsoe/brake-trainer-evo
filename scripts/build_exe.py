@@ -68,6 +68,8 @@ def main() -> int:
         str(ROOT / "src"),
         "--collect-submodules",
         "acevo",
+        "--collect-data",
+        "acevo",
         "--distpath",
         str(ROOT / "dist"),
         "--workpath",
