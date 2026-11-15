@@ -40,9 +40,13 @@ assumed live.
 ### Track keys
 
 Learned data is keyed on the track label, which is also the name Settings -> Data shows. The default
-layout keeps the game's own `static.track` name, so existing files load unchanged. A non-default
-layout of a track the SDK's catalog knows gets ` [configuration]` (for example `Brands Hatch
-[Indy]`) and learns separately from the default layout. A track the catalog cannot resolve, or a
+layout keeps the game's own `static.track` name, so existing files load unchanged. The default is the
+**catalog entry's declared default**, not the layout the track label happens to name: the two can
+differ (the Nürburgring Nordschleife entry declares `24h`, while its name names the `Nordschleife`
+layout). A non-default layout of a track the catalog knows gets ` [configuration]` (for example
+`Brands Hatch [Indy]`) and learns separately from the default layout. A repeated label such as
+`Nordschleife [Nordschleife]` is intentional: the label is also the store key, so suppressing the
+suffix would merge that layout with the entry's default. A track the catalog cannot resolve, or a
 frame without the field, keeps the raw game name, so its layouts share one entry; that limitation
 is documented rather than guessed. Changing a key never deletes existing data: the old entry stays
 and can still be selected and deleted in Settings -> Data.

@@ -25,11 +25,12 @@ from brake_trainer.telemetry import (
     GameStatus,
     TelemetryReader,
     _default_config,
+    _entry_default,
     _GameWatch,
     _GraphicsReader,
     _LiveCapture,
     _open_graphics_region,
-    _resolved_config,
+    _resolved_entry,
     find_game_process,
     sample_from_frame,
 )
@@ -102,6 +103,10 @@ def test_sample_appends_a_non_default_track_configuration():
         ("Monza", "GP"),
         ("Spa-Francorchamps", "gp"),
         ("Fuji Speedway GP Short", "GP Short"),
+        # The declared default is the catalog entry's, not the layout its name prefers.
+        ("Nurburgring Nordschleife", "24h"),
+        ("Nordschleife", "24h"),
+        ("Nurburgring", "GP"),
     ],
     ids=[
         "brands-hatch-key",
@@ -110,6 +115,9 @@ def test_sample_appends_a_non_default_track_configuration():
         "monza-alias",
         "spa-alias",
         "fuji-layout-name",
+        "nordschleife-declared-default",
+        "nordschleife-alias-declared-default",
+        "nurburgring-gp-declared-default",
     ],
 )
 def test_sample_keeps_the_raw_name_for_the_default_layout(track, configuration):
@@ -118,6 +126,33 @@ def test_sample_keeps_the_raw_name_for_the_default_layout(track, configuration):
     s = sample_from_frame(_frame_with_static(track=track, track_configuration=configuration))
     assert s is not None
     assert s.track == track
+
+
+@pytest.mark.parametrize(
+    ("track", "configuration", "label"),
+    [
+        ("Nurburgring Nordschleife", "Nordschleife", "Nurburgring Nordschleife [Nordschleife]"),
+        # A repeated label is intentional: the label is the key, so suppressing the suffix would
+        # merge this layout with the entry's declared default under one key.
+        ("Nordschleife", "Nordschleife", "Nordschleife [Nordschleife]"),
+        ("Nurburgring", "Nordschleife", "Nurburgring [Nordschleife]"),
+        # A known track whose reported configuration the selector cannot resolve still gets its
+        # own key: the fallback uses the track's declared default (24h), so Club is not it.
+        ("Nurburgring Nordschleife", "Club", "Nurburgring Nordschleife [Club]"),
+    ],
+    ids=[
+        "nordschleife-layout",
+        "nordschleife-repeated",
+        "nurburgring-layout",
+        "nordschleife-unresolved-config",
+    ],
+)
+def test_sample_suffixes_a_non_default_layout_even_when_the_name_repeats(
+    track, configuration, label
+):
+    s = sample_from_frame(_frame_with_static(track=track, track_configuration=configuration))
+    assert s is not None
+    assert s.track == label
 
 
 @pytest.mark.parametrize(
@@ -142,26 +177,41 @@ def test_sample_keeps_the_raw_name_for_a_track_outside_the_catalog():
     assert s.track == "Nowhere Motor Speedway"
 
 
-def test_the_catalog_defaults_and_config_resolution_are_cached():
+def test_the_catalog_declared_defaults_and_resolution_are_cached():
     _default_config.cache_clear()
-    _resolved_config.cache_clear()
+    _entry_default.cache_clear()
+    _resolved_entry.cache_clear()
     try:
+        # The declared default is the entry's own field, not the layout its label prefers.
         assert _default_config("Brands Hatch") == "gp"
+        assert _default_config("Nurburgring Nordschleife") == "24h"
         assert _default_config("Nowhere Motor Speedway") == ""
+        assert _entry_default("nurburgring_nordschleife") == "24h"
+        assert _entry_default("not_a_track") == ""
+
         first = _default_config.cache_info()
-        assert (first.hits, first.misses) == (0, 2)
+        assert (first.hits, first.misses) == (0, 3)
         assert _default_config("Brands Hatch") == "gp"
         second = _default_config.cache_info()
         assert (second.hits, second.misses) == (first.hits + 1, first.misses)
 
-        # The selector maps a name or alias to the canonical key, the comparison the label needs.
-        assert _resolved_config("Monza", "v0.4") == "v0_4"
-        assert _resolved_config("Monza", "GP") == "v0_4"
-        assert _resolved_config("Brands Hatch", "Indy") == "indy"
-        assert _resolved_config("Nowhere Motor Speedway", "Club") == ""
+        # The selector maps a name or alias to the canonical entry and config key.
+        assert _resolved_entry("Monza", "v0.4") == ("monza", "v0_4")
+        assert _resolved_entry("Monza", "GP") == ("monza", "v0_4")
+        assert _resolved_entry("Brands Hatch", "Indy") == ("brands_hatch", "indy")
+        assert _resolved_entry("Nurburgring Nordschleife", "Nordschleife") == (
+            "nurburgring_nordschleife",
+            "nordschleife",
+        )
+        assert _resolved_entry("Nurburgring Nordschleife", "24h") == (
+            "nurburgring_nordschleife",
+            "24h",
+        )
+        assert _resolved_entry("Nowhere Motor Speedway", "Club") == ("", "")
     finally:
         _default_config.cache_clear()
-        _resolved_config.cache_clear()
+        _entry_default.cache_clear()
+        _resolved_entry.cache_clear()
 
 
 def test_a_missing_track_catalog_keeps_the_raw_name(monkeypatch):
@@ -169,7 +219,8 @@ def test_a_missing_track_catalog_keeps_the_raw_name(monkeypatch):
     # samples. The unique track name keeps the cached "" from poisoning the catalog-backed tests.
     monkeypatch.setitem(sys.modules, "acevo.catalogs", None)
     _default_config.cache_clear()
-    _resolved_config.cache_clear()
+    _entry_default.cache_clear()
+    _resolved_entry.cache_clear()
     try:
         s = sample_from_frame(
             _frame_with_static(track="Catalog Offline Raceway", track_configuration="Club")
@@ -178,7 +229,24 @@ def test_a_missing_track_catalog_keeps_the_raw_name(monkeypatch):
         assert s.track == "Catalog Offline Raceway"
     finally:
         _default_config.cache_clear()
-        _resolved_config.cache_clear()
+        _entry_default.cache_clear()
+        _resolved_entry.cache_clear()
+
+
+def test_a_failing_entry_lookup_degrades_to_no_default(monkeypatch):
+    import acevo.catalogs
+
+    def boom(_key):
+        raise RuntimeError("catalog lookup failed")
+
+    monkeypatch.setattr(acevo.catalogs, "find_track_by_name", boom)
+    _default_config.cache_clear()
+    _entry_default.cache_clear()
+    try:
+        assert _entry_default("nurburgring_nordschleife") == ""
+    finally:
+        _default_config.cache_clear()
+        _entry_default.cache_clear()
 
 
 def _raw_graphics(gained: int, deadline: int, delta: float) -> bytes:
