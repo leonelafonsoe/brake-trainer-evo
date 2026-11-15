@@ -4,19 +4,16 @@ This is the single list of pending work. It records the release state, the immed
 ideas that are deliberately deferred or need input from outside the repository. Transient PR state
 is noted with the date it was checked and is removed when handled.
 
-## State (14 November 2026)
+## State (15 November 2026)
 
 - **0.7.0** shipped the race-cut guard, the global pause hotkey, the Windows adapter tests, the
   settings key rename (`SETTINGS_VERSION` 5), the HUD colour constants and the
   typing/engine-protocol cleanup (29 October 2026).
-- **0.7.1** is the current versioned release (14 November 2026): the **timeline interpolation
+- **0.7.1** is the previous release (14 November 2026): the **timeline interpolation
   refactor** (PR #60) plus the tooling alignment (`ruff` pre-commit pin, pytest-asyncio loop scope).
-  The [changelog](../CHANGELOG.md) has both entries.
-- The **`acevo-sdk` 0.2 move** is implemented on `deps/acevo-sdk-0.2` (14 November 2026): 0.2.2 is
-  pinned, the frame gate and the graphics-region read are shimmed, both penalty addition shapes
-  count, replay/pause frames are ignored and alternate layouts key separately. It merges after the
-  `windows-build` candidate session; Dependabot **#65** is superseded by this branch and closed as
-  part of its delivery.
+- **0.8.0** is the current versioned release (15 November 2026): the **`acevo-sdk` 0.2.2 move** —
+  outlap frames, the race-cut region read, both penalty addition shapes, replay/pause filtering and
+  layout-specific keys. The [changelog](../CHANGELOG.md) has the entry.
 - No other pull request is open.
 - Settings schema is **5** (old v4 files were archived on upgrade); learned data is **1**. No
   migration is pending.
@@ -36,12 +33,9 @@ Dependabot runs weekly for the `uv`, `github-actions` and `pre-commit` ecosystem
 the newest allowed patch, so the merged version can differ from the one in the diff. Update
 `uv.lock` with the project, never by hand.
 
-### 2. Next release (separate task)
+### 2. Next release after 0.8.0
 
-0.7.1 is a **patch** because nothing in it is user-facing. The `acevo-sdk` 0.2 move is the opposite:
-it touches log parsing, lap authority and validity handling, so release it separately as **0.8.0**
-if anything becomes visible. Cutting that release is a separate task after this pull request is
-merged and field-tested; this branch does not bump the version. Then follow the
+0.8.0 is cut; the next release is a separate task. Follow the
 [release pipeline](DEVELOPMENT.md#release-pipeline): bump, changelog, gates,
 `release_notes.py --check`, then tag.
 
