@@ -6,6 +6,9 @@ from brake_trainer.gamelog import REPORTED_CUT, line_time, parse_line
 
 from .gamelog_helpers import FIXTURES, NOTIFICATION, SPLIT
 
+# The SDK's 0.2.2 regression data addition line, verbatim; see the fixture README.
+SDK_ADDED = "[2026-08-18 23:13:02.935] [gameface] [warning] true {PENALTY_ADDED_KEY} #0 "
+
 
 def test_the_games_cut_notification_is_reported():
     event = parse_line(NOTIFICATION)
@@ -22,6 +25,35 @@ def test_the_penalty_type_warning_is_not_a_second_cut():
     assert parse_line(cleared) is None
 
 
+def test_the_sdk_penalty_addition_is_a_cut():
+    event = parse_line(SDK_ADDED)
+    assert event is not None and event.cut == REPORTED_CUT and event.split == -1
+
+
+def test_a_plain_notification_without_adding_is_not_a_cut():
+    # `UINotification ... SessionPenalty` only names the HUD text. The addition line is the cut
+    # verdict, so matching the type name on its own would report every cut twice.
+    plain = (
+        "[2026-10-23 01:40:35.562] [gameface] [info] "
+        "UINotification UINotificationType_SessionPenalty"
+    )
+    assert parse_line(plain) is None
+
+
+def test_two_additions_in_one_lap_are_both_reported():
+    # There is no time window: two additions at different times are two cuts. The engine folds them
+    # by (lap, sector), so suppressing the second here would hide a real cut in another sector.
+    later = (
+        "[2026-10-16 20:41:52.703] [gameface] [info] "
+        "Adding notification UINotificationType_SessionPenalty"
+    )
+    events = [parse_line(line) for line in (NOTIFICATION, later)]
+    assert [event.cut if event is not None else "" for event in events] == [
+        REPORTED_CUT,
+        REPORTED_CUT,
+    ]
+
+
 def _parse_fixture(name: str) -> list[tuple[str, int]]:
     """Parse a real game-log excerpt, returning its ``(cut, split)`` events."""
     events: list[tuple[str, int]] = []
@@ -34,6 +66,10 @@ def _parse_fixture(name: str) -> list[tuple[str, int]]:
 
 def test_a_real_monza_notification_block_reports_one_cut_after_its_split():
     assert _parse_fixture("notification_block.txt") == [("", 0), (REPORTED_CUT, -1)]
+
+
+def test_the_sdk_shaped_fixture_reports_only_its_addition():
+    assert _parse_fixture("penalty_sdk_build.txt") == [(REPORTED_CUT, -1)]
 
 
 def test_real_monza_sector_lines_report_all_three_indices():

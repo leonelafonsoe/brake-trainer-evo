@@ -7,6 +7,10 @@ notification::
 
     ... [gameface] [info] Adding notification UINotificationType_SessionPenalty
 
+Builds differ in the line they write: this build's HUD notification above, or the SDK's documented
+``true {PENALTY_ADDED_KEY}``. Both are cuts; a ``{PENALTY_CLEARED_KEY}`` line only clears the
+penalty state. Every addition is reported, so two cuts in one lap each drop their own sector.
+
 The shared memory carries only a one-shot "lap still valid" flag, which drops once per lap and so
 cannot show a second cut; the notification arrives once per cut. The notification is written where
 the game judged the cut, so the engine attributes it from the car's position at the line's own time,
@@ -47,11 +51,13 @@ log = logging.getLogger(__name__)
 DEFAULT_LOG_DIR = Path.home() / "Saved Games" / "ACE" / "Logs"
 _FINGERPRINT_BYTES = 64  # bytes kept from before the read offset to spot an in-place rewrite
 
-# One HUD notification per cut, written when the game judges it. The warning line that follows it
-# (`false {PENALTY_CLEARED_KEY}` in the current build) carries the HUD text and penalty
-# type, not whether a cut happened: matching only `{PENALTY_ADDED_KEY}` (as a penalty-state parser
-# does) misses every cut this build reports.
+# One addition per cut, written when the game judges it. Our build writes the HUD notification;
+# the SDK's build writes `true {PENALTY_ADDED_KEY}`. A `{PENALTY_CLEARED_KEY}` line, or a plain
+# `UINotification` line, carries the HUD text and penalty state, not whether a cut happened.
+# Every addition is a cut: the engine folds them by (lap, sector), so two cuts in different sectors
+# each drop their own sector, and no time window suppresses a real second cut.
 _NOTIFY_RE = re.compile(r"Adding notification UINotificationType_SessionPenalty\b")
+_PENALTY_ADDED_RE = re.compile(r"\{PENALTY_ADDED_KEY\}")
 # The end of each of the game's three sectors: "Received split: ... index 0/1/2" (2 = the line).
 _SPLIT_RE = re.compile(r"Received split: isStart (?:true|false), isEnd (?:true|false), index (\d+)")
 # Every line starts with its own wall-clock time, in local time: ``[2026-10-16 22:11:06.027]``.
@@ -86,7 +92,7 @@ def line_time(line: str) -> float | None:
 
 def parse_line(line: str) -> LogEvent | None:
     """Read one log line. Returns the cut or split it reports, if any."""
-    if _NOTIFY_RE.search(line):
+    if _NOTIFY_RE.search(line) or _PENALTY_ADDED_RE.search(line):
         return LogEvent(cut=REPORTED_CUT)
     match = _SPLIT_RE.search(line)
     if match:
