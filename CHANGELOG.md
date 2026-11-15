@@ -4,6 +4,8 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.8.0 - 2026-11-15
+
 ### Changed
 
 - `acevo-sdk` moves from 0.1.1 to 0.2.2 (`>=0.2.2,<0.3.0`), and Dependabot watches its patch
