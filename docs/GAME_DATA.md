@@ -35,7 +35,9 @@ loading) are ignored.
 position and a track, but the driver is not driving, so they are ignored and cannot teach braking
 points. Menus and loading screens were already rejected for having no track or car name. The SDK
 names the states (`AC_OFF`, `AC_REPLAY`, `AC_LIVE`, `AC_PAUSE`); a build without a status field is
-assumed live.
+assumed live. A live session whose `focused_car_id` differs from `player_car_id` is spectating
+another car and is ignored by the same rule the SDK applies, while equal or missing ids fall back to
+the status field.
 
 ### Track keys
 

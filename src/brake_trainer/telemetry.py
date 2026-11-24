@@ -167,14 +167,26 @@ def _race_cut(raw: bytes | None) -> tuple[int, int, float]:
     return gained, deadline, delta
 
 
+def _car_id(value: Any) -> int | None:
+    """A car slot id from the graphics block, or None when absent or not a real integer."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
 def _live_frame(gfx: Mapping[str, Any]) -> bool:
     """Is the graphics block showing a live session?
 
-    A replay, a pause or the teardown still carries a position and a track, so learning it would
-    teach braking points from a lap the driver is not driving. The SDK's 0.2 state model names the
-    states (``status`` 0 OFF, 1 REPLAY, 2 LIVE, 3 PAUSE); a build without the field is assumed live
-    so older captures keep working.
+    A replay, a pause, the teardown or a live session whose camera follows another car still
+    carries a position and a track, so learning it would teach braking points from a lap the driver
+    is not driving. The SDK's 0.2 state model names the states (``status`` 0 OFF, 1 REPLAY, 2 LIVE,
+    3 PAUSE); ``acevo-sdk`` 0.2.3 also treats ``focused_car_id != player_car_id`` as not-live. The
+    numeric ``status`` field still wins over ``status_name``, and a build without either state
+    field is still assumed live when the ids agree or are absent.
     """
+    focused, player = _car_id(gfx.get("focused_car_id")), _car_id(gfx.get("player_car_id"))
+    if focused is not None and player is not None and focused != player:
+        return False
     status = gfx.get("status")
     if isinstance(status, int) and not isinstance(status, bool):
         return status == 2  # AC_LIVE

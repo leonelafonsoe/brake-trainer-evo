@@ -204,8 +204,9 @@ the first laps.
 
 An alternate layout of a known track - for example Brands Hatch Indy - appears in Settings -> Data
 as `Track [Config]` (`Brands Hatch [Indy]`) and learns separately from the default layout, whose
-entry is unchanged. Only live driving teaches: frames from a replay or a pause are ignored, so
-neither changes your marks. The key details are in [GAME_DATA.md](GAME_DATA.md#track-keys).
+entry is unchanged. Only live driving teaches: frames from a replay, a pause, or a session you are
+watching from another car's camera are ignored, so none of them changes your marks. The key details
+are in [GAME_DATA.md](GAME_DATA.md#track-keys).
 
 ## Pausing learning
 

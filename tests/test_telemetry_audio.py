@@ -346,6 +346,8 @@ def _frame_with_state(**state: Any) -> Any:
         {"status_name": "ac_live"},
         {"status": True, "status_name": "AC_LIVE"},  # a bool is not a state code
         {},
+        {"status": 2, "focused_car_id": 4, "player_car_id": 4},
+        {"status": 2, "focused_car_id": 4},
     ],
     ids=[
         "live-both-fields",
@@ -354,6 +356,8 @@ def _frame_with_state(**state: Any) -> Any:
         "live-name-any-case",
         "bool-is-not-a-state-code",
         "no-status-field",
+        "player-camera",
+        "one-id-field-missing",
     ],
 )
 def test_sample_accepts_a_live_frame(state):
@@ -375,6 +379,9 @@ def test_sample_accepts_a_live_frame(state):
         {"status_name": "AC_PAUSE"},
         {"status": 1, "status_name": "AC_LIVE"},  # the numeric field wins
         {"status_name": "SOME_FUTURE_STATE"},
+        {"status": 2, "status_name": "AC_LIVE", "focused_car_id": 3, "player_car_id": 1},
+        {"focused_car_id": 3, "player_car_id": 1},
+        {"status": 2, "focused_car_id": 3, "player_car_id": 1},
     ],
     ids=[
         "off-both-fields",
@@ -387,6 +394,9 @@ def test_sample_accepts_a_live_frame(state):
         "pause-name",
         "numeric-status-wins",
         "unknown-name",
+        "spectating-a-live-session",
+        "spectating-without-a-status-field",
+        "spectating-numeric-status",
     ],
 )
 def test_sample_rejects_frames_that_are_not_live(state):
