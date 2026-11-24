@@ -53,9 +53,11 @@ Only the first is user-facing.
 - runs `uv lock` so the lock's root version matches what `--locked` installs.
 
 `scripts/release_notes.py --tag v0.8.1 --check` then proves the tag, both version files and a
-non-empty changelog section agree, and that `## Unreleased` has no notes left. CI's `checks` job and
-`tests/test_release_tools.py::test_the_project_version_and_the_tag_contract_agree` enforce the same
-contract.
+non-empty changelog section agree, and that `## Unreleased` has no notes left. That check runs
+locally and in `.github/workflows/release.yml` at tag time, which fails closed; it is **not** run by
+the PR's `checks` job. `tests/test_release_tools.py::test_the_project_version_and_the_tag_contract_agree`
+covers only version agreement and a non-empty section for the version, so a stray note left under
+`## Unreleased` would pass PR CI and only be caught when the tag is pushed.
 
 Today is 24 November 2026, so the section date is `2026-11-24`, matching the roadmap's State
 heading.
@@ -226,8 +228,10 @@ in-game. Record it as not applicable rather than skipped-after-attempt.
 ### 5.3 Required checks
 
 The five required jobs on the PR: `checks`, `tests (ubuntu-latest, 3.11)`,
-`tests (ubuntu-latest, 3.12)`, `tests (windows-latest, 3.12)`, `windows-build`. `audit` is advisory
-and may not appear — this PR changes no `uv.lock` package and no `pyproject.toml` dependency.
+`tests (ubuntu-latest, 3.12)`, `tests (windows-latest, 3.12)`, `windows-build`. `audit` is advisory:
+`security.yml` has no `pull_request` trigger, so it appears only when the branch push matches its
+`uv.lock`/`pyproject.toml` path filter. This branch touches both, so expect it to run on the push
+and pass; it never blocks a merge.
 
 ### 5.4 Tag and publication
 
