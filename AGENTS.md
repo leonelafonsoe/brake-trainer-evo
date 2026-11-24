@@ -183,7 +183,8 @@ The `/loop` workflow (architect → builder → reviewer) uses this profile.
 - **Deploy:** none. Nothing is deployed or staged from a PR.
 - **Required checks:** the CI jobs `checks`, `tests (ubuntu-latest, 3.11)`,
   `tests (ubuntu-latest, 3.12)`, `tests (windows-latest, 3.12)` and `windows-build`. The Security
-  workflow (`audit`) runs on its own schedule and on pull requests; it is advisory for merge
+  workflow (`audit`) runs on its own schedule and on pushes that change `uv.lock` or
+  `pyproject.toml`, so it may not appear on a pull request at all; it is advisory for merge
   purposes.
 - **Candidate step:** the PR's `windows-build` artifact, downloaded and driven in-game. This is a
   human step that the loop cannot perform; when it is skipped the report says so.

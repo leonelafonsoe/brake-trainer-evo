@@ -315,22 +315,26 @@ Nothing else in `AGENTS.md` may change.
 **1. `docs/ROADMAP.md`, "State".** After the 0.8.0 bullet, add this bullet exactly:
 
 ```markdown
-- **Dependency queue (22 November 2026, checked 24 November 2026):** six Dependabot pull requests
-  from the 15 and 22 November runs — `pre-commit-hooks` **6.0.0**, `acevo-sdk` **0.2.3**,
-  `pytest-asyncio` **1.5.0**, `ruff` **0.17.6** and its `pre-commit` hook, and
-  `astral-sh/setup-uv` **10.4.0**. The batch also adopts the SDK 0.2.3 spectated-car rule in the
-  adapter. Evidence and merge order: [the batch spec](plans/deps-batch-2026-11-22.md).
+- **Dependency batch (checked 24 November 2026):** the 15 and 22 November runs brought
+  `pre-commit-hooks` **6.0.0**, `acevo-sdk` **0.2.3**, `pytest-asyncio` **1.5.0**, `ruff` **0.17.6**
+  with its `pre-commit` hook, and `astral-sh/setup-uv` **10.4.0**. The same change adopts the SDK
+  0.2.3 spectated-car rule in the adapter. Merge order and evidence:
+  [the batch spec](plans/deps-batch-2026-11-22.md).
 ```
 
-The date is explicit because this is transient state, per the page's own rule.
+The date is explicit because this is transient state, per the page's own rule. "Brought" is past
+tense on purpose: this PR merges after the six Dependabot PRs, and the neighbouring "No other pull
+request is open" line must stay true when it lands. Change the section heading `## State (15
+November 2026)` to `## State (24 November 2026)`, since the section now carries a 24 November
+bullet.
 
 **2. `docs/ROADMAP.md`, "Immediate queue" item 1.** After the 14 November paragraph, add this
 paragraph exactly:
 
 ```markdown
-The 22 November queue is the same shape and needed no repair: all six pull requests were green
-before the batch started. It carries one adaptation — the SDK 0.2.3 spectated-car rule now applies
-in `telemetry.py` — and the merge order plus the `ruff` hook/lock window are in
+The 22 November batch is the same shape and needed no repair: all six pull requests were green
+before it started. It carries one adaptation — the SDK 0.2.3 spectated-car rule now applies in
+`telemetry.py` — and the merge order plus the `ruff` hook/lock window are in
 [the batch spec](plans/deps-batch-2026-11-22.md).
 ```
 
