@@ -8,11 +8,11 @@ resolution-markers = [
 
 [[package]]
 name = "acevo-sdk"
-version = "0.2.2"
+version = "0.2.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6a/fc/02edd50fd909f978476d622395ce80469a66d0e30dc80b5bb0a3893da7b8/acevo_sdk-0.2.2.tar.gz", hash = "sha256:1f02d8db6a50d692c275744e273cf5ab34fe137564fa34b5d7106e54120be1d9", size = 162806, upload-time = "2026-11-08T15:22:30.986Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/f7/ac0ce5f285121408e9c8240db693efb3e67baa8d632fa5bc1ddf837cfb2a/acevo_sdk-0.2.3.tar.gz", hash = "sha256:d49ca6cf6f38f53a4cdca6d2eb61fbc63cb4df976a03f2f7cd435bb4ed053ad0", size = 162931, upload-time = "2026-11-17T22:00:02.376Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/bf/59964b78f55377eb1e1e7f2d91e65e5fda42cbd660e84c96dcb922f6de0b/acevo_sdk-0.2.2-py3-none-any.whl", hash = "sha256:d38ad1cf6b96f13c26eccaff4163f806427a961175c11a5eaeb5ed43625ae076", size = 99440, upload-time = "2026-11-08T15:22:29.754Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/75/a230bb3c0305216e0dfe46b7fdac9b7c337db04651aee630afded23dcd51/acevo_sdk-0.2.3-py3-none-any.whl", hash = "sha256:208edb2c3e7a44ccb362fa4c6cdb952e01abd95fb459f7971c119896bac91c07", size = 99504, upload-time = "2026-11-17T22:00:00.803Z" },
 ]
 
 [[package]]
