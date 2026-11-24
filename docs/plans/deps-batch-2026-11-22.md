@@ -4,7 +4,7 @@
 **Base commit:** `f0459cdad85e50a212ebf52a85a4627f7174629d` (`main`, "Merge pull request #76 from
 leonelafonsoe/release/0.8.0")
 **Repositories:** `brake-trainer-evo` only
-**Status:** awaiting GO.
+**Status:** approved; T1 and T2 delivered on this branch.
 
 ## 1. Objective
 
@@ -402,8 +402,11 @@ the packaged build can prove. From the spec PR's `windows-build` artifact:
 1. **Normal driving** (the regression check): run a session on any track; the overlay must update
    and a sector must still be learned. This is the proof that the id comparison does not reject
    ordinary frames — accept case `player-camera` in the unit tests is the cheap version of it.
-2. **Spectating**: bring up a session where the camera follows another car, drive a few corners'
-   worth of frames, and confirm no new mark appears for that sector in **Settings → Data**.
+2. **Spectating**: with the camera following another car, let the followed car cover a few corners
+   and confirm no new mark appears for that sector in **Settings → Data**. The player cannot drive
+   in this state. If the build cannot produce a live session with the camera on another car — for
+   example a single-player-only build — record the candidate check as **not reproducible** and say
+   so in the report; the unit tests and the SDK's own rule are then the only evidence.
 3. Record the artifact name and the outcome of both checks in the delivery report.
 
 The six Dependabot PRs need no candidate step: none of them changes shipped behaviour. `acevo-sdk`
