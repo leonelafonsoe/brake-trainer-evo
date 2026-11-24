@@ -4,7 +4,7 @@ This is the single list of pending work. It records the release state, the immed
 ideas that are deliberately deferred or need input from outside the repository. Transient PR state
 is noted with the date it was checked and is removed when handled.
 
-## State (15 November 2026)
+## State (24 November 2026)
 
 - **0.7.0** shipped the race-cut guard, the global pause hotkey, the Windows adapter tests, the
   settings key rename (`SETTINGS_VERSION` 5), the HUD colour constants and the
@@ -14,6 +14,11 @@ is noted with the date it was checked and is removed when handled.
 - **0.8.0** is the current versioned release (15 November 2026): the **`acevo-sdk` 0.2.2 move** —
   outlap frames, the race-cut region read, both penalty addition shapes, replay/pause filtering and
   layout-specific keys. The [changelog](../CHANGELOG.md) has the entry.
+- **Dependency batch (checked 24 November 2026):** the 15 and 22 November runs brought
+  `pre-commit-hooks` **6.0.0**, `acevo-sdk` **0.2.3**, `pytest-asyncio` **1.5.0**, `ruff` **0.17.6**
+  with its `pre-commit` hook, and `astral-sh/setup-uv` **10.4.0**. The same change adopts the SDK
+  0.2.3 spectated-car rule in the adapter. Merge order and evidence:
+  [the batch spec](plans/deps-batch-2026-11-22.md).
 - No other pull request is open.
 - Settings schema is **5** (old v4 files were archived on upgrade); learned data is **1**. No
   migration is pending.
@@ -27,6 +32,11 @@ The 14 November 2026 batch is merged: `ruff` **0.17.4**, `pytest` **9.2.0**, `py
 `softprops/action-gh-release` **3.0.4**, plus `ruff-pre-commit` `v0.17.4` in
 `.pre-commit-config.yaml`. `pytest` 9.2.0 needed `asyncio_default_fixture_loop_scope` in
 `pyproject.toml`; see [the batch spec](plans/dependency-maintenance-batch.md).
+
+The 22 November batch is the same shape and needed no repair: all six pull requests were green
+before it started. It carries one adaptation — the SDK 0.2.3 spectated-car rule now applies in
+`telemetry.py` — and the merge order plus the `ruff` hook/lock window are in
+[the batch spec](plans/deps-batch-2026-11-22.md).
 
 Dependabot runs weekly for the `uv`, `github-actions` and `pre-commit` ecosystems; check
 `gh pr list` for what is open. Re-check each pull request before merging: rebasing re-resolves to

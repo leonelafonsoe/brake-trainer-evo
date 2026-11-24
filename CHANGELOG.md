@@ -4,6 +4,13 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+### Fixed
+
+- Frames captured while the camera follows another car no longer teach braking points. A live
+  session with `focused_car_id` different from `player_car_id` is now ignored, matching the rule
+  `acevo-sdk` 0.2.3 applies to its own session manager. Driver-camera frames and builds that do not
+  publish the fields behave as before.
+
 ## 0.8.0 - 2026-11-15
 
 ### Changed
