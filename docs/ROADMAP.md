@@ -9,11 +9,15 @@ is noted with the date it was checked and is removed when handled.
 - **0.7.0** shipped the race-cut guard, the global pause hotkey, the Windows adapter tests, the
   settings key rename (`SETTINGS_VERSION` 5), the HUD colour constants and the
   typing/engine-protocol cleanup (29 October 2026).
-- **0.7.1** is the previous release (14 November 2026): the **timeline interpolation
+- **0.7.1** was the release before that (14 November 2026): the **timeline interpolation
   refactor** (PR #60) plus the tooling alignment (`ruff` pre-commit pin, pytest-asyncio loop scope).
-- **0.8.0** is the current versioned release (15 November 2026): the **`acevo-sdk` 0.2.2 move** —
+- **0.8.0** was the previous release (15 November 2026): the **`acevo-sdk` 0.2.2 move** —
   outlap frames, the race-cut region read, both penalty addition shapes, replay/pause filtering and
   layout-specific keys. The [changelog](../CHANGELOG.md) has the entry.
+- **0.8.1** is the current versioned release (24 November 2026): the **spectated-car learning
+  fix** and the November dependency batch (`acevo-sdk` 0.2.3, `ruff` 0.17.6,
+  `pytest-asyncio` 1.5.0, `pre-commit-hooks` 6.0.0, `astral-sh/setup-uv` 10.4.0). The
+  [changelog](../CHANGELOG.md) has the entry.
 - **Dependency batch (checked 24 November 2026):** the 15 and 22 November runs brought
   `pre-commit-hooks` **6.0.0**, `acevo-sdk` **0.2.3**, `pytest-asyncio` **1.5.0**, `ruff` **0.17.6**
   with its `pre-commit` hook, and `astral-sh/setup-uv` **10.4.0**. The same change adopts the SDK
@@ -43,9 +47,9 @@ Dependabot runs weekly for the `uv`, `github-actions` and `pre-commit` ecosystem
 the newest allowed patch, so the merged version can differ from the one in the diff. Update
 `uv.lock` with the project, never by hand.
 
-### 2. Next release after 0.8.0
+### 2. Next release after 0.8.1
 
-0.8.0 is cut; the next release is a separate task. Follow the
+0.8.1 is cut; the next release is a separate task. Follow the
 [release pipeline](DEVELOPMENT.md#release-pipeline): bump, changelog, gates,
 `release_notes.py --check`, then tag.
 

@@ -4,6 +4,14 @@ All notable changes to this project. Versions before 0.3 were a single-file scri
 
 ## Unreleased
 
+## 0.8.1 - 2026-11-24
+
+### Changed
+
+- Dependencies refreshed: `acevo-sdk` 0.2.3, `ruff` 0.17.6 with its `pre-commit` hook,
+  `pytest-asyncio` 1.5.0, `pre-commit-hooks` 6.0.0 and `astral-sh/setup-uv` 10.4.0. These are
+  tooling and library updates; the app's own behaviour changes only where the fix below says so.
+
 ### Fixed
 
 - Frames captured while the camera follows another car no longer teach braking points. A live
